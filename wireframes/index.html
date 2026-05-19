@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>neoori — Wireframes · Module Analyse CV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <style>
+    html, body { margin: 0; padding: 0; background: #f0eee9; min-height: 100vh; }
+    body { font-family: 'Patrick Hand', 'Kalam', system-ui, sans-serif; color: #1d1a17; }
+    #root { min-height: 100vh; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // Recovery: if the persisted DesignCanvas viewport got into a bad state
+    // (zoomed out so far that nothing's visible, or panned way off-screen),
+    // clear it on load. Also exposes window.__resetCanvas() for manual reset.
+    (function () {
+      var key = 'dc-viewport:' + location.pathname;
+      try {
+        var s = JSON.parse(localStorage.getItem(key) || 'null');
+        if (s) {
+          var bad =
+            !Number.isFinite(s.scale) || !Number.isFinite(s.x) || !Number.isFinite(s.y) ||
+            s.scale < 0.18 || s.scale > 6 ||
+            Math.abs(s.x) > 20000 || Math.abs(s.y) > 20000;
+          if (bad) localStorage.removeItem(key);
+        }
+      } catch (e) { try { localStorage.removeItem(key); } catch (_) {} }
+      window.__resetCanvas = function () {
+        try { localStorage.removeItem(key); } catch (e) {}
+        location.reload();
+      };
+    })();
+  </script>
+
+  <!-- Floating recovery button (always available — hidden during 'Present') -->
+  <button onclick="window.__resetCanvas()" style="
+    position:fixed; left:14px; bottom:14px; z-index:9999;
+    padding:6px 10px; font:12px/1 'JetBrains Mono', monospace;
+    background:#fff; color:#1d1a17; border:1px solid #1d1a17;
+    border-radius:6px; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.08);
+  ">↺ recentrer le canvas</button>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="sketch.jsx"></script>
+  <script type="text/babel" src="frames-entry.jsx"></script>
+  <script type="text/babel" src="frames-deliverable.jsx"></script>
+  <script type="text/babel" src="frames-admin.jsx"></script>
+
+  <script type="text/babel">
+    const DEFAULTS = /*EDITMODE-BEGIN*/{
+      "accent": "terracotta",
+      "density": "normal",
+      "showAnnotations": true,
+      "wobble": true,
+      "audience": "candidat",
+      "value": "terracotta",
+      "color": "#c96442"
+    }/*EDITMODE-END*/;
+
+    const ACCENT_HEX = {
+      terracotta: "#c96442",
+      forest:     "#3f6b4b",
+      indigo:     "#4a4f8c",
+      plum:       "#7a3d5e",
+      ink:        "#1d1a17",
+    };
+
+    function App() {
+      const [t, setTweak] = useTweaks(DEFAULTS);
+      const accentHex = ACCENT_HEX[t.accent] || ACCENT_HEX.terracotta;
+
+      // Apply accent + reveal mode globally
+      React.useEffect(() => {
+        document.documentElement.style.setProperty('--sk-accent', accentHex);
+        document.body.dataset.density = t.density;
+        document.body.dataset.annotations = t.showAnnotations ? 'on' : 'off';
+        // hide annotations CSS hook
+        const id = '__anno-hide';
+        let s = document.getElementById(id);
+        if (!s) { s = document.createElement('style'); s.id = id; document.head.appendChild(s); }
+        s.textContent = t.showAnnotations
+          ? ''
+          : '[data-anno], .sk-frame > div[style*="rotate"][style*="position: absolute"][style*="background: rgb(254, 243, 160)"] { display: none !important; } .sk-frame > div[style*="rotate"][style*="position:absolute"]:has(*) { } ';
+      }, [accentHex, t.density, t.showAnnotations]);
+
+      return (
+        <>
+          <DesignCanvas>
+            <DCSection id="flow" title="Parcours utilisateur" subtitle="Atterrissage → formulaire → génération">
+              <DCArtboard id="landing"  label="Landing"                width={1100} height={760}><FrameLanding/></DCArtboard>
+              <DCArtboard id="form-a"   label="Formulaire · A · une page"  width={780}  height={1180}><FrameFormA/></DCArtboard>
+              <DCArtboard id="form-b"   label="Formulaire · B · multi-étapes" width={780} height={760}><FrameFormB/></DCArtboard>
+              <DCArtboard id="form-c"   label="Formulaire · C · conversationnel" width={780} height={920}><FrameFormC/></DCArtboard>
+              <DCArtboard id="form-d"   label="Formulaire · D · atelier (split)" width={1100} height={760}><FrameFormD/></DCArtboard>
+              <DCArtboard id="loading"  label="Génération IA · état d'attente" width={780}  height={720}><FrameLoading/></DCArtboard>
+            </DCSection>
+
+            <DCSection id="deliverable" title="Le livrable" subtitle="3 mises en page · candidat · sections 1–9">
+              <DCArtboard id="del-a" label="Livrable · A · scroll long" width={900}  height={1500}><FrameDeliverableA/></DCArtboard>
+              <DCArtboard id="del-b" label="Livrable · B · nav latérale" width={1100} height={780}><FrameDeliverableB/></DCArtboard>
+              <DCArtboard id="del-c" label="Livrable · C · rapport A4" width={780}  height={1100}><FrameDeliverableC/></DCArtboard>
+            </DCSection>
+
+            <DCSection id="audience" title="Deux destinations" subtitle="Même analyse · exports candidat & conseiller · paywall">
+              <DCArtboard id="counselor" label="Version conseiller · §1, §4, §5" width={900}  height={1100}><FrameCounselor/></DCArtboard>
+              <DCArtboard id="paywall"   label="Paywall · gratuit → payant"      width={1100} height={760}><FramePaywall/></DCArtboard>
+            </DCSection>
+
+            <DCSection id="back" title="Côté admin & utilisateur" subtitle="Dashboard prompt v1.3 · historique candidat">
+              <DCArtboard id="admin" label="Dashboard admin"     width={1280} height={820}><FrameAdmin/></DCArtboard>
+              <DCArtboard id="user"  label="Espace utilisateur"   width={1100} height={780}><FrameUserSpace/></DCArtboard>
+            </DCSection>
+          </DesignCanvas>
+
+          <TweaksPanel defaults={DEFAULTS} title="Tweaks">
+            <TweakSection title="Couleur d'accent">
+              <TweakColor
+                tweak="accent"
+                value={t.accent}
+                onChange={setTweak}
+                options={[
+                  { value: 'terracotta', color: '#c96442' },
+                  { value: 'forest',     color: '#3f6b4b' },
+                  { value: 'indigo',     color: '#4a4f8c' },
+                  { value: 'plum',       color: '#7a3d5e' },
+                  { value: 'ink',        color: '#1d1a17' },
+                ]}
+              />
+            </TweakSection>
+            <TweakSection title="Densité">
+              <TweakRadio
+                tweak="density"
+                value={t.density}
+                onChange={setTweak}
+                options={[
+                  { value: 'compact', label: 'compact' },
+                  { value: 'normal',  label: 'normal' },
+                  { value: 'cozy',    label: 'spacieux' },
+                ]}
+              />
+            </TweakSection>
+            <TweakSection title="Affichage">
+              <TweakToggle
+                tweak="showAnnotations"
+                value={t.showAnnotations}
+                onChange={setTweak}
+                label="annotations designer (post-its)"
+              />
+              <TweakToggle
+                tweak="wobble"
+                value={t.wobble}
+                onChange={setTweak}
+                label="traits sketchy (wobble)"
+              />
+            </TweakSection>
+            <TweakSection title="Audience prioritaire">
+              <TweakRadio
+                tweak="audience"
+                value={t.audience}
+                onChange={setTweak}
+                options={[
+                  { value: 'candidat',   label: 'candidat' },
+                  { value: 'conseiller', label: 'conseiller' },
+                ]}
+              />
+            </TweakSection>
+          </TweaksPanel>
+
+          {/* Toggle wobble globally */}
+          <style>{`
+            ${t.wobble ? '' : '.sk-wob { filter: none !important; }'}
+            [data-annotations="off"] .sk-frame > div[style*="rotate"][style*="rgb(254, 243, 160)"],
+            [data-annotations="off"] .sk-frame > div[style*="background:#fef3a0"] { display: none !important; }
+          `}</style>
+        </>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App/>);
+  </script>
+</body>
+</html>
