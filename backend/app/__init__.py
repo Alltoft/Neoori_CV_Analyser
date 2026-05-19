@@ -16,7 +16,7 @@ def create_app(env: str | None = None) -> Flask:
     bcrypt.init_app(app)
     cors.init_app(
         app,
-        resources={r"/api/*": {"origins": app.config["FRONTEND_ORIGINS"]}},
+        resources={r"/api/.*": {"origins": app.config["FRONTEND_ORIGINS"]}},
         supports_credentials=True,  # required for httpOnly cookie auth
     )
 
