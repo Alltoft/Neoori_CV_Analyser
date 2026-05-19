@@ -42,6 +42,36 @@ def create_app(env: str | None = None) -> Flask:
     def health():
         return {"status": "ok"}, 200
 
+    def _cors_error_response(body: dict, status: int):
+        from flask import jsonify, request
+        origin = request.headers.get("Origin", "")
+        resp = jsonify(body)
+        resp.status_code = status
+        if origin in app.config["FRONTEND_ORIGINS"]:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        return resp
+
+    @jwt.unauthorized_loader
+    def missing_token(_err):
+        return _cors_error_response({"error": "Non authentifié."}, 401)
+
+    @jwt.invalid_token_loader
+    def invalid_token(_err):
+        return _cors_error_response({"error": "Token invalide."}, 422)
+
+    @jwt.expired_token_loader
+    def expired_token(_jwt_header, _jwt_data):
+        return _cors_error_response({"error": "Session expirée."}, 401)
+
+    @jwt.needs_fresh_token_loader
+    def needs_fresh(_jwt_header, _jwt_data):
+        return _cors_error_response({"error": "Token non récent."}, 401)
+
+    @jwt.revoked_token_loader
+    def revoked_token(_jwt_header, _jwt_data):
+        return _cors_error_response({"error": "Token révoqué."}, 401)
+
     # Reset analyses that were mid-stream when the server last shut down
     with app.app_context():
         try:
