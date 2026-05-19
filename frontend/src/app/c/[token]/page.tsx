@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
-import ReactMarkdown from "react-markdown"
+import ReactMarkdown, { type Components } from "react-markdown"
 import { useAuth } from "@/lib/auth"
 import { SECTION_TITLES } from "@/types"
 import type { Analysis, CounselorNote } from "@/types"
@@ -113,7 +113,7 @@ export default function CounselorPage() {
                     em:     ({ children }) => <em className="italic">{children}</em>,
                     h3:     ({ children }) => <h3 className="font-semibold mt-3 mb-1">{children}</h3>,
                     h4:     ({ children }) => <h4 className="font-medium mt-2 mb-1">{children}</h4>,
-                  }}
+                  } as Components}
                 >
                   {output[n].body_markdown}
                 </ReactMarkdown>

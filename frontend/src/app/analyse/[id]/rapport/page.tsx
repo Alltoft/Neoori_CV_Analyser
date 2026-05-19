@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { SECTION_TITLES, FREE_SECTIONS, PAID_SECTIONS } from "@/types"
 import type { Analysis } from "@/types"
 import { Printer, Share2, Lock } from "lucide-react"
-import ReactMarkdown from "react-markdown"
+import ReactMarkdown, { type Components } from "react-markdown"
 
 export default function RapportPage() {
   const { id } = useParams<{ id: string }>()
@@ -79,7 +79,7 @@ export default function RapportPage() {
                             `- ${typeof it === "string" ? it : (it.fact ?? String(it))}`
                           ).join("\n")
                         : "")
-                  return <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
+                  return <ReactMarkdown components={mdComponents as Components}>{content}</ReactMarkdown>
                 })()
             }
           </div>
