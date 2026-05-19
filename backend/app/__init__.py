@@ -38,6 +38,10 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(counselor_bp, url_prefix="/api/c")
 
+    @app.route("/api/health")
+    def health():
+        return {"status": "ok"}, 200
+
     # Reset analyses that were mid-stream when the server last shut down
     with app.app_context():
         try:
