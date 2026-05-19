@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
@@ -20,7 +20,7 @@ const schema = z.object({
 })
 type Fields = z.infer<typeof schema>
 
-export default function ConnexionPage() {
+function ConnexionForm() {
   const { login } = useAuth()
   const router     = useRouter()
   const params     = useSearchParams()
@@ -91,4 +91,8 @@ export default function ConnexionPage() {
       </div>
     </div>
   )
+}
+
+export default function ConnexionPage() {
+  return <Suspense><ConnexionForm /></Suspense>
 }
