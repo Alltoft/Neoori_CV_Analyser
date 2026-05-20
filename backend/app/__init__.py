@@ -8,6 +8,7 @@ def create_app(env: str | None = None) -> Flask:
     env = env or os.environ.get("FLASK_ENV", "development")
     app = Flask(__name__)
     app.config.from_object(config.get(env, config["default"]))
+    app.url_map.strict_slashes = False
 
     # Extensions
     db.init_app(app)
