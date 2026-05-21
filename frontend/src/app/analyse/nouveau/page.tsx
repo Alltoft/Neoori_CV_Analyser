@@ -309,27 +309,33 @@ export default function NouvelleAnalysePage() {
               <Button type="button" variant="outline" size="sm" onClick={saveDraft}>
                 enregistrer brouillon
               </Button>
-              <div className="flex rounded-md border border-border overflow-hidden">
-                <Button
+              <div className="flex gap-3">
+                <button
                   type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-none border-r border-border text-xs h-8 px-4 hover:bg-amber-50 hover:text-amber-700"
                   disabled={submittingTier !== null}
                   onClick={handleSubmit(data => onSubmit(data, "haiku"))}
+                  className="group flex flex-col items-start gap-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-left transition hover:bg-amber-100 disabled:opacity-50"
                 >
-                  {submittingTier === "haiku" ? "Lancement…" : "Gratuit · §1–4"}
-                </Button>
-                <Button
+                  <span className="text-sm font-semibold text-amber-800">
+                    {submittingTier === "haiku" ? "Lancement…" : "👉 Clique ici pour générer la version gratuite"}
+                  </span>
+                  <span className="text-[11px] text-amber-700/80">
+                    Si tu cliques ce bouton, tu verras exactement ce qu&apos;un utilisateur gratuit verra.
+                  </span>
+                </button>
+                <button
                   type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-none text-xs h-8 px-4 bg-primary/5 hover:bg-primary hover:text-primary-foreground"
                   disabled={submittingTier !== null}
                   onClick={handleSubmit(data => onSubmit(data, "sonnet"))}
+                  className="group flex flex-col items-start gap-1 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-left transition hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
                 >
-                  {submittingTier === "sonnet" ? "Lancement…" : "Complet · 9 € · §1–9"}
-                </Button>
+                  <span className="text-sm font-semibold">
+                    {submittingTier === "sonnet" ? "Lancement…" : "👉 Clique ici pour générer la version premium"}
+                  </span>
+                  <span className="text-[11px] opacity-70">
+                    Si tu cliques ce bouton, tu verras exactement ce qu&apos;un utilisateur premium verra.
+                  </span>
+                </button>
               </div>
             </div>
           </div>
