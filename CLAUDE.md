@@ -112,6 +112,34 @@ user: <concatenation of 8 fields per format in prompt v1.3>
 No: boussole, copilote, miroir, révélation, épanouissement, alignement, excellence, talent unique, vous vous démarquez
 Yes: factual, sober, professional, direct
 
+## Live deployment (test environment)
+
+All work is developed locally and tested live on the internet. Every push deploys automatically — no manual deploy step needed.
+
+| Service  | URL | Host | Auto-deploy branch |
+|---|---|---|---|
+| Frontend | https://frontend-seven-fawn-59.vercel.app | Vercel | `initial` (set as production branch in Vercel dashboard) |
+| Backend  | https://neoori-cv-analyser.onrender.com | Render | `initial` |
+| Database | TiDB Cloud — project `neoori` | TiDB Cloud | — |
+
+### Architecture
+Browser → Vercel (Next.js proxy `/api/*`) → Render (Flask/gunicorn) → TiDB Cloud
+
+The Next.js rewrite in `frontend/next.config.ts` proxies all `/api/*` requests to Render. The browser never calls Render directly — all requests are same-origin from the browser's perspective. JWT cookies are `SameSite=Lax` because of this proxy.
+
+### Deploy workflow
+```
+# local change → live on both services
+git add .
+git commit -m "..."
+git push        # triggers Vercel (frontend) + Render (backend) redeploys simultaneously
+```
+
+### Known gotchas
+- `BACKEND_URL` on Vercel must be `https://neoori-cv-analyser.onrender.com` (HTTPS, no trailing slash) — baked into Next.js build at compile time, so env changes require a redeploy
+- `FRONTEND_URL` on Render must be `https://frontend-seven-fawn-59.vercel.app` (with `https://`) — used by Flask-CORS; missing scheme breaks CORS header matching
+- Flask `strict_slashes=False` is set globally — required because Next.js proxy strips trailing slashes before forwarding, and Flask's default 308 redirect to an absolute Render URL leaks through the proxy to the browser
+
 ## Out of scope
 - Portrait module
 - CV-per-job adaptation

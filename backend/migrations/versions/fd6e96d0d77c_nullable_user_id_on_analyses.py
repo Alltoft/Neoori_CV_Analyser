@@ -17,13 +17,20 @@ depends_on = None
 
 
 def upgrade():
-    # MySQL 8 rejects ALTER COLUMN while FK constraint is active — drop, alter, recreate
-    op.execute("ALTER TABLE analyses DROP FOREIGN KEY analyses_ibfk_2")
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE"
+        " WHERE TABLE_NAME='analyses' AND TABLE_SCHEMA=DATABASE()"
+        " AND COLUMN_NAME='user_id' AND REFERENCED_TABLE_NAME='users' LIMIT 1"
+    ))
+    fk_name = result.scalar()
+    if fk_name:
+        conn.execute(sa.text(f"ALTER TABLE analyses DROP FOREIGN KEY `{fk_name}`"))
     op.execute("ALTER TABLE analyses MODIFY COLUMN user_id VARCHAR(36) NULL")
-    op.execute("ALTER TABLE analyses ADD CONSTRAINT analyses_ibfk_2 FOREIGN KEY (user_id) REFERENCES users(id)")
+    op.execute("ALTER TABLE analyses ADD CONSTRAINT fk_analyses_user_id FOREIGN KEY (user_id) REFERENCES users(id)")
 
 
 def downgrade():
-    op.execute("ALTER TABLE analyses DROP FOREIGN KEY analyses_ibfk_2")
+    op.execute("ALTER TABLE analyses DROP FOREIGN KEY fk_analyses_user_id")
     op.execute("ALTER TABLE analyses MODIFY COLUMN user_id VARCHAR(36) NOT NULL")
-    op.execute("ALTER TABLE analyses ADD CONSTRAINT analyses_ibfk_2 FOREIGN KEY (user_id) REFERENCES users(id)")
+    op.execute("ALTER TABLE analyses ADD CONSTRAINT fk_analyses_user_id FOREIGN KEY (user_id) REFERENCES users(id)")

@@ -24,8 +24,16 @@ export default function RapportPage() {
 
   useEffect(() => {
     api.get<{ analysis: Analysis }>(`/analyses/${id}`)
-      .then(r => setAnalysis(r.analysis))
+      .then(r => {
+        setAnalysis(r.analysis)
+        const a = r.analysis
+        const prenom = a.inputs?.prenom ?? "Candidat"
+        const cible = a.inputs?.cible_visee?.slice(0, 40) ?? ""
+        const date = new Date(a.created_at ?? "").toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
+        document.title = `neoori — ${prenom}${cible ? ` — ${cible}` : ""} — ${date}`
+      })
       .finally(() => setLoading(false))
+    return () => { document.title = "neoori" }
   }, [id])
 
   const output = analysis?.output ?? {}

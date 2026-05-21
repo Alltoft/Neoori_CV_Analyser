@@ -35,8 +35,11 @@ export default function NouvelleAnalysePage() {
   const router = useRouter()
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
   const [uploadedFilename, setUploadedFilename] = useState<string>("")
+  const [projectUploadState, setProjectUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
+  const [projectUploadedFilename, setProjectUploadedFilename] = useState<string>("")
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isProjectDragging, setIsProjectDragging] = useState(false)
   const [submittingTier, setSubmittingTier] = useState<"haiku" | "sonnet" | null>(null)
 
   const { register, handleSubmit, control, setValue, watch,
@@ -64,11 +67,34 @@ export default function NouvelleAnalysePage() {
     }
   }, [setValue])
 
+  const handleProjectFile = useCallback(async (file: File) => {
+    if (file.type !== "application/pdf") {
+      setProjectUploadState("error"); return
+    }
+    setProjectUploadState("uploading")
+    const fd = new FormData()
+    fd.append("file", file)
+    try {
+      const res = await api.upload<{ projet_text: string }>("/upload/projet", fd)
+      setValue("cible_visee", res.projet_text, { shouldValidate: true })
+      setProjectUploadedFilename(file.name)
+      setProjectUploadState("done")
+    } catch {
+      setProjectUploadState("error")
+    }
+  }, [setValue])
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setIsDragging(false)
     const file = e.dataTransfer.files[0]
     if (file) handleFile(file)
   }, [handleFile])
+
+  const onProjectDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setIsProjectDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleProjectFile(file)
+  }, [handleProjectFile])
 
   const onSubmit = async (data: Fields, tier: "haiku" | "sonnet") => {
     setSubmitError(null)
@@ -153,17 +179,53 @@ export default function NouvelleAnalysePage() {
             {errors.cv_text && <p className="text-xs text-destructive mt-2">{errors.cv_text.message}</p>}
           </div>
 
-          {/* ── Card 2 : Cible ── */}
+          {/* ── Card 2 : Votre projet ── */}
           <div className="rounded-lg border border-border bg-card p-5">
-            <p className="font-semibold text-sm mb-1">② cible visée</p>
-            <p className="text-xs text-muted-foreground mb-1">offre d'emploi · fiche métier · programme de formation</p>
-            <p className="text-[11px] text-muted-foreground/70 mb-2">Ex. : « Chargé(e) de projet RSE en secteur associatif, CDI, Île-de-France — poste impliquant la coordination de partenaires et le suivi d'indicateurs d'impact. »</p>
-            <Textarea
-              {...register("cible_visee")}
-              placeholder="Collez l'intitulé et la description du poste visé, ou décrivez librement votre cible…"
-              className="min-h-[88px] bg-secondary text-sm"
-            />
-            {errors.cible_visee && <p className="text-xs text-destructive mt-1.5">{errors.cible_visee.message}</p>}
+            <p className="font-semibold text-sm mb-1">② votre projet</p>
+            <p className="text-xs text-muted-foreground mb-3">offre d'emploi · fiche métier · programme de formation</p>
+            <div className="grid grid-cols-[1.2fr_1fr] gap-3">
+              {/* Drop zone */}
+              <div
+                onDrop={onProjectDrop}
+                onDragOver={e => { e.preventDefault(); setIsProjectDragging(true) }}
+                onDragLeave={() => setIsProjectDragging(false)}
+                onClick={() => document.getElementById("projet-file-input")?.click()}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed h-32 cursor-pointer transition-colors",
+                  isProjectDragging ? "border-primary bg-primary/5" : "border-border bg-secondary hover:border-primary/50",
+                  projectUploadState === "done" && "border-green-500/50 bg-green-50"
+                )}
+              >
+                <input id="projet-file-input" type="file" accept="application/pdf" className="hidden"
+                  onChange={e => e.target.files?.[0] && handleProjectFile(e.target.files[0])} />
+                {projectUploadState === "done" ? (
+                  <>
+                    <FileText className="h-5 w-5 text-green-600" />
+                    <span className="text-xs text-green-700 font-medium">{projectUploadedFilename}</span>
+                  </>
+                ) : projectUploadState === "uploading" ? (
+                  <span className="text-xs text-muted-foreground">Extraction en cours…</span>
+                ) : (
+                  <>
+                    <UploadCloud className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">déposer un PDF</span>
+                    <span className="text-[10px] text-muted-foreground">glissez ici · ou cliquez</span>
+                    <Badge variant="outline" className="text-[10px]">PDF · 10 Mo max</Badge>
+                  </>
+                )}
+              </div>
+
+              {/* Paste zone */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] text-muted-foreground text-center">— ou décrire librement —</span>
+                <Textarea
+                  {...register("cible_visee")}
+                  placeholder="Intitulé du poste, description, programme de formation…"
+                  className="flex-1 text-xs resize-none min-h-[104px] bg-background"
+                />
+              </div>
+            </div>
+            {errors.cible_visee && <p className="text-xs text-destructive mt-2">{errors.cible_visee.message}</p>}
           </div>
 
           {/* ── Cards 3 & 4 side by side ── */}
@@ -173,8 +235,8 @@ export default function NouvelleAnalysePage() {
               <p className="font-semibold text-sm mb-3">③ qui êtes-vous</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Prénom</Label>
-                  <Input {...register("prenom")} placeholder="Marion" className="h-8 text-xs" />
+                  <Label className="text-xs">Nom et prénom</Label>
+                  <Input {...register("prenom")} placeholder="Marion Dupont" className="h-8 text-xs" />
                   {errors.prenom && <p className="text-[10px] text-destructive">{errors.prenom.message}</p>}
                 </div>
 

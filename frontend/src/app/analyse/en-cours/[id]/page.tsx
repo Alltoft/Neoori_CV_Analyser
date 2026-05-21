@@ -30,7 +30,8 @@ export default function EnCoursPage() {
   const esRef    = useRef<EventSource | null>(null)
 
   useEffect(() => {
-    const es = new EventSource(`/api/analyses/${id}/stream`, { withCredentials: true })
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const es = new EventSource(`${apiBase}/api/analyses/${id}/stream`, { withCredentials: true })
     esRef.current = es
 
     es.onmessage = (e) => {

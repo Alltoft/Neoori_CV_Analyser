@@ -13,7 +13,7 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "jwt-secret-change-in-prod")
     JWT_TOKEN_LOCATION = ["cookies"]
     JWT_COOKIE_HTTPONLY = True
-    JWT_COOKIE_SAMESITE = "None"   # cross-origin frontend/backend on separate domains
+    JWT_COOKIE_SAMESITE = "Lax"    # browser → Next.js proxy → Flask; always same-origin from browser POV
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_COOKIE_CSRF_PROTECT = False

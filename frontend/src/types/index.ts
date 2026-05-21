@@ -92,6 +92,7 @@ export const MOBILITY_OPTIONS = [
 export const AGE_BRACKETS = ["< 25", "25–34", "35–44", "45–54", "55+"] as const
 
 export const SITUATION_OPTIONS = [
+  "1ère insertion pro",
   "en poste",
   "en recherche",
   "en formation",
