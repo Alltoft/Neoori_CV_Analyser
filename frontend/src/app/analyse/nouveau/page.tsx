@@ -318,7 +318,7 @@ export default function NouvelleAnalysePage() {
                   disabled={submittingTier !== null}
                   onClick={handleSubmit(data => onSubmit(data, "haiku"))}
                 >
-                  {submittingTier === "haiku" ? "Lancement…" : "Haiku · §1–4"}
+                  {submittingTier === "haiku" ? "Lancement…" : "Gratuit · §1–4"}
                 </Button>
                 <Button
                   type="button"
@@ -328,7 +328,7 @@ export default function NouvelleAnalysePage() {
                   disabled={submittingTier !== null}
                   onClick={handleSubmit(data => onSubmit(data, "sonnet"))}
                 >
-                  {submittingTier === "sonnet" ? "Lancement…" : "Sonnet · §1–9"}
+                  {submittingTier === "sonnet" ? "Lancement…" : "Complet · 9 € · §1–9"}
                 </Button>
               </div>
             </div>
