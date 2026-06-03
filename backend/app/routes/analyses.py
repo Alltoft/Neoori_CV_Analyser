@@ -1,12 +1,9 @@
-from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from ..extensions import db
 from ..models.analysis import Analysis
-
-_STALE_THRESHOLD = timedelta(minutes=10)
 from ..utils.tokens import generate_share_token
-from ..services.anthropic_service import stream_analysis
+from ..services.anthropic_service import start_analysis
 
 analyses_bp = Blueprint("analyses", __name__)
 
@@ -38,6 +35,12 @@ def create_analysis():
     )
     db.session.add(analysis)
     db.session.commit()
+
+    # Hand the slow Anthropic call to a background thread so the HTTP
+    # response returns immediately. The frontend polls GET /analyses/<id>
+    # for status — avoids edge-proxy timeouts on long Sonnet generations.
+    start_analysis(analysis.id, current_app._get_current_object())
+
     return jsonify({"analysis": analysis.to_dict()}), 201
 
 
@@ -74,27 +77,6 @@ def list_analyses():
 def get_analysis(analysis_id):
     analysis = Analysis.query.get_or_404(analysis_id)
     return jsonify({"analysis": analysis.to_dict()}), 200
-
-
-@analyses_bp.get("/<analysis_id>/stream")
-def run_analysis_stream(analysis_id):
-    analysis = Analysis.query.get_or_404(analysis_id)
-
-    is_stale = (
-        analysis.status == "running"
-        and datetime.utcnow() - analysis.created_at > _STALE_THRESHOLD
-    )
-    if analysis.status not in ("queued", "error", "timeout") and not is_stale:
-        return jsonify({"error": f"Statut incompatible : {analysis.status}"}), 409
-
-    return Response(
-        stream_with_context(stream_analysis(analysis_id)),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @analyses_bp.delete("/<analysis_id>")

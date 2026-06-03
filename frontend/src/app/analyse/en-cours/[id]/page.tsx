@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, Circle, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
+import type { Analysis } from "@/types"
 
 const STEPS = [
   { label: "lecture du CV",                       t: 0   },
@@ -16,6 +18,9 @@ const STEPS = [
   { label: "proposition de CV retravaillé",        t: 38000, locked: true },
 ]
 const ESTIMATED_TOTAL = 45000
+const POLL_INTERVAL_MS = 2000
+const POLL_BACKOFF_MS  = 4000   // on network blip
+const POLL_MAX_MS      = 10 * 60 * 1000   // give up after 10 min total
 
 type StepState = "done" | "active" | "wait"
 
@@ -27,32 +32,48 @@ export default function EnCoursPage() {
   const [done,       setDone]        = useState(false)
   const [error,      setError]       = useState<string | null>(null)
   const startRef = useRef(Date.now())
-  const esRef    = useRef<EventSource | null>(null)
 
   useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const es = new EventSource(`${apiBase}/api/analyses/${id}/stream`, { withCredentials: true })
-    esRef.current = es
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | null = null
 
-    es.onmessage = (e) => {
-      const msg = JSON.parse(e.data)
-      if (msg.type === "done") {
-        setDone(true)
-        setProgress(100)
-        es.close()
-        setTimeout(() => router.push(`/analyse/${id}/rapport`), 800)
+    const schedule = (ms: number, fn: () => void) => {
+      timer = setTimeout(fn, ms)
+    }
+
+    const poll = async () => {
+      if (!alive) return
+      if (Date.now() - startRef.current > POLL_MAX_MS) {
+        setError("L'analyse a expiré. Veuillez réessayer.")
+        return
       }
-      if (msg.type === "error") {
-        setError(msg.message === "timeout"
-          ? "L'analyse a expiré (>120s). Veuillez réessayer."
-          : (msg.message || "Une erreur est survenue."))
-        es.close()
+      try {
+        const res = await api.get<{ analysis: Analysis }>(`/analyses/${id}`)
+        if (!alive) return
+        const status = res.analysis.status
+        if (status === "success") {
+          setDone(true)
+          setProgress(100)
+          schedule(800, () => router.push(`/analyse/${id}/rapport`))
+          return
+        }
+        if (status === "error") {
+          setError("Une erreur est survenue. Veuillez réessayer.")
+          return
+        }
+        if (status === "timeout") {
+          setError("L'analyse a expiré. Veuillez réessayer.")
+          return
+        }
+        // queued | running → keep polling
+        schedule(POLL_INTERVAL_MS, poll)
+      } catch {
+        if (!alive) return
+        // Transient network/proxy blip — back off and retry rather than fail loud
+        schedule(POLL_BACKOFF_MS, poll)
       }
     }
-    es.onerror = () => {
-      setError("Connexion interrompue. Vérifiez votre réseau.")
-      es.close()
-    }
+    poll()
 
     // Progress animation keyed on elapsed time
     const tick = setInterval(() => {
@@ -64,7 +85,11 @@ export default function EnCoursPage() {
       setActiveStep(Math.max(0, next))
     }, 200)
 
-    return () => { clearInterval(tick); es.close() }
+    return () => {
+      alive = false
+      if (timer) clearTimeout(timer)
+      clearInterval(tick)
+    }
   }, [id, router])
 
   const stepState = (i: number): StepState => {

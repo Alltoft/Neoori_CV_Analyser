@@ -1,8 +1,8 @@
 import json
 import re
 import os
+import threading
 from datetime import datetime
-from flask import current_app
 import anthropic
 from json_repair import repair_json
 
@@ -82,19 +82,25 @@ def _parse_output(raw: str) -> dict:
     return {"1": {"title": "Analyse", "body_markdown": raw, "items": []}}
 
 
-def stream_analysis(analysis_id: str):
-    """SSE generator. Routes by _tier stored in inputs, streams via Anthropic SDK."""
-    with current_app.app_context():
+def _run_analysis(analysis_id: str, app) -> None:
+    """Run a single analysis to completion. Writes status + output to DB.
+
+    Designed to run inside a background daemon thread spawned by the
+    `POST /analyses/` route. Internally still uses the Anthropic streaming
+    SDK so the upstream HTTP request stays alive for long generations
+    (Sonnet at 8000 tokens can take several minutes), but no SSE is sent
+    to the client — the frontend polls `GET /analyses/<id>` for status.
+    """
+    with app.app_context():
         analysis = Analysis.query.get(analysis_id)
         if not analysis:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Analyse introuvable.'})}\n\n"
             return
 
         prompt = PromptVersion.query.filter_by(is_active=True).first()
         if not prompt:
             analysis.status = "error"
+            analysis.raw_output = "Aucun prompt actif."
             db.session.commit()
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Aucun prompt actif.'})}\n\n"
             return
 
         tier = (analysis.inputs or {}).get("_tier", "haiku")
@@ -105,7 +111,6 @@ def stream_analysis(analysis_id: str):
         db.session.commit()
 
         full_response = ""
-
         try:
             client = _get_client()
             with client.messages.stream(
@@ -116,10 +121,8 @@ def stream_analysis(analysis_id: str):
             ) as stream:
                 for text in stream.text_stream:
                     full_response += text
-                    yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
-
                 final = stream.get_final_message()
-                tokens_in  = final.usage.input_tokens
+                tokens_in = final.usage.input_tokens
                 tokens_out = final.usage.output_tokens
 
             output = _parse_output(full_response)
@@ -131,10 +134,17 @@ def stream_analysis(analysis_id: str):
             analysis.completed_at = datetime.utcnow()
             db.session.commit()
 
-            yield f"data: {json.dumps({'type': 'done', 'analysis_id': analysis_id})}\n\n"
-
         except Exception as exc:
             msg = str(exc).lower()
-            analysis.status = "timeout" if "timeout" in msg or "timed out" in msg else "error"
+            analysis.status = "timeout" if ("timeout" in msg or "timed out" in msg) else "error"
+            analysis.raw_output = str(exc)[:2000]
             db.session.commit()
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+
+def start_analysis(analysis_id: str, app) -> None:
+    """Spawn a daemon thread that runs the analysis in the background."""
+    threading.Thread(
+        target=_run_analysis,
+        args=(analysis_id, app),
+        daemon=True,
+    ).start()
