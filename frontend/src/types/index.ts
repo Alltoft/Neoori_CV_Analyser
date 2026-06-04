@@ -86,6 +86,7 @@ export interface PromptVersion {
   version_label: string
   system_prompt_text?: string
   is_active: boolean
+  path?: AnalysisPath
   author: string | null
   created_at: string
 }

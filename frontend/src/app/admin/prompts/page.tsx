@@ -9,8 +9,11 @@ import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { PromptVersion } from "@/types"
 
+type Path = "A" | "B"
+
 export default function PromptsPage() {
   const [versions, setVersions] = useState<PromptVersion[]>([])
+  const [path, setPath] = useState<Path>("A")
   const [text, setText] = useState("")
   const [savedText, setSavedText] = useState("")
   const [loading, setLoading] = useState(true)
@@ -20,10 +23,10 @@ export default function PromptsPage() {
 
   const dirty = text !== savedText
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (p: Path) => {
     const [pv, ap] = await Promise.all([
       api.get<{ prompts: PromptVersion[] }>("/prompts/"),
-      api.get<{ prompt: PromptVersion }>("/prompts/active").catch(() => ({ prompt: null })),
+      api.get<{ prompt: PromptVersion }>(`/prompts/active?path=${p}`).catch(() => ({ prompt: null })),
     ])
     setVersions(pv.prompts)
     const t = ap.prompt?.system_prompt_text ?? ""
@@ -33,27 +36,33 @@ export default function PromptsPage() {
   }, [])
 
   useEffect(() => {
-    loadData()
+    setLoading(true)
+    loadData(path)
       .catch(err => setError(err?.message ?? "Erreur de chargement"))
       .finally(() => setLoading(false))
-  }, [loadData])
+  }, [loadData, path])
 
   const publish = async () => {
     if (!text.trim() || !dirty) return
     setSaving(true)
     setError(null)
     try {
-      const activeVersion = versions.find(v => v.is_active)
-      const lastLabel = activeVersion?.version_label ?? `v1.${new Date().toISOString().slice(0,10).replace(/-/g,"")}`
-      const nextLabel = /^v\d+\.\d+$/.test(lastLabel)
-        ? lastLabel.replace(/v(\d+)\.(\d+)/, (_, maj, min) => `v${maj}.${+min + 1}`)
-        : `v1.${versions.length + 1}`
+      const activeVersion = versions.find(v => v.is_active && (v.path ?? "A") === path)
+      const suffix = path === "B" ? "-B" : ""
+      const fallback = `v1.${new Date().toISOString().slice(0,10).replace(/-/g,"")}${suffix}`
+      const lastLabel = activeVersion?.version_label ?? fallback
+      const stripped = lastLabel.replace(/-[AB]$/, "")
+      const bumped = /^v\d+\.\d+$/.test(stripped)
+        ? stripped.replace(/v(\d+)\.(\d+)/, (_, maj, min) => `v${maj}.${+min + 1}`)
+        : `v1.${versions.filter(v => (v.path ?? "A") === path).length + 1}`
+      const nextLabel = `${bumped}${suffix}`
       await api.post("/prompts/", {
         version_label: nextLabel,
         system_prompt_text: text,
+        path,
         activate: true,
       })
-      await loadData()
+      await loadData(path)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur lors de la publication")
     } finally {
@@ -66,7 +75,7 @@ export default function PromptsPage() {
     try {
       setError(null)
       await api.post(`/prompts/${id}/rollback`, {})
-      await loadData()
+      await loadData(path)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur lors du rollback")
     } finally {
@@ -74,7 +83,8 @@ export default function PromptsPage() {
     }
   }
 
-  const activeVersion = versions.find(v => v.is_active)
+  const activeVersion = versions.find(v => v.is_active && (v.path ?? "A") === path)
+  const visibleVersions = versions.filter(v => (v.path ?? "A") === path)
 
   return (
     <div className="grid grid-cols-[1.4fr_1fr] gap-4">
@@ -86,6 +96,23 @@ export default function PromptsPage() {
             <p className="text-[10px] text-muted-foreground">
               éditable sans redéploiement · versionné · rollback possible
             </p>
+            <div className="flex gap-1 mt-2">
+              {(["A", "B"] as const).map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPath(p)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-colors",
+                    path === p
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "bg-background border-border hover:border-primary/50",
+                  )}
+                >
+                  chemin {p}
+                </button>
+              ))}
+            </div>
           </div>
           {activeVersion && (
             <Badge className="bg-primary text-primary-foreground text-[10px]">
@@ -142,11 +169,11 @@ export default function PromptsPage() {
         <h2 className="font-semibold text-sm mb-3">historique des versions</h2>
         {loading ? (
           Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-10 mb-2" />)
-        ) : versions.length === 0 ? (
+        ) : visibleVersions.length === 0 ? (
           <p className="text-xs text-muted-foreground">aucune version</p>
         ) : (
           <div>
-            {versions.map(v => (
+            {visibleVersions.map(v => (
               <div
                 key={v.id}
                 className="flex items-center gap-2 py-2 border-b border-dashed border-border last:border-0"
