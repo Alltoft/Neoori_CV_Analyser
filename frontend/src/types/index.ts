@@ -73,10 +73,10 @@ export const SECTION_TITLES: Record<string, string> = {
   "1": "Lecture stratégique du parcours",
   "2": "Forces du profil pour la cible",
   "3": "Compétences transférables",
-  "4": "Angles morts du CV actuel",
+  "4": "Ce qui reste à renforcer",
   "5": "Préconisations terrain",
   "6": "Exemple de réécriture",
-  "7": "Synthèse",
+  "7": "Synthèse pour le candidat",
   "8": "Pistes d'évolution",
   "9": "Proposition de CV retravaillé",
 }
