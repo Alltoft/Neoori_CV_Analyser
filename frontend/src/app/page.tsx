@@ -1,8 +1,8 @@
 import Link from "next/link"
 import { Header } from "@/components/layout/Header"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { ArrowRight } from "lucide-react"
 
 const HOW_IT_WORKS = [
   { n: "01", title: "Vous racontez votre cible", desc: "CV + offre ou fiche métier + 6 champs de contexte" },
@@ -16,69 +16,79 @@ export default function LandingPage() {
       <Header />
 
       {/* ── Hero ── */}
-      <section className="max-w-[1100px] mx-auto px-8 pt-20 pb-24">
-        <div className="grid grid-cols-[1.1fr_0.9fr] gap-12 items-start">
-          <div>
-            <Badge variant="outline" className="mb-4 text-xs font-mono tracking-wider uppercase">
-              Bêta · Analyse CV
+      <section className="max-w-[920px] mx-auto px-8 pt-20 pb-16">
+        <Badge variant="outline" className="mb-4 text-xs font-mono tracking-wider uppercase">
+          Bêta · Analyse
+        </Badge>
+        <h1 className="text-5xl font-bold leading-[1.05] tracking-tight text-foreground mt-2">
+          Analysez votre profil,
+          <br />
+          <span className="text-primary">construisez votre avenir.</span>
+        </h1>
+        <p className="mt-6 text-base text-muted-foreground max-w-[560px] leading-relaxed">
+          Choisissez la situation qui vous correspond le mieux pour démarrer
+          votre analyse personnalisée.
+        </p>
+
+        {/* ── Bifurcation A / B ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-10">
+          {/* Card A — active */}
+          <Link
+            href="/analyse/nouveau"
+            className="group relative overflow-hidden rounded-lg border-2 border-primary/40 bg-secondary p-6 transition-all hover:-translate-y-1 hover:shadow-md hover:border-primary"
+          >
+            <span className="absolute inset-x-0 top-0 h-1 bg-primary" />
+            <Badge className="bg-primary/10 text-primary border-0 font-mono text-[10px] tracking-widest uppercase">
+              Chemin A
             </Badge>
-            <h1 className="text-5xl font-bold leading-[1.05] tracking-tight text-foreground mt-2">
-              Un CV lu autrement.
-              <br />
-              <span className="text-primary">Pour les parcours</span>
-              <br />
-              qu'on ne sait pas lire.
-            </h1>
-            <p className="mt-6 text-base text-muted-foreground max-w-[440px] leading-relaxed">
-              neoori produit une analyse stratégique de votre CV à destination de
-              trois lecteurs simultanés : vous, votre conseiller, le RH.
+            <p className="mt-4 font-semibold text-lg text-foreground leading-snug">
+              « J&apos;ai déjà travaillé et je veux évoluer ou me reconvertir »
             </p>
-            <div className="flex gap-3 mt-8">
-              <Button render={<Link href="/analyse/nouveau"/>} size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground">analyser mon CV →</Button>
-              <Button render={<Link href="/espace"/>} size="lg" variant="outline">voir un exemple</Button>
+            <p className="mt-3 text-sm text-muted-foreground italic">
+              Analyse de parcours + CV retravaillé en 9 sections
+            </p>
+            <ArrowRight className="absolute bottom-5 right-5 h-5 w-5 text-primary transition-transform group-hover:translate-x-1" />
+          </Link>
+
+          {/* Card B — coming soon */}
+          <div
+            aria-disabled="true"
+            className="group relative overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/30 p-6 cursor-not-allowed opacity-80"
+          >
+            <span className="absolute inset-x-0 top-0 h-1 bg-muted-foreground/30" />
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="font-mono text-[10px] tracking-widest uppercase">
+                Chemin B
+              </Badge>
+              <Badge variant="secondary" className="text-[10px]">Bientôt</Badge>
             </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              prend ~2 min · sans compte pour la version d'essai
+            <p className="mt-4 font-semibold text-lg text-foreground leading-snug">
+              « Je démarre, je reprends ou je cherche ma direction »
+            </p>
+            <p className="mt-3 text-sm text-muted-foreground italic">
+              Portrait de potentiel + pistes d&apos;orientation
             </p>
           </div>
+        </div>
 
-          {/* Stacked report illustration */}
-          <div className="relative h-[340px]">
-            <div
-              className="absolute right-8 top-8 w-[240px] bg-background border border-border rounded-lg p-4 shadow-md"
-              style={{ transform: "rotate(2deg)" }}
-            >
-              <Badge className="bg-primary text-primary-foreground text-[10px]">livrable candidat</Badge>
-              <p className="mt-3 font-semibold text-sm">Analyse de CV</p>
-              <p className="text-xs text-muted-foreground">Marion C. · Référente handicap</p>
-              <div className="mt-3 space-y-1.5">
-                {["§ 1 · Lecture stratégique","§ 2 · Forces du profil","§ 3 · Compétences","§ 4 · Angles morts"].map(s => (
-                  <div key={s} className="h-2.5 bg-muted rounded-sm" style={{ width: s.includes("morts") ? "70%" : "90%" }} />
-                ))}
-              </div>
-            </div>
-            <div
-              className="absolute right-0 top-0 w-[240px] bg-secondary border border-border rounded-lg p-4 shadow-sm"
-              style={{ transform: "rotate(-3deg)" }}
-            >
-              <Badge variant="outline" className="text-[10px]">version conseiller</Badge>
-              <p className="mt-3 font-semibold text-sm">Synthèse</p>
-              <div className="mt-2 space-y-1.5">
-                {[1,2,3,4,5].map(i => (
-                  <div key={i} className="h-2 bg-border rounded-sm" style={{ width: `${[100,90,70,100,50][i-1]}%` }} />
-                ))}
-              </div>
-              <p className="mt-3 text-[10px] font-mono text-muted-foreground">§ 1 · 4 · 5</p>
-            </div>
-            <p className="absolute right-[-8px] bottom-6 text-[11px] text-muted-foreground italic bg-secondary/80 px-2 py-1 rounded border border-border rotate-1">
-              même analyse, deux exports →
+        {/* ── Confidentialité ── */}
+        <div className="mt-8 flex rounded-md overflow-hidden border border-border">
+          <div className="w-1 bg-primary shrink-0" />
+          <div className="bg-secondary/60 px-4 py-3 flex-1">
+            <p className="text-[10px] font-bold tracking-widest uppercase text-foreground mb-1">
+              Confidentialité
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Vos données sont utilisées uniquement pour produire cette analyse.
+              Elles ne sont pas partagées avec des tiers ni utilisées pour entraîner
+              des modèles d&apos;IA.
             </p>
           </div>
         </div>
 
         {/* ── How it works ── */}
         <Separator className="mt-16 mb-12" />
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {HOW_IT_WORKS.map(({ n, title, desc }) => (
             <div key={n} className="flex flex-col gap-1.5">
               <span className="text-2xl font-bold text-primary font-mono">{n}</span>
@@ -91,7 +101,7 @@ export default function LandingPage() {
 
       {/* ── Footer band ── */}
       <footer className="border-t border-border bg-secondary py-6">
-        <div className="max-w-[1100px] mx-auto px-8 flex items-center justify-between">
+        <div className="max-w-[920px] mx-auto px-8 flex items-center justify-between">
           <span className="font-bold text-sm">neoori</span>
           <span className="text-xs text-muted-foreground">Bêta · données chiffrées · supprimables à tout moment</span>
         </div>
