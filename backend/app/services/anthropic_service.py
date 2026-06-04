@@ -33,7 +33,67 @@ def _select_model_by_tier(tier: str) -> tuple[str, int]:
     return _clean_model_id(_MODEL_HAIKU), 8000
 
 
+_SUB_PROFILE_LABELS = {
+    "b1": "B1 — Jeune en insertion",
+    "b2": "B2 — Reprise après pause",
+    "b3": "B3 — Reprise après maladie ou handicap",
+}
+
+
+def _join(values, fallback: str) -> str:
+    if isinstance(values, list) and values:
+        return ", ".join(str(v).strip() for v in values if str(v).strip())
+    if isinstance(values, str) and values.strip():
+        return values.strip()
+    return fallback
+
+
+def _format_user_message_b(inputs: dict) -> str:
+    sub = (inputs.get("_sub_profile") or "b1").lower()
+    label = _SUB_PROFILE_LABELS.get(sub, _SUB_PROFILE_LABELS["b1"])
+
+    parts = [
+        "--- SOUS-PROFIL ---",
+        label,
+        "",
+        "--- IDENTITÉ ---",
+        f"Prénom et nom : {inputs.get('nom', '').strip()}",
+        "",
+        "--- PRÉFÉRENCES ---",
+        f"Ce que la personne aime faire : {_join(inputs.get('aime'), 'Non renseigné.')}",
+        f"Situations où la personne se sent compétente : {_join(inputs.get('competent'), 'Non renseigné.')}",
+        f"Ce que la personne refuse dans un travail : {_join(inputs.get('refuse'), 'Aucun refus déclaré.')}",
+    ]
+
+    if sub == "b2":
+        parts += [
+            "",
+            "--- CONTEXTE SPÉCIFIQUE ---",
+            f"Activité pendant la pause : {(inputs.get('pause_activite') or '').strip() or 'Non renseigné.'}",
+            f"Contraintes pratiques : {_join(inputs.get('contraintes_pratiques'), 'Aucune contrainte déclarée.')}",
+        ]
+    elif sub == "b3":
+        parts += [
+            "",
+            "--- CONTEXTE SPÉCIFIQUE ---",
+            f"Contraintes fonctionnelles : {_join(inputs.get('contraintes_b3'), 'Aucune contrainte déclarée.')}",
+            f"Accompagnement existant : {(inputs.get('accompagnement') or '').strip() or 'Non renseigné.'}",
+        ]
+
+    if sub == "b3":
+        cv = (inputs.get("cv_b3") or "").strip()
+        parts += [
+            "",
+            "--- CV OPTIONNEL (B3 uniquement) ---",
+            cv if cv else "Non fourni.",
+        ]
+
+    return "\n".join(parts)
+
+
 def _format_user_message(inputs: dict) -> str:
+    if (inputs or {}).get("_path") == "B":
+        return _format_user_message_b(inputs)
     tier = inputs.get("_tier", "haiku")
     base = f"""--- CV DU CANDIDAT ---
 {inputs.get("cv_text", "").strip()}
@@ -96,14 +156,17 @@ def _run_analysis(analysis_id: str, app) -> None:
         if not analysis:
             return
 
-        prompt = PromptVersion.query.filter_by(is_active=True).first()
+        inputs = analysis.inputs or {}
+        path = inputs.get("_path", "A")
+        prompt = PromptVersion.query.filter_by(is_active=True, path=path).first()
         if not prompt:
             analysis.status = "error"
-            analysis.raw_output = "Aucun prompt actif."
+            analysis.raw_output = f"Aucun prompt actif pour le chemin {path}."
             db.session.commit()
             return
 
-        tier = (analysis.inputs or {}).get("_tier", "haiku")
+        # Chemin B is free + Sonnet for all users (decision 4.6 / 4.7).
+        tier = "sonnet" if path == "B" else inputs.get("_tier", "haiku")
         model, max_tokens = _select_model_by_tier(tier)
 
         analysis.status = "running"

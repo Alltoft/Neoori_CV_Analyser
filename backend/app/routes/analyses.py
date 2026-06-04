@@ -18,12 +18,21 @@ def create_analysis():
     user_id = _optional_user_id()
     data = request.get_json(silent=True) or {}
     inputs = dict(data.get("inputs", {}))
-    tier = data.get("tier", "haiku")
-    if tier not in ("haiku", "sonnet"):
-        tier = "haiku"
-    inputs["_tier"] = tier
+    path = (inputs.get("_path") or "A").upper()
+    if path not in ("A", "B"):
+        path = "A"
+    inputs["_path"] = path
 
-    errors = _validate_inputs(inputs)
+    if path == "B":
+        # Chemin B is forced to Sonnet (free for vulnerable populations).
+        inputs["_tier"] = "sonnet"
+        errors = _validate_inputs_b(inputs)
+    else:
+        tier = data.get("tier", "haiku")
+        if tier not in ("haiku", "sonnet"):
+            tier = "haiku"
+        inputs["_tier"] = tier
+        errors = _validate_inputs(inputs)
     if errors:
         return jsonify({"errors": errors}), 400
 
@@ -118,5 +127,35 @@ def _validate_inputs(inputs: dict) -> list[str]:
     for field in _REQUIRED_INPUTS:
         if not (inputs.get(field) or "").strip():
             errors.append(f"Champ manquant : {field}.")
+
+    return errors
+
+
+_SUB_PROFILES_B = ("b1", "b2", "b3")
+
+
+def _validate_inputs_b(inputs: dict) -> list[str]:
+    errors = []
+    sub = (inputs.get("_sub_profile") or "").lower()
+    if sub not in _SUB_PROFILES_B:
+        errors.append("Sous-profil invalide (attendu b1, b2 ou b3).")
+    if not (inputs.get("nom") or "").strip():
+        errors.append("Prénom et nom requis.")
+
+    def _nonempty_list(key: str) -> bool:
+        v = inputs.get(key)
+        return isinstance(v, list) and any((str(x).strip() for x in v))
+
+    if not _nonempty_list("aime"):
+        errors.append("Sélectionnez au moins un choix : ce que vous aimez faire.")
+    if not _nonempty_list("competent"):
+        errors.append("Sélectionnez au moins un choix : situations de compétence.")
+
+    if sub == "b2":
+        if not (inputs.get("pause_activite") or "").strip():
+            errors.append("Activité pendant la pause requise.")
+    if sub == "b3":
+        if not (inputs.get("accompagnement") or "").strip():
+            errors.append("Accompagnement requis.")
 
     return errors

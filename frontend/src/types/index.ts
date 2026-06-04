@@ -7,15 +7,47 @@ export interface User {
   created_at: string
 }
 
+export type AnalysisPath = "A" | "B"
+export type SubProfile = "b1" | "b2" | "b3"
+
 export interface AnalysisInputs {
-  cv_text: string
-  cible_visee: string
-  prenom: string
-  tranche_age: string
-  localisation: string
-  situation_actuelle: string
-  type_mobilite: string
-  notes_specifiques: string
+  // Chemin A
+  cv_text?: string
+  cible_visee?: string
+  prenom?: string
+  tranche_age?: string
+  localisation?: string
+  situation_actuelle?: string
+  type_mobilite?: string
+  notes_specifiques?: string
+  // Chemin B
+  nom?: string
+  aime?: string[]
+  competent?: string[]
+  refuse?: string[]
+  pause_activite?: string
+  contraintes_pratiques?: string[]
+  contraintes_b3?: string[]
+  accompagnement?: string
+  cv_b3?: string
+  // Discriminators (echoed from backend)
+  _path?: AnalysisPath
+  _sub_profile?: SubProfile
+  _tier?: "haiku" | "sonnet"
+}
+
+export interface AnalysisInputsB {
+  _path: "B"
+  _sub_profile: SubProfile
+  nom: string
+  aime: string[]
+  competent: string[]
+  refuse?: string[]
+  pause_activite?: string
+  contraintes_pratiques?: string[]
+  contraintes_b3?: string[]
+  accompagnement?: string
+  cv_b3?: string
 }
 
 export interface AnalysisSection {
@@ -80,6 +112,8 @@ export const SECTION_TITLES: Record<string, string> = {
   "8": "Pistes d'évolution",
   "9": "Proposition de CV retravaillé",
 }
+
+export const COUNSELOR_SECTIONS_B = ["1", "2", "8"] as const
 
 export const MOBILITY_OPTIONS = [
   "évolution",

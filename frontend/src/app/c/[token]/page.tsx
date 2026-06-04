@@ -46,6 +46,8 @@ export default function CounselorPage() {
   }
 
   const output = analysis?.output ?? {}
+  const path = analysis?.inputs?._path ?? "A"
+  const counselorSections = path === "B" ? ["1", "2", "8"] : ["1", "4", "5"]
 
   return (
     <div className="min-h-screen bg-secondary">
@@ -53,7 +55,7 @@ export default function CounselorPage() {
       <div className="no-print bg-background border-b border-border px-10 py-4 flex items-center justify-between sticky top-0 z-40">
         <div>
           <Badge className="bg-primary text-primary-foreground text-xs mb-1">VERSION CONSEILLER</Badge>
-          <h1 className="font-bold text-lg">Préparer un entretien · {analysis?.inputs?.prenom ?? "—"}</h1>
+          <h1 className="font-bold text-lg">Préparer un entretien · {analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"}</h1>
           <p className="text-xs text-muted-foreground">
             3 sections — 5 min de lecture · à destination Cap Emploi, Mission Locale, France Travail, CEP
           </p>
@@ -73,12 +75,20 @@ export default function CounselorPage() {
           </div>
         ) : analysis?.inputs && (
           <div className="grid grid-cols-4 gap-4 rounded-lg bg-card border border-border p-4 mb-8 text-xs">
-            {[
-              ["Cible visée",      analysis.inputs.cible_visee?.slice(0, 50)],
-              ["Mobilité",         analysis.inputs.type_mobilite],
-              ["Posture actuelle", analysis.inputs.situation_actuelle],
-              ["Points sensibles", analysis.inputs.notes_specifiques || "—"],
-            ].map(([k, v]) => (
+            {(path === "B"
+              ? [
+                  ["Sous-profil",    analysis.inputs._sub_profile?.toUpperCase() ?? "—"],
+                  ["Aime",           (analysis.inputs.aime ?? []).join(", ").slice(0, 60) || "—"],
+                  ["Refus",          (analysis.inputs.refuse ?? []).join(", ").slice(0, 60) || "—"],
+                  ["Accompagnement", analysis.inputs.accompagnement ?? "—"],
+                ]
+              : [
+                  ["Cible visée",      analysis.inputs.cible_visee?.slice(0, 50)],
+                  ["Mobilité",         analysis.inputs.type_mobilite],
+                  ["Posture actuelle", analysis.inputs.situation_actuelle],
+                  ["Points sensibles", analysis.inputs.notes_specifiques || "—"],
+                ]
+            ).map(([k, v]) => (
               <div key={k}>
                 <p className="font-mono text-[10px] uppercase text-muted-foreground">{k}</p>
                 <p className="font-semibold mt-1">{v}</p>
@@ -88,13 +98,13 @@ export default function CounselorPage() {
         )}
 
         {/* Sections 1, 4, 5 */}
-        {["1","4","5"].map(n => (
+        {counselorSections.map(n => (
           <div key={n} className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <span className="inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-foreground text-xs font-bold font-mono shrink-0">
                 §{n}
               </span>
-              <h2 className="font-bold">{SECTION_TITLES[n]}</h2>
+              <h2 className="font-bold">{output[n]?.title ?? SECTION_TITLES[n]}</h2>
             </div>
             {loading ? (
               <div className="space-y-2 pl-9">

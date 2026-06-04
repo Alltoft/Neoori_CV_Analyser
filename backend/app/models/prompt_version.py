@@ -11,6 +11,7 @@ class PromptVersion(db.Model):
     system_prompt_text = db.Column(db.Text, nullable=False)
     author_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    path = db.Column(db.String(1), nullable=False, default='A', server_default='A')
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     author = db.relationship("User", foreign_keys=[author_id])
@@ -20,6 +21,7 @@ class PromptVersion(db.Model):
         data = {
             "id": self.id,
             "version_label": self.version_label,
+            "path": self.path,
             "is_active": self.is_active,
             "author": self.author.email if self.author else None,
             "created_at": self.created_at.isoformat(),

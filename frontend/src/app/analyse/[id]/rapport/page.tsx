@@ -27,7 +27,7 @@ export default function RapportPage() {
       .then(r => {
         setAnalysis(r.analysis)
         const a = r.analysis
-        const prenom = a.inputs?.prenom ?? "Candidat"
+        const prenom = a.inputs?.prenom ?? a.inputs?.nom ?? "Candidat"
         const cible = a.inputs?.cible_visee?.slice(0, 40) ?? ""
         const date = new Date(a.created_at ?? "").toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
         document.title = `neoori — ${prenom}${cible ? ` — ${cible}` : ""} — ${date}`
@@ -37,12 +37,15 @@ export default function RapportPage() {
   }, [id])
 
   const output = analysis?.output ?? {}
-  const isPaid = "5" in output // unlocked when Sonnet generated all 9 sections
+  const path = analysis?.inputs?._path ?? "A"
+  const isPaid = "5" in output // unlocked when Sonnet generated all 9 sections (A only)
 
   const renderSection = (n: string) => {
-    const isPaidSection = (PAID_SECTIONS as readonly string[]).includes(n)
+    // Paywall logic only applies to Chemin A. Chemin B is free in all sections.
+    const isPaidSection = path === "A" && (PAID_SECTIONS as readonly string[]).includes(n)
     const isLocked = isPaidSection && !isPaid
     const section = output[n]
+    const title = section?.title ?? SECTION_TITLES[n] ?? `Section ${n}`
 
     return (
       <div key={n} className={cn("mb-6 print-break", isLocked && "opacity-60")}>
@@ -50,7 +53,7 @@ export default function RapportPage() {
           <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border-2 border-foreground text-xs font-bold font-mono shrink-0">
             §{n}
           </span>
-          <h2 className="font-bold text-base">{SECTION_TITLES[n]}</h2>
+          <h2 className="font-bold text-base">{title}</h2>
           {isPaidSection && <Badge variant="outline" className="text-[10px] ml-auto">plan payant</Badge>}
         </div>
 
@@ -103,8 +106,11 @@ export default function RapportPage() {
     )
   }
 
-  const counselorSections = ["1", "4", "5"]
-  const sectionsToShow = view === "conseiller" ? counselorSections : Object.keys(SECTION_TITLES)
+  const counselorSections = path === "B" ? ["1", "2", "8"] : ["1", "4", "5"]
+  const allSections = Object.keys(output).length
+    ? Object.keys(output).sort((a, b) => Number(a) - Number(b))
+    : (path === "B" ? ["1", "2", "3", "8", "9"] : Object.keys(SECTION_TITLES))
+  const sectionsToShow = view === "conseiller" ? counselorSections : allSections
 
   return (
     <div className="min-h-screen bg-secondary no-print-bg">
@@ -150,9 +156,11 @@ export default function RapportPage() {
                 <p className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
                   NEOORI · ANALYSE DE CV
                 </p>
-                <h2 className="text-xl font-bold mt-1">{analysis?.inputs?.prenom ?? "—"}</h2>
+                <h2 className="text-xl font-bold mt-1">{analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"}</h2>
                 <p className="text-xs text-muted-foreground">
-                  Cible : {analysis?.inputs?.cible_visee?.slice(0, 60) ?? "—"} · {new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+                  {path === "B"
+                    ? `Portrait de potentiel · ${new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`
+                    : `Cible : ${analysis?.inputs?.cible_visee?.slice(0, 60) ?? "—"} · ${new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`}
                 </p>
               </div>
               <span className="font-bold text-lg tracking-tight">neoori</span>
@@ -162,12 +170,20 @@ export default function RapportPage() {
           {/* Key facts strip for counselor view */}
           {view === "conseiller" && analysis?.inputs && (
             <div className="grid grid-cols-4 gap-3 rounded-lg bg-secondary p-4 mb-6 text-xs">
-              {[
-                ["Cible visée",       analysis.inputs.cible_visee?.slice(0, 40)],
-                ["Mobilité",          analysis.inputs.type_mobilite],
-                ["Posture actuelle",  analysis.inputs.situation_actuelle],
-                ["Points sensibles",  analysis.inputs.notes_specifiques || "—"],
-              ].map(([k, v]) => (
+              {(path === "B"
+                ? [
+                    ["Sous-profil",     analysis.inputs._sub_profile?.toUpperCase() ?? "—"],
+                    ["Aime",            (analysis.inputs.aime ?? []).join(", ").slice(0, 60) || "—"],
+                    ["Refus",           (analysis.inputs.refuse ?? []).join(", ").slice(0, 60) || "—"],
+                    ["Accompagnement",  analysis.inputs.accompagnement ?? "—"],
+                  ]
+                : [
+                    ["Cible visée",       analysis.inputs.cible_visee?.slice(0, 40)],
+                    ["Mobilité",          analysis.inputs.type_mobilite],
+                    ["Posture actuelle",  analysis.inputs.situation_actuelle],
+                    ["Points sensibles",  analysis.inputs.notes_specifiques || "—"],
+                  ]
+              ).map(([k, v]) => (
                 <div key={k}>
                   <p className="font-mono text-[10px] uppercase text-muted-foreground">{k}</p>
                   <p className="font-medium mt-0.5">{v}</p>
@@ -179,8 +195,8 @@ export default function RapportPage() {
           {/* Sections */}
           {sectionsToShow.map(renderSection)}
 
-          {/* Free plan CTA */}
-          {view === "rapport" && !isPaid && (
+          {/* Free plan CTA — Chemin A only */}
+          {view === "rapport" && path === "A" && !isPaid && (
             <div className="rounded-lg bg-primary text-primary-foreground p-5 flex items-center justify-between mt-2 no-print">
               <div>
                 <p className="font-semibold">Débloquez les 5 sections restantes</p>

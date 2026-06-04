@@ -9,13 +9,11 @@ import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import type { Analysis } from "@/types"
 
-const STEPS = [
-  { label: "lecture du CV",                       t: 0   },
-  { label: "cadrage sectoriel · cible identifiée", t: 7000  },
-  { label: "lecture stratégique du parcours",      t: 13000 },
-  { label: "forces · compétences transférables",   t: 22000 },
-  { label: "angles morts · préconisations",        t: 30000 },
-  { label: "proposition de CV retravaillé",        t: 38000, locked: true },
+const STEPS: { label: string; t: number; locked?: boolean }[] = [
+  { label: "lecture",   t: 0     },
+  { label: "analyse",   t: 10000 },
+  { label: "rédaction", t: 22000 },
+  { label: "relecture", t: 34000 },
 ]
 const ESTIMATED_TOTAL = 45000
 const POLL_INTERVAL_MS = 2000
@@ -105,7 +103,7 @@ export default function EnCoursPage() {
           <Badge variant="outline" className="font-mono text-xs mb-3">EN COURS · ~40 SEC</Badge>
           <h1 className="text-3xl font-bold tracking-tight">neoori vous lit.</h1>
           <p className="mt-1.5 text-xs text-muted-foreground font-mono">
-            prompt système v1.3 · claude-sonnet-4 · max 4 000 tokens
+            analyse en cours · merci de patienter
           </p>
         </div>
 

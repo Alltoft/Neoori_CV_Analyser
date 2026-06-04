@@ -17,8 +17,11 @@ def list_prompts():
 
 @prompts_bp.get("/active")
 def get_active_prompt():
-    """Public — returns the currently active prompt (text included)."""
-    prompt = PromptVersion.query.filter_by(is_active=True).first()
+    """Public — returns the currently active prompt for a given path (default 'A')."""
+    path = (request.args.get("path") or "A").upper()
+    if path not in ("A", "B"):
+        return jsonify({"error": "path doit être 'A' ou 'B'."}), 400
+    prompt = PromptVersion.query.filter_by(is_active=True, path=path).first()
     if not prompt:
         return jsonify({"error": "Aucun prompt actif."}), 404
     return jsonify({"prompt": prompt.to_dict()}), 200
@@ -41,6 +44,9 @@ def create_prompt():
     version_label = (data.get("version_label") or "").strip()
     system_prompt_text = (data.get("system_prompt_text") or "").strip()
     activate = data.get("activate", False)
+    path = (data.get("path") or "A").upper()
+    if path not in ("A", "B"):
+        return jsonify({"error": "path doit être 'A' ou 'B'."}), 400
 
     if not version_label or not system_prompt_text:
         return jsonify({"error": "version_label et system_prompt_text requis."}), 400
@@ -49,13 +55,14 @@ def create_prompt():
         return jsonify({"error": f"Version '{version_label}' existe déjà."}), 409
 
     if activate:
-        PromptVersion.query.filter_by(is_active=True).update({"is_active": False})
+        PromptVersion.query.filter_by(is_active=True, path=path).update({"is_active": False})
 
     prompt = PromptVersion(
         version_label=version_label,
         system_prompt_text=system_prompt_text,
         author_id=user_id,
         is_active=activate,
+        path=path,
     )
     db.session.add(prompt)
     db.session.commit()
@@ -67,7 +74,7 @@ def create_prompt():
 def activate_prompt(prompt_id):
     """Set this version as active, deactivate all others."""
     prompt = PromptVersion.query.get_or_404(prompt_id)
-    PromptVersion.query.filter_by(is_active=True).update({"is_active": False})
+    PromptVersion.query.filter_by(is_active=True, path=prompt.path).update({"is_active": False})
     prompt.is_active = True
     db.session.commit()
     return jsonify({"prompt": prompt.to_dict()}), 200

@@ -50,25 +50,23 @@ export default function LandingPage() {
             <ArrowRight className="absolute bottom-5 right-5 h-5 w-5 text-primary transition-transform group-hover:translate-x-1" />
           </Link>
 
-          {/* Card B — coming soon */}
-          <div
-            aria-disabled="true"
-            className="group relative overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/30 p-6 cursor-not-allowed opacity-80"
+          {/* Card B — active */}
+          <Link
+            href="/analyse/orientation"
+            className="group relative overflow-hidden rounded-lg border-2 border-primary/40 bg-secondary p-6 transition-all hover:-translate-y-1 hover:shadow-md hover:border-primary"
           >
-            <span className="absolute inset-x-0 top-0 h-1 bg-muted-foreground/30" />
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="font-mono text-[10px] tracking-widest uppercase">
-                Chemin B
-              </Badge>
-              <Badge variant="secondary" className="text-[10px]">Bientôt</Badge>
-            </div>
+            <span className="absolute inset-x-0 top-0 h-1 bg-primary" />
+            <Badge className="bg-primary/10 text-primary border-0 font-mono text-[10px] tracking-widest uppercase">
+              Chemin B
+            </Badge>
             <p className="mt-4 font-semibold text-lg text-foreground leading-snug">
               « Je démarre, je reprends ou je cherche ma direction »
             </p>
             <p className="mt-3 text-sm text-muted-foreground italic">
               Portrait de potentiel + pistes d&apos;orientation
             </p>
-          </div>
+            <ArrowRight className="absolute bottom-5 right-5 h-5 w-5 text-primary transition-transform group-hover:translate-x-1" />
+          </Link>
         </div>
 
         {/* ── Confidentialité ── */}
