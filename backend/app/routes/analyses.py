@@ -8,7 +8,7 @@ from ..services.anthropic_service import start_analysis
 analyses_bp = Blueprint("analyses", __name__)
 
 _REQUIRED_INPUTS = [
-    "cible_visee", "prenom", "tranche_age",
+    "cible_visee", "prenom", "nom", "tranche_age",
     "localisation", "situation_actuelle", "type_mobilite",
 ]
 

@@ -5,9 +5,10 @@ import { Separator } from "@/components/ui/separator"
 import { ArrowRight } from "lucide-react"
 
 const HOW_IT_WORKS = [
-  { n: "01", title: "Vous racontez votre cible", desc: "CV + offre ou fiche métier + 6 champs de contexte" },
-  { n: "02", title: "neoori traduit",            desc: "le langage de votre parcours vers celui du recruteur visé" },
-  { n: "03", title: "3 lectures, 1 document",    desc: "pour vous · votre conseiller · un RH ou un jury" },
+  { n: "01", title: "Votre parcours",        desc: "Téléchargez votre CV ou racontez votre parcours en quelques lignes" },
+  { n: "02", title: "Votre projet",          desc: "Téléchargez une offre d'emploi, une fiche de poste ou décrivez-le en quelques mots" },
+  { n: "03", title: "Votre analyse",         desc: "Tient compte des ATS et de la lecture humaine" },
+  { n: "04", title: "Votre CV optimisé",     desc: "Téléchargez une proposition de CV retravaillé" },
 ]
 
 export default function LandingPage() {
@@ -86,7 +87,7 @@ export default function LandingPage() {
 
         {/* ── How it works ── */}
         <Separator className="mt-16 mb-12" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {HOW_IT_WORKS.map(({ n, title, desc }) => (
             <div key={n} className="flex flex-col gap-1.5">
               <span className="text-2xl font-bold text-primary font-mono">{n}</span>

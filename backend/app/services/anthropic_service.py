@@ -103,6 +103,7 @@ def _format_user_message(inputs: dict) -> str:
 
 --- PROFIL ---
 Prénom : {inputs.get("prenom", "")}
+Nom : {(inputs.get("nom", "") or "").upper()}
 Tranche d'âge : {inputs.get("tranche_age", "")}
 Localisation : {inputs.get("localisation", "")}
 Situation actuelle : {inputs.get("situation_actuelle", "")}

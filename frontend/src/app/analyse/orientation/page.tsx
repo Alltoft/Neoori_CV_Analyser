@@ -410,7 +410,7 @@ export default function OrientationPage() {
               <div className="bg-secondary/60 px-4 py-3 flex-1">
                 <p className="text-[10px] font-bold tracking-widest uppercase mb-1">Confidentialité</p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Vos réponses sont utilisées uniquement pour produire ce portrait de potentiel.
+                  Vos réponses sont utilisées uniquement pour produire cette analyse et vous faire des suggestions.
                   Elles ne sont pas partagées avec des tiers ni utilisées pour entraîner des modèles d&apos;IA.
                   Vous pouvez supprimer votre analyse à tout moment.
                 </p>

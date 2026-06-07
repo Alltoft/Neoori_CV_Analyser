@@ -156,7 +156,10 @@ export default function RapportPage() {
                 <p className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
                   NEOORI · ANALYSE DE CV
                 </p>
-                <h2 className="text-xl font-bold mt-1">{analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"}</h2>
+                <h2 className="text-xl font-bold mt-1">
+                  {[analysis?.inputs?.prenom, (analysis?.inputs?.nom ?? "").toUpperCase()]
+                    .filter(Boolean).join(" ") || "—"}
+                </h2>
                 <p className="text-xs text-muted-foreground">
                   {path === "B"
                     ? `Portrait de potentiel · ${new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`

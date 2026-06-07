@@ -23,6 +23,7 @@ const schema = z.object({
   cv_text:           z.string().min(200, "CV trop court (200 caractères minimum)."),
   cible_visee:       z.string().min(50, "Cible trop courte (50 caractères minimum)."),
   prenom:            z.string().min(1, "Prénom requis."),
+  nom:               z.string().min(1, "Nom requis."),
   tranche_age:       z.string().min(1, "Tranche d'âge requise."),
   localisation:      z.string().min(1, "Localisation requise."),
   situation_actuelle:z.string().min(1, "Situation requise."),
@@ -235,9 +236,21 @@ export default function NouvelleAnalysePage() {
               <p className="font-semibold text-sm mb-3">③ qui êtes-vous</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Nom et prénom</Label>
-                  <Input {...register("prenom")} placeholder="Marion Dupont" className="h-8 text-xs" />
+                  <Label className="text-xs">Prénom</Label>
+                  <Input {...register("prenom")} placeholder="Marion" className="h-8 text-xs" />
                   {errors.prenom && <p className="text-[10px] text-destructive">{errors.prenom.message}</p>}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Nom</Label>
+                  <Input
+                    {...register("nom", {
+                      onChange: e => { e.target.value = e.target.value.toUpperCase() },
+                    })}
+                    placeholder="DUPONT"
+                    className="h-8 text-xs uppercase"
+                  />
+                  {errors.nom && <p className="text-[10px] text-destructive">{errors.nom.message}</p>}
                 </div>
 
                 <div className="space-y-1">
