@@ -182,7 +182,7 @@ export default function RapportPage() {
                   ]
                 : [
                     ["Cible visée",       analysis.inputs.cible_visee?.slice(0, 40)],
-                    ["Mobilité",          analysis.inputs.type_mobilite],
+                    ["Mobilité",          Array.isArray(analysis.inputs.type_mobilite) ? analysis.inputs.type_mobilite.join(" + ") : analysis.inputs.type_mobilite],
                     ["Posture actuelle",  analysis.inputs.situation_actuelle],
                     ["Points sensibles",  analysis.inputs.notes_specifiques || "—"],
                   ]

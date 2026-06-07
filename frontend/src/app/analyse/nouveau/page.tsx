@@ -27,7 +27,7 @@ const schema = z.object({
   tranche_age:       z.string().min(1, "Tranche d'âge requise."),
   localisation:      z.string().min(1, "Localisation requise."),
   situation_actuelle:z.string().min(1, "Situation requise."),
-  type_mobilite:     z.string().min(1, "Type de mobilité requis."),
+  type_mobilite:     z.array(z.string()).min(1, "Type de mobilité requis."),
   notes_specifiques: z.string(),
 })
 type Fields = z.infer<typeof schema>
@@ -46,7 +46,7 @@ export default function NouvelleAnalysePage() {
   const { register, handleSubmit, control, setValue, watch,
     formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
-    defaultValues: { notes_specifiques: "", tranche_age: "", situation_actuelle: "" },
+    defaultValues: { notes_specifiques: "", tranche_age: "", situation_actuelle: "", type_mobilite: [] },
   })
 
   const cvText = watch("cv_text")
@@ -286,22 +286,30 @@ export default function NouvelleAnalysePage() {
             {/* Card 4 : Mobilité + Notes */}
             <div className="rounded-lg border border-border bg-card p-5">
               <p className="font-semibold text-sm mb-2">④ type de mobilité</p>
-              <Controller name="type_mobilite" control={control} render={({ field }) => (
-                <div className="flex flex-wrap gap-1.5">
-                  {MOBILITY_OPTIONS.map(opt => (
-                    <button key={opt} type="button"
-                      onClick={() => field.onChange(opt)}
-                      className={cn(
-                        "px-2.5 py-1 rounded-full border text-xs transition-colors",
-                        field.value === opt
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : "bg-background border-border text-foreground hover:border-primary/50"
-                      )}>
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              )} />
+              <Controller name="type_mobilite" control={control} render={({ field }) => {
+                const selected: string[] = Array.isArray(field.value) ? field.value : []
+                const toggle = (opt: string) =>
+                  field.onChange(selected.includes(opt) ? selected.filter(v => v !== opt) : [...selected, opt])
+                return (
+                  <>
+                    <p className="text-[10px] text-muted-foreground mb-1.5">Plusieurs réponses possibles</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {MOBILITY_OPTIONS.map(opt => (
+                        <button key={opt} type="button"
+                          onClick={() => toggle(opt)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-full border text-xs transition-colors",
+                            selected.includes(opt)
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "bg-background border-border text-foreground hover:border-primary/50"
+                          )}>
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )
+              }} />
               {errors.type_mobilite && <p className="text-[10px] text-destructive mt-1">{errors.type_mobilite.message}</p>}
 
               <p className="font-semibold text-sm mt-3 mb-1.5">⑤ notes spécifiques</p>

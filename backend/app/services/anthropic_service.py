@@ -107,7 +107,7 @@ Nom : {(inputs.get("nom", "") or "").upper()}
 Tranche d'âge : {inputs.get("tranche_age", "")}
 Localisation : {inputs.get("localisation", "")}
 Situation actuelle : {inputs.get("situation_actuelle", "")}
-Type de mobilité : {inputs.get("type_mobilite", "")}
+Type de mobilité : {" + ".join(inputs["type_mobilite"]) if isinstance(inputs.get("type_mobilite"), list) else inputs.get("type_mobilite", "")}
 Notes spécifiques : {inputs.get("notes_specifiques", "") or "Aucune note spécifique."}""".strip()
     if tier == "haiku":
         base += _HAIKU_SECTION_NOTE

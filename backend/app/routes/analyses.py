@@ -125,7 +125,11 @@ def _validate_inputs(inputs: dict) -> list[str]:
         errors.append("Cible visée trop courte (minimum 50 caractères).")
 
     for field in _REQUIRED_INPUTS:
-        if not (inputs.get(field) or "").strip():
+        val = inputs.get(field)
+        if field == "type_mobilite":
+            if not (isinstance(val, list) and any((v or "").strip() for v in val)):
+                errors.append(f"Champ manquant : {field}.")
+        elif not (val or "").strip():
             errors.append(f"Champ manquant : {field}.")
 
     return errors

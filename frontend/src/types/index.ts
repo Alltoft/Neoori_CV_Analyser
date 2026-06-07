@@ -18,7 +18,7 @@ export interface AnalysisInputs {
   tranche_age?: string
   localisation?: string
   situation_actuelle?: string
-  type_mobilite?: string
+  type_mobilite?: string | string[]
   notes_specifiques?: string
   // Chemin B
   nom?: string
