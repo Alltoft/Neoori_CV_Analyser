@@ -10,12 +10,14 @@ import { api } from "@/lib/api"
 import type { Analysis } from "@/types"
 
 const STEPS: { label: string; t: number; locked?: boolean }[] = [
-  { label: "lecture",   t: 0     },
-  { label: "analyse",   t: 10000 },
-  { label: "rédaction", t: 22000 },
-  { label: "relecture", t: 34000 },
+  { label: "Lecture du parcours…",          t: 0     },
+  { label: "Identification des forces…",    t: 8000  },
+  { label: "Analyse des écarts…",           t: 16000 },
+  { label: "Rédaction des préconisations…", t: 24000 },
+  { label: "Réécriture du CV…",             t: 32000 },
+  { label: "Relecture en 3 passes…",        t: 40000 },
 ]
-const ESTIMATED_TOTAL = 45000
+const ESTIMATED_TOTAL = 48000
 const POLL_INTERVAL_MS = 2000
 const POLL_BACKOFF_MS  = 4000   // on network blip
 const POLL_MAX_MS      = 10 * 60 * 1000   // give up after 10 min total
@@ -100,10 +102,10 @@ export default function EnCoursPage() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-[520px]">
         <div className="text-center mb-8">
-          <Badge variant="outline" className="font-mono text-xs mb-3">EN COURS · ~40 SEC</Badge>
-          <h1 className="text-3xl font-bold tracking-tight">neoori vous lit.</h1>
-          <p className="mt-1.5 text-xs text-muted-foreground font-mono">
-            analyse en cours · merci de patienter
+          <Badge variant="outline" className="font-mono text-xs mb-3">EN COURS · ~45 SEC</Badge>
+          <h1 className="text-3xl font-bold tracking-tight">Analyse en cours…</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            neoori lit votre profil et prépare votre rapport personnalisé.
           </p>
         </div>
 
