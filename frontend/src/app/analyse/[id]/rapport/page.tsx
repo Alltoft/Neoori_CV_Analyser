@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { AppBar } from "@/components/layout/AppBar"
 import { Badge } from "@/components/ui/badge"
@@ -18,9 +18,17 @@ import ReactMarkdown, { type Components } from "react-markdown"
 
 export default function RapportPage() {
   const { id } = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
+  const autoPrint = searchParams.get("print") === "1"
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [view,     setView]     = useState<"rapport" | "conseiller">("rapport")
+
+  useEffect(() => {
+    if (!autoPrint || loading || !analysis) return
+    const t = setTimeout(() => window.print(), 400)
+    return () => clearTimeout(t)
+  }, [autoPrint, loading, analysis])
 
   useEffect(() => {
     api.get<{ analysis: Analysis }>(`/analyses/${id}`)
@@ -125,7 +133,7 @@ export default function RapportPage() {
           </TabsList>
         </Tabs>
         <div className="flex gap-2 ml-4">
-          <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => window.print()}>
+          <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => { setTimeout(() => window.print(), 50) }}>
             <Printer className="h-3.5 w-3.5 mr-1.5" />↓ PDF
           </Button>
           {analysis?.share_token && (

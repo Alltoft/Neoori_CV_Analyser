@@ -61,7 +61,7 @@ export default function CounselorPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="text-xs" onClick={() => window.print()}>
+          <Button variant="outline" size="sm" className="text-xs" onClick={() => { setTimeout(() => window.print(), 50) }}>
             <Printer className="h-3.5 w-3.5 mr-1.5" />↓ PDF synthèse
           </Button>
         </div>

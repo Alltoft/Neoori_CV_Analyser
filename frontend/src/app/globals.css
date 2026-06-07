@@ -88,10 +88,23 @@
 }
 
 /* ── Print ── */
+@page {
+  size: A4;
+  margin: 14mm 12mm;
+}
 @media print {
+  html, body        { background: white !important; }
   .no-print         { display: none !important; }
-  .print-break      { break-after: page; }
-  body              { background: white !important; }
-  .report-shell     { box-shadow: none !important; width: 100% !important;
-                      margin: 0 !important; padding: 32px !important; }
+  .print-break      { break-inside: avoid; }
+  .report-shell     {
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  .opacity-60       { opacity: 1 !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

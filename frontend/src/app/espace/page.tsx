@@ -114,8 +114,7 @@ export default function EspacePage() {
                   <Button render={<Link href={`/analyse/${a.id}/rapport`}/>} size="sm" variant="outline" className="text-xs h-7 flex-1">
                     <ExternalLink className="h-3 w-3 mr-1" />ouvrir
                   </Button>
-                  <Button size="sm" variant="outline" className="text-xs h-7 w-7 p-0"
-                    onClick={() => window.print()}>
+                  <Button render={<Link href={`/analyse/${a.id}/rapport?print=1`}/>} size="sm" variant="outline" className="text-xs h-7 w-7 p-0">
                     <Download className="h-3 w-3" />
                   </Button>
                   {a.share_token && (
