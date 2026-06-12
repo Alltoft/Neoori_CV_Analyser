@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useCallback, useEffect, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
+import { useAuth } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { AppBar } from "@/components/layout/AppBar"
@@ -33,7 +35,19 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export default function NouvelleAnalysePage() {
+  return (
+    <Suspense>
+      <NouvelleAnalyseForm />
+    </Suspense>
+  )
+}
+
+function NouvelleAnalyseForm() {
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
+  const searchParams = useSearchParams()
+  const [draftId, setDraftId] = useState<string | null>(searchParams.get("draft"))
+  const [draftState, setDraftState] = useState<"idle" | "saving" | "saved" | "error" | "auth">("idle")
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
   const [uploadedFilename, setUploadedFilename] = useState<string>("")
   const [projectUploadState, setProjectUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
@@ -43,13 +57,36 @@ export default function NouvelleAnalysePage() {
   const [isProjectDragging, setIsProjectDragging] = useState(false)
   const [submittingTier, setSubmittingTier] = useState<"haiku" | "sonnet" | null>(null)
 
-  const { register, handleSubmit, control, setValue, watch,
+  const { register, handleSubmit, control, setValue, watch, reset,
     formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
     defaultValues: { notes_specifiques: "", tranche_age: "", situation_actuelle: "", type_mobilite: [] },
   })
 
   const cvText = watch("cv_text")
+
+  // Resume a saved draft (?draft=<id>)
+  useEffect(() => {
+    if (!draftId) return
+    api.get<{ analysis: Analysis }>(`/analyses/${draftId}`, { skipRedirect: true })
+      .then(({ analysis }) => {
+        if (analysis.status !== "draft" || !analysis.inputs) return
+        const i = analysis.inputs
+        reset({
+          cv_text:            i.cv_text ?? "",
+          cible_visee:        i.cible_visee ?? "",
+          prenom:             i.prenom ?? "",
+          nom:                i.nom ?? "",
+          tranche_age:        i.tranche_age ?? "",
+          localisation:       i.localisation ?? "",
+          situation_actuelle: i.situation_actuelle ?? "",
+          type_mobilite:      Array.isArray(i.type_mobilite) ? i.type_mobilite : i.type_mobilite ? [i.type_mobilite] : [],
+          notes_specifiques:  i.notes_specifiques ?? "",
+        })
+      })
+      .catch(() => { /* draft gone — start blank */ })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleFile = useCallback(async (file: File) => {
     if (file.type !== "application/pdf") {
@@ -102,6 +139,8 @@ export default function NouvelleAnalysePage() {
     setSubmittingTier(tier)
     try {
       const res = await api.post<{ analysis: Analysis }>("/analyses/", { inputs: data, tier })
+      // The draft was launched — remove it so it doesn't linger in the space
+      if (draftId) api.delete(`/analyses/${draftId}`).catch(() => {})
       router.push(`/analyse/en-cours/${res.analysis.id}`)
     } catch (e) {
       setSubmitError(e instanceof ApiError ? e.message : "Erreur inattendue.")
@@ -111,10 +150,23 @@ export default function NouvelleAnalysePage() {
   }
 
   const saveDraft = async () => {
-    const data = watch()
+    if (!authLoading && !user) {
+      setDraftState("auth")
+      return
+    }
+    setDraftState("saving")
     try {
-      await api.post("/analyses/draft", { inputs: data })
-    } catch { /* silent */ }
+      const res = await api.post<{ analysis: Analysis }>(
+        "/analyses/draft",
+        { inputs: watch(), draft_id: draftId ?? undefined },
+        { skipRedirect: true },
+      )
+      setDraftId(res.analysis.id)
+      setDraftState("saved")
+      setTimeout(() => setDraftState(s => (s === "saved" ? "idle" : s)), 4000)
+    } catch (e) {
+      setDraftState(e instanceof ApiError && e.status === 401 ? "auth" : "error")
+    }
   }
 
   return (
@@ -327,9 +379,22 @@ export default function NouvelleAnalysePage() {
               données stockées chiffrées · supprimables à tout moment
             </span>
             <div className="flex gap-2 items-center">
-              <Button type="button" variant="outline" size="sm" onClick={saveDraft}>
-                enregistrer brouillon
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button type="button" variant="outline" size="sm" onClick={saveDraft}
+                  disabled={draftState === "saving"}>
+                  {draftState === "saving" ? "enregistrement…"
+                    : draftState === "saved" ? "✓ brouillon enregistré"
+                    : "enregistrer brouillon"}
+                </Button>
+                {draftState === "auth" && (
+                  <span className="text-[10px] text-destructive">
+                    <Link href="/connexion" className="underline">Connectez-vous</Link> pour enregistrer un brouillon.
+                  </span>
+                )}
+                {draftState === "error" && (
+                  <span className="text-[10px] text-destructive">Échec de l&apos;enregistrement. Réessayez.</span>
+                )}
+              </div>
               <div className="flex gap-3">
                 <button
                   type="button"

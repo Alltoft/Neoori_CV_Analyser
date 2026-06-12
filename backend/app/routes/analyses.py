@@ -54,10 +54,23 @@ def create_analysis():
 
 
 @analyses_bp.post("/draft")
+@jwt_required()
 def save_draft():
-    user_id = _optional_user_id()
+    """Create or update a draft. Auth required — anonymous drafts would be
+    orphaned (no user_id) and never visible in the user's space."""
+    user_id = get_jwt_identity()
     data = request.get_json(silent=True) or {}
     inputs = data.get("inputs", {})
+    draft_id = data.get("draft_id")
+
+    if draft_id:
+        analysis = Analysis.query.filter_by(
+            id=draft_id, user_id=user_id, status="draft"
+        ).first()
+        if analysis:
+            analysis.inputs = inputs
+            db.session.commit()
+            return jsonify({"analysis": analysis.to_dict()}), 200
 
     analysis = Analysis(
         user_id=user_id,
