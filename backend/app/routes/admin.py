@@ -163,7 +163,7 @@ def stats_timeseries():
         .filter(
             Analysis.created_at >= window_start,
             Analysis.created_at < window_end,
-            func.json_unquote(func.json_extract(Analysis.inputs, "$._tier")) == "sonnet",
+            _TIER_EXPR == "sonnet",
         )
         .group_by(func.date(Analysis.created_at))
         .all()
@@ -199,7 +199,8 @@ _SONNET_IN  = 3.00   # $/MTok input
 _SONNET_OUT = 15.00  # $/MTok output
 _USD_TO_EUR = 0.92
 
-_TIER_EXPR = func.json_unquote(func.json_extract(Analysis.inputs, "$._tier"))
+# Dialect-portable: JSON_UNQUOTE(JSON_EXTRACT(...)) on MySQL, json_extract on SQLite
+_TIER_EXPR = Analysis.inputs["_tier"].as_string()
 
 
 @admin_bp.get("/costs")
