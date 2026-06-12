@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { copyToClipboard } from "@/lib/utils"
 import type { Analysis } from "@/types"
-import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2 } from "lucide-react"
+import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2 } from "lucide-react"
 
 function statusLabel(s: string) {
   if (s === "success") return "complète"
@@ -25,6 +26,17 @@ export default function EspacePage() {
   const { user } = useAuth()
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading,  setLoading]  = useState(true)
+  const [copiedToken, setCopiedToken] = useState<string | null>(null)
+
+  const copyShare = async (token: string) => {
+    const ok = await copyToClipboard(`${window.location.origin}/c/${token}`)
+    if (!ok) {
+      window.prompt("Copiez le lien conseiller :", `${window.location.origin}/c/${token}`)
+      return
+    }
+    setCopiedToken(token)
+    setTimeout(() => setCopiedToken(t => (t === token ? null : t)), 2500)
+  }
 
   useEffect(() => {
     api.get<{ analyses: Analysis[] }>("/analyses/")
@@ -125,8 +137,11 @@ export default function EspacePage() {
                       </Button>
                       {a.share_token && (
                         <Button size="sm" variant="outline" className="text-xs h-7 w-7 p-0"
-                          onClick={() => navigator.clipboard.writeText(`${window.location.origin}/c/${a.share_token}`)}>
-                          <ExternalLink className="h-3 w-3" />
+                          title="Copier le lien conseiller"
+                          onClick={() => copyShare(a.share_token!)}>
+                          {copiedToken === a.share_token
+                            ? <Check className="h-3 w-3 text-green-600" />
+                            : <Link2 className="h-3 w-3" />}
                         </Button>
                       )}
                     </>
@@ -151,19 +166,22 @@ export default function EspacePage() {
         <div className="grid grid-cols-[2fr_1fr] gap-4">
           <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-4">
             <span className="font-medium text-sm shrink-0">Partagez avec votre conseiller</span>
-            {analyses[0]?.share_token ? (
-              <>
-                <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded font-mono text-muted-foreground truncate">
-                  {typeof window !== "undefined" ? window.location.origin : "neoori.fr"}/c/{analyses[0].share_token}
-                </code>
-                <Button size="sm" variant="outline" className="text-xs shrink-0"
-                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}/c/${analyses[0].share_token}`)}>
-                  copier
-                </Button>
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">Aucune analyse complète disponible.</span>
-            )}
+            {(() => {
+              const shareable = analyses.find(a => a.status === "success" && a.share_token)
+              return shareable ? (
+                <>
+                  <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded font-mono text-muted-foreground truncate">
+                    {typeof window !== "undefined" ? window.location.origin : "neoori.fr"}/c/{shareable.share_token}
+                  </code>
+                  <Button size="sm" variant="outline" className="text-xs shrink-0"
+                    onClick={() => copyShare(shareable.share_token!)}>
+                    {copiedToken === shareable.share_token ? "copié ✓" : "copier"}
+                  </Button>
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground">Aucune analyse complète disponible.</span>
+              )
+            })()}
           </div>
           <div className="rounded-lg border border-border bg-card p-4 flex items-center justify-between">
             <div>

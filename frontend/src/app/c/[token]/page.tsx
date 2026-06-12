@@ -125,7 +125,12 @@ export default function CounselorPage() {
                     h4:     ({ children }) => <h4 className="font-medium mt-2 mb-1">{children}</h4>,
                   } as Components}
                 >
-                  {output[n].body_markdown}
+                  {output[n].body_markdown
+                    || (output[n].items?.length
+                        ? output[n].items.map(it =>
+                            `- ${typeof it === "string" ? it : (it.fact ?? String(it))}`
+                          ).join("\n")
+                        : "")}
                 </ReactMarkdown>
               </div>
             ) : (

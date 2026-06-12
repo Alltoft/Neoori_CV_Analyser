@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { api } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, copyToClipboard } from "@/lib/utils"
 import { SECTION_TITLES, FREE_SECTIONS, PAID_SECTIONS } from "@/types"
 import type { Analysis } from "@/types"
 import { Printer, Share2, Lock } from "lucide-react"
@@ -23,6 +23,15 @@ export default function RapportPage() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [view,     setView]     = useState<"rapport" | "conseiller">("rapport")
+  const [shareState, setShareState] = useState<"idle" | "copied" | "failed">("idle")
+
+  const share = async () => {
+    const url = `${window.location.origin}/c/${analysis?.share_token}`
+    const ok = await copyToClipboard(url)
+    setShareState(ok ? "copied" : "failed")
+    if (!ok) window.prompt("Copiez le lien conseiller :", url)
+    setTimeout(() => setShareState("idle"), 2500)
+  }
 
   useEffect(() => {
     if (!autoPrint || loading || !analysis) return
@@ -137,9 +146,9 @@ export default function RapportPage() {
             <Printer className="h-3.5 w-3.5 mr-1.5" />↓ PDF
           </Button>
           {analysis?.share_token && (
-            <Button variant="outline" size="sm" className="text-xs h-8"
-              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/c/${analysis.share_token}`)}>
-              <Share2 className="h-3.5 w-3.5 mr-1.5" />↗ partager
+            <Button variant="outline" size="sm" className="text-xs h-8" onClick={share}>
+              <Share2 className="h-3.5 w-3.5 mr-1.5" />
+              {shareState === "copied" ? "✓ lien conseiller copié" : "↗ partager au conseiller"}
             </Button>
           )}
         </div>
