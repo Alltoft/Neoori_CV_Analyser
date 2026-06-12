@@ -1,9 +1,13 @@
+import re
+
 from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from ..extensions import db
 from ..models.analysis import Analysis
+from ..models.counselor_code import CounselorCode
 from ..utils.tokens import generate_share_token
 from ..services.anthropic_service import start_analysis
+from ..services.unlock_service import unlock_analysis
 
 analyses_bp = Blueprint("analyses", __name__)
 
@@ -98,6 +102,32 @@ def list_analyses():
 @analyses_bp.get("/<analysis_id>")
 def get_analysis(analysis_id):
     analysis = Analysis.query.get_or_404(analysis_id)
+    return jsonify({"analysis": analysis.to_dict()}), 200
+
+
+@analyses_bp.post("/<analysis_id>/unlock")
+def unlock_with_code(analysis_id):
+    """Redeem a counselor code: free paid-tier regeneration (Cap Emploi /
+    France Travail beneficiaries). Payment unlocks go through /api/payments."""
+    analysis = Analysis.query.get_or_404(analysis_id)
+    data = request.get_json(silent=True) or {}
+
+    # Accept "ABCD1234", "abcd 1234", "ABCD-1234"… — codes are 8 alnum chars
+    raw = (data.get("code") or "").strip()
+    code_str = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+    if not code_str:
+        return jsonify({"error": "Code requis."}), 400
+
+    code = CounselorCode.query.filter_by(code=code_str).first()
+    if not code or not code.is_active:
+        return jsonify({"error": "Code invalide ou désactivé."}), 400
+
+    ok, reason = unlock_analysis(analysis, method="code")
+    if not ok:
+        return jsonify({"error": reason}), 409
+
+    code.uses_count += 1
+    db.session.commit()
     return jsonify({"analysis": analysis.to_dict()}), 200
 
 

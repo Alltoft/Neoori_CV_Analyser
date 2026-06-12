@@ -102,6 +102,11 @@ export default function LandingPage() {
       <footer className="border-t border-border bg-secondary py-6">
         <div className="max-w-[920px] mx-auto px-8 flex items-center justify-between">
           <span className="font-bold text-sm">neoori</span>
+          <nav className="flex gap-4 text-xs text-muted-foreground">
+            <Link href="/mentions-legales" className="hover:text-foreground">Mentions légales</Link>
+            <Link href="/cgv" className="hover:text-foreground">CGV</Link>
+            <Link href="/confidentialite" className="hover:text-foreground">Confidentialité</Link>
+          </nav>
           <span className="text-xs text-muted-foreground">Bêta · données chiffrées · supprimables à tout moment</span>
         </div>
       </footer>

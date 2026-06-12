@@ -32,6 +32,11 @@ class Analysis(db.Model):
     # Public token for counselor share link: /c/<share_token>
     share_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
 
+    # Paywall unlock traceability: 'code' (counselor) or 'payment' (Stripe)
+    unlock_method = db.Column(db.String(16), nullable=True)
+    unlocked_at = db.Column(db.DateTime, nullable=True)
+    stripe_session_id = db.Column(db.String(255), nullable=True, index=True)
+
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
 

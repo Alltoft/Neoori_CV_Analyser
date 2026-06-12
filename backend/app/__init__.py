@@ -31,7 +31,9 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.upload import upload_bp
     from .routes.admin import admin_bp
     from .routes.counselor import counselor_bp
+    from .routes.payments import payments_bp
 
+    app.register_blueprint(payments_bp, url_prefix="/api/payments")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(analyses_bp, url_prefix="/api/analyses")
     app.register_blueprint(prompts_bp, url_prefix="/api/prompts")
