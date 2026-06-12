@@ -145,16 +145,19 @@ with app.app_context():
         if existing.is_active:
             print(f"{VERSION_LABEL} already active (id={existing.id}). Nothing to do.")
         else:
-            PromptVersion.query.filter_by(is_active=True).update({"is_active": False})
+            # Only deactivate path-A prompts — path B has its own active prompt
+            PromptVersion.query.filter_by(is_active=True, path="A").update({"is_active": False})
             existing.is_active = True
             db.session.commit()
             print(f"{VERSION_LABEL} re-activated (id={existing.id}).")
     else:
-        PromptVersion.query.filter_by(is_active=True).update({"is_active": False})
+        # Only deactivate path-A prompts — path B has its own active prompt
+        PromptVersion.query.filter_by(is_active=True, path="A").update({"is_active": False})
         pv = PromptVersion(
             version_label=VERSION_LABEL,
             system_prompt_text=SYSTEM_PROMPT_V1_7.strip(),
             is_active=True,
+            path="A",
         )
         db.session.add(pv)
         db.session.commit()

@@ -114,6 +114,72 @@ Notes spécifiques : {inputs.get("notes_specifiques", "") or "Aucune note spéci
     return base
 
 
+# ── Structured output enforcement ────────────────────────────────────────────
+# The system prompt lives in DB and is freely edited by the PM (often pasted as
+# prose with no JSON instructions — that's expected). Structure is therefore
+# enforced at the API layer with a JSON-schema output format, never via the
+# prompt text. See https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+
+_SECTION_TITLES_A = {
+    "1": "Lecture stratégique du parcours",
+    "2": "Forces du profil pour la cible",
+    "3": "Compétences transférables",
+    "4": "Ce qui reste à renforcer",
+    "5": "Préconisations terrain",
+    "6": "Exemple de réécriture",
+    "7": "Synthèse pour le candidat",
+    "8": "Pistes d'évolution",
+    "9": "Proposition de CV retravaillé",
+}
+
+_SECTION_TITLES_B = {
+    "1": "Lecture des dispositions et du contexte",
+    "2": "Forces latentes",
+    "3": "Compétences mobilisables",
+    "8": "Pistes d'orientation",
+    "9": "Squelette de CV à construire",
+}
+
+
+def _section_keys(path: str, tier: str) -> list[str]:
+    if path == "B":
+        return ["1", "2", "3", "8", "9"]
+    if tier == "haiku":
+        return ["1", "2", "3", "4"]
+    return [str(n) for n in range(1, 10)]
+
+
+def _build_output_schema(path: str, tier: str) -> dict:
+    titles = _SECTION_TITLES_B if path == "B" else _SECTION_TITLES_A
+    keys = _section_keys(path, tier)
+    properties = {}
+    for k in keys:
+        properties[k] = {
+            "type": "object",
+            "description": f"Section {k} — {titles[k]}",
+            "properties": {
+                "title": {"type": "string"},
+                "body_markdown": {
+                    "type": "string",
+                    "description": "Contenu markdown de la section. Chaîne vide si la section n'est constituée que de tags (§3).",
+                },
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags ou points courts. Tableau vide si non applicable.",
+                },
+            },
+            "required": ["title", "body_markdown", "items"],
+            "additionalProperties": False,
+        }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": keys,
+        "additionalProperties": False,
+    }
+
+
 def _extract_json_candidate(raw: str) -> str:
     """Pull the JSON string out of the raw model response."""
     stripped = raw.strip()
@@ -129,6 +195,41 @@ def _extract_json_candidate(raw: str) -> str:
     return raw
 
 
+# Matches markdown/prose section headings: "## §1 Titre", "### Section 2 : Titre",
+# "**§3 — Titre**", "1. Titre" (heading-style), etc.
+_MD_SECTION_RE = re.compile(
+    r"^(?:#{1,4}\s*|\*\*\s*)?(?:§\s*|section\s+)(\d)\b[\s:.\-—·]*(.*?)(?:\*\*)?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _split_markdown_sections(raw: str) -> dict | None:
+    """Fallback parser: split a prose/markdown response on §N headings.
+
+    Returns None when fewer than 2 section headings are found (not a
+    sectioned document — let the caller use the last-resort fallback).
+    """
+    matches = list(_MD_SECTION_RE.finditer(raw))
+    # Keep only the first occurrence of each section number, in order
+    seen: dict = {}
+    for m in matches:
+        if m.group(1) not in seen:
+            seen[m.group(1)] = m
+    if len(seen) < 2:
+        return None
+
+    ordered = list(seen.values())
+    result = {}
+    for i, m in enumerate(ordered):
+        num = m.group(1)
+        title = m.group(2).strip().strip("*").strip() or _SECTION_TITLES_A.get(num, f"Section {num}")
+        start = m.end()
+        end = ordered[i + 1].start() if i + 1 < len(ordered) else len(raw)
+        body = raw[start:end].strip().strip("-").strip()
+        result[num] = {"title": title, "body_markdown": body, "items": []}
+    return result
+
+
 def _parse_output(raw: str) -> dict:
     candidate = _extract_json_candidate(raw)
     # Try strict parse first; fall back to json-repair for malformed AI output
@@ -136,10 +237,15 @@ def _parse_output(raw: str) -> dict:
     for s in (candidate, repair_json(candidate)):
         try:
             result = json.loads(s)
-            if isinstance(result, dict):
+            if isinstance(result, dict) and any(k.isdigit() for k in result):
                 return result
         except (json.JSONDecodeError, ValueError):
             pass
+    # Markdown response (e.g. legacy analyses, or structured output disabled):
+    # split on §N headings so each section still lands in its own slot.
+    sections = _split_markdown_sections(raw)
+    if sections:
+        return sections
     return {"1": {"title": "Analyse", "body_markdown": raw, "items": []}}
 
 
@@ -177,17 +283,37 @@ def _run_analysis(analysis_id: str, app) -> None:
         full_response = ""
         try:
             client = _get_client()
-            with client.messages.stream(
+            schema = _build_output_schema(path, tier)
+            request_kwargs = dict(
                 model=model,
                 max_tokens=max_tokens,
                 system=prompt.system_prompt_text,
                 messages=[{"role": "user", "content": _format_user_message(analysis.inputs)}],
-            ) as stream:
-                for text in stream.text_stream:
-                    full_response += text
-                final = stream.get_final_message()
-                tokens_in = final.usage.input_tokens
-                tokens_out = final.usage.output_tokens
+                # Structured outputs: guarantees the response is valid JSON
+                # matching the 9-section schema, no matter how the PM words
+                # the system prompt. Passed via extra_body so it works on any
+                # SDK version (it merges into the raw request payload).
+                extra_body={
+                    "output_config": {
+                        "format": {"type": "json_schema", "schema": schema}
+                    }
+                },
+            )
+            def _run_stream(kwargs):
+                acc = ""
+                with client.messages.stream(**kwargs) as stream:
+                    for text in stream.text_stream:
+                        acc += text
+                    final = stream.get_final_message()
+                return acc, final.usage.input_tokens, final.usage.output_tokens
+
+            try:
+                full_response, tokens_in, tokens_out = _run_stream(request_kwargs)
+            except anthropic.BadRequestError:
+                # Structured outputs rejected (e.g. old API surface) — degrade
+                # to a plain call; _parse_output still handles JSON or markdown.
+                request_kwargs.pop("extra_body", None)
+                full_response, tokens_in, tokens_out = _run_stream(request_kwargs)
 
             output = _parse_output(full_response)
             analysis.status = "success"
