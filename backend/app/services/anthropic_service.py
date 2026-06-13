@@ -280,15 +280,27 @@ def _run_analysis(analysis_id: str, app) -> None:
         analysis.prompt_version_id = prompt.id
         db.session.commit()
 
+        # Capture everything we need, then RELEASE the DB connection for the
+        # duration of the (multi-minute) Anthropic stream. Holding a pooled
+        # connection across the stream lets the DB server drop it as idle, so
+        # the final commit fails with "Lost connection" and the row is stuck
+        # in 'running'. pool_pre_ping only validates on checkout, not while a
+        # connection is held — so we must not hold one here.
+        system_prompt = prompt.system_prompt_text
+        user_message = _format_user_message(inputs)
+        schema = _build_output_schema(path, tier)
+        db.session.remove()
+
         full_response = ""
+        tokens_in = tokens_out = None
+        error_exc = None
         try:
             client = _get_client()
-            schema = _build_output_schema(path, tier)
             request_kwargs = dict(
                 model=model,
                 max_tokens=max_tokens,
-                system=prompt.system_prompt_text,
-                messages=[{"role": "user", "content": _format_user_message(analysis.inputs)}],
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
                 # Structured outputs: guarantees the response is valid JSON
                 # matching the 9-section schema, no matter how the PM words
                 # the system prompt. Passed via extra_body so it works on any
@@ -299,6 +311,7 @@ def _run_analysis(analysis_id: str, app) -> None:
                     }
                 },
             )
+
             def _run_stream(kwargs):
                 acc = ""
                 with client.messages.stream(**kwargs) as stream:
@@ -314,21 +327,27 @@ def _run_analysis(analysis_id: str, app) -> None:
                 # to a plain call; _parse_output still handles JSON or markdown.
                 request_kwargs.pop("extra_body", None)
                 full_response, tokens_in, tokens_out = _run_stream(request_kwargs)
-
-            output = _parse_output(full_response)
-            analysis.status = "success"
-            analysis.output = output
-            analysis.raw_output = full_response
-            analysis.tokens_in = tokens_in
-            analysis.tokens_out = tokens_out
-            analysis.completed_at = datetime.utcnow()
-            db.session.commit()
-
         except Exception as exc:
-            msg = str(exc).lower()
+            error_exc = exc
+
+        # Re-acquire a fresh, pre-pinged connection to write the result.
+        analysis = Analysis.query.get(analysis_id)
+        if analysis is None:
+            return
+        if error_exc is not None:
+            msg = str(error_exc).lower()
             analysis.status = "timeout" if ("timeout" in msg or "timed out" in msg) else "error"
-            analysis.raw_output = str(exc)[:2000]
+            analysis.raw_output = str(error_exc)[:2000]
             db.session.commit()
+            return
+
+        analysis.status = "success"
+        analysis.output = _parse_output(full_response)
+        analysis.raw_output = full_response
+        analysis.tokens_in = tokens_in
+        analysis.tokens_out = tokens_out
+        analysis.completed_at = datetime.utcnow()
+        db.session.commit()
 
 
 def start_analysis(analysis_id: str, app) -> None:

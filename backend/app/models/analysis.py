@@ -51,6 +51,8 @@ class Analysis(db.Model):
             "tokens_out": self.tokens_out,
             "share_token": self.share_token,
             "prompt_version_id": self.prompt_version_id,
+            "unlock_method": self.unlock_method,
+            "unlocked_at": self.unlocked_at.isoformat() if self.unlocked_at else None,
             "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
