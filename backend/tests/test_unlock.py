@@ -104,3 +104,39 @@ def test_webhook_503_without_secret(client, app, monkeypatch):
     monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
     r = client.post("/api/payments/webhook", data=b"{}")
     assert r.status_code == 503
+
+
+@patch("app.services.unlock_service.start_analysis")
+def test_webhook_unlocks_on_real_stripe_object(mock_start, client, app, monkeypatch):
+    """Reproduces the prod path: construct_event returns StripeObjects, not
+    plain dicts. Guards against re-introducing dict.get() (unsupported on
+    stripe v15 objects → KeyError → 500)."""
+    import types
+    import stripe
+    from app.routes import payments as payments_mod
+
+    a = _make_analysis()
+    session = stripe.checkout.Session.construct_from(
+        {"id": "cs_test_x", "object": "checkout.session",
+         "payment_status": "paid", "metadata": {"analysis_id": a.id}},
+        "sk_test",
+    )
+    event = stripe.Event.construct_from(
+        {"id": "evt_x", "type": "checkout.session.completed",
+         "data": {"object": session}},
+        "sk_test",
+    )
+    fake = types.SimpleNamespace(
+        Webhook=types.SimpleNamespace(construct_event=lambda *a, **k: event)
+    )
+    monkeypatch.setattr(payments_mod, "_stripe", lambda: fake)
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+
+    r = client.post("/api/payments/webhook", data=b"{}",
+                    headers={"Stripe-Signature": "t=1,v1=x"})
+    assert r.status_code == 200
+    db.session.refresh(a)
+    assert a.status == "queued"
+    assert a.unlock_method == "payment"
+    assert a.stripe_session_id == "cs_test_x"
+    mock_start.assert_called_once()

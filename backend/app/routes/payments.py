@@ -101,13 +101,16 @@ def verify_session():
     except Exception:
         return jsonify({"error": "Session de paiement introuvable."}), 404
 
-    if session.payment_status != "paid":
+    # Bracket access + .to_dict() — stripe v15 objects support neither
+    # dict.get() nor dict(obj); .to_dict() yields a plain dict.
+    if session["payment_status"] != "paid":
         return jsonify({"error": "Paiement non confirmé."}), 402
 
-    analysis_id = (session.metadata or {}).get("analysis_id")
+    md = session["metadata"]
+    analysis_id = (md.to_dict() if md else {}).get("analysis_id")
     analysis = Analysis.query.get_or_404(analysis_id)
 
-    ok, reason = unlock_analysis(analysis, method="payment", stripe_session_id=session.id)
+    ok, reason = unlock_analysis(analysis, method="payment", stripe_session_id=session["id"])
     if not ok and analysis.stripe_session_id == session.id:
         # Webhook beat us to it — report success, frontend proceeds to polling
         return jsonify({"analysis": analysis.to_dict()}), 200
@@ -134,8 +137,11 @@ def webhook():
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        if session.get("payment_status") == "paid":
-            analysis_id = (session.get("metadata") or {}).get("analysis_id")
+        # Bracket access + .to_dict() — stripe v15 objects support neither
+        # dict.get() nor dict(obj); .to_dict() yields a plain dict.
+        if session["payment_status"] == "paid":
+            md = session["metadata"]
+            analysis_id = (md.to_dict() if md else {}).get("analysis_id")
             analysis = Analysis.query.get(analysis_id) if analysis_id else None
             if analysis:
                 # Idempotent — duplicate deliveries and verify-first both no-op
