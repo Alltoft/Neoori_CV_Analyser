@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 interface CostDay {
   date: string; analyses_count: number
@@ -39,11 +40,11 @@ function BarChart({ data }: { data: CostDay[] }) {
           <g key={d.date}>
             <rect
               x={x} y={H - totalH} width={barW} height={totalH}
-              fill="var(--foreground)" opacity={0.12} rx={1}
+              fill="var(--navy)" opacity={0.18} rx={1}
             />
             <rect
               x={x} y={H - sonnetH} width={barW} height={sonnetH}
-              fill="hsl(var(--primary))" opacity={0.65} rx={1}
+              fill="var(--orange)" opacity={0.85} rx={1}
             />
           </g>
         )
@@ -67,11 +68,17 @@ export default function CoutsPage() {
   const fmt = (n: number) => n.toLocaleString("fr-FR")
 
   if (error) return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
   )
 
   return (
     <div className="space-y-4">
+      {/* Page heading */}
+      <div>
+        <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
+        <h1 className="font-display font-bold text-2xl text-navy mt-1">coûts API</h1>
+      </div>
+
       {/* Summary strip */}
       <div className="grid grid-cols-4 gap-3">
         {loading
@@ -81,30 +88,30 @@ export default function CoutsPage() {
               ["analyses",             String(data.total.analyses_count),       "total période"],
               ["tokens haiku",         fmt(data.total.haiku_tokens_in + data.total.haiku_tokens_out),   "plan gratuit"],
               ["tokens sonnet",        fmt(data.total.sonnet_tokens_in + data.total.sonnet_tokens_out), "plan payant"],
-            ].map(([k, v, d]) => (
-              <div key={String(k)} className="rounded-lg border border-border bg-card p-3">
-                <p className="text-[10px] font-mono uppercase text-muted-foreground">{k}</p>
-                <p className="text-2xl font-bold mt-1">{v}</p>
+            ].map(([k, v, d], i) => (
+              <div key={String(k)} className="rounded-xl border border-border bg-card p-3">
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground">{k}</p>
+                <p className={cn("text-2xl font-bold mt-1 text-navy", i === 0 && "text-orange")}>{v}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">{d}</p>
               </div>
             ))}
       </div>
 
       {/* Bar chart */}
-      <div className="rounded-lg border border-border bg-card p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-center gap-4 mb-3">
-          <h2 className="font-semibold text-sm">coût quotidien · 30j</h2>
+          <h2 className="font-display font-bold text-sm text-navy">coût quotidien · 30j</h2>
           <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <span
               className="inline-block w-3 h-2 rounded-sm"
-              style={{ background: "hsl(var(--primary))", opacity: 0.65 }}
+              style={{ background: "var(--orange)", opacity: 0.85 }}
             />
             sonnet (payant)
           </span>
           <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <span
               className="inline-block w-3 h-2 rounded-sm"
-              style={{ background: "var(--foreground)", opacity: 0.12 }}
+              style={{ background: "var(--navy)", opacity: 0.18 }}
             />
             haiku (gratuit)
           </span>
@@ -113,11 +120,11 @@ export default function CoutsPage() {
       </div>
 
       {/* Daily breakdown table */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="font-semibold text-sm mb-3">détail par jour</h2>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h2 className="font-display font-bold text-sm text-navy mb-3">détail par jour</h2>
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-border text-muted-foreground text-[10px] font-mono uppercase">
+            <tr className="border-b border-navy/20 text-navy text-[10px] font-mono uppercase tracking-[0.1em]">
               <th className="text-left pb-2 pr-4 font-normal">date</th>
               <th className="text-right pb-2 pr-4 font-normal">analyses</th>
               <th className="text-right pb-2 pr-4 font-normal">tok. haiku</th>
@@ -149,7 +156,7 @@ export default function CoutsPage() {
                 ))}
             {/* Totals row */}
             {!loading && data && (
-              <tr className="border-t-2 border-border font-semibold">
+              <tr className="border-t-2 border-navy/30 font-semibold text-navy">
                 <td className="pt-2 pr-4 text-[10px]">total</td>
                 <td className="pt-2 pr-4 text-right">{data.total.analyses_count}</td>
                 <td className="pt-2 pr-4 text-right font-mono text-[10px]">

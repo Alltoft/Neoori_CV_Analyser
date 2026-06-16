@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth"
 import { SECTION_TITLES } from "@/types"
 import type { Analysis, CounselorNote } from "@/types"
 import { Printer } from "lucide-react"
+import { Logo } from "@/components/brand/Logo"
 
 export default function CounselorPage() {
   const { token } = useParams<{ token: string }>()
@@ -52,16 +53,19 @@ export default function CounselorPage() {
   return (
     <div className="min-h-screen bg-secondary">
       {/* Header */}
-      <div className="no-print bg-background border-b border-border px-10 py-4 flex items-center justify-between sticky top-0 z-40">
-        <div>
-          <Badge className="bg-primary text-primary-foreground text-xs mb-1">VERSION CONSEILLER</Badge>
-          <h1 className="font-bold text-lg">Préparer un entretien · {analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"}</h1>
-          <p className="text-xs text-muted-foreground">
-            3 sections — 5 min de lecture · à destination Cap Emploi, Mission Locale, France Travail, CEP
-          </p>
+      <div className="no-print bg-navy text-white px-10 py-4 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-start gap-4">
+          <Logo tone="light" className="text-lg mt-0.5" />
+          <div>
+            <Badge variant="peach" className="text-xs mb-1">VERSION CONSEILLER</Badge>
+            <h1 className="font-display font-bold text-lg text-white">Préparer un entretien · {analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"}</h1>
+            <p className="text-xs text-white/60">
+              3 sections — 5 min de lecture · à destination Cap Emploi, Mission Locale, France Travail, CEP
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="text-xs" onClick={() => { setTimeout(() => window.print(), 50) }}>
+          <Button variant="outline" size="sm" className="text-xs bg-white/10 border-white/25 text-white hover:bg-white/20 hover:text-white" onClick={() => { setTimeout(() => window.print(), 50) }}>
             <Printer className="h-3.5 w-3.5 mr-1.5" />↓ PDF synthèse
           </Button>
         </div>
@@ -90,8 +94,8 @@ export default function CounselorPage() {
                 ]
             ).map(([k, v]) => (
               <div key={k}>
-                <p className="font-mono text-[10px] uppercase text-muted-foreground">{k}</p>
-                <p className="font-semibold mt-1">{v}</p>
+                <p className="font-mono text-[10px] tracking-wide uppercase text-orange">{k}</p>
+                <p className="font-semibold mt-1 text-navy">{v}</p>
               </div>
             ))}
           </div>
@@ -100,29 +104,32 @@ export default function CounselorPage() {
         {/* Sections 1, 4, 5 */}
         {counselorSections.map(n => (
           <div key={n} className="mb-8">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-foreground text-xs font-bold font-mono shrink-0">
+            <div className="flex items-stretch mb-3 rounded-md overflow-hidden">
+              <span className="flex items-center justify-center w-9 shrink-0 bg-orange text-white text-[11px] font-bold font-mono">
                 §{n}
               </span>
-              <h2 className="font-bold">{output[n]?.title ?? SECTION_TITLES[n]}</h2>
+              <div className="flex items-center flex-1 bg-navy px-3 py-2">
+                <h2 className="font-display font-bold text-sm uppercase tracking-wide text-white leading-tight">{output[n]?.title ?? SECTION_TITLES[n]}</h2>
+              </div>
             </div>
             {loading ? (
-              <div className="space-y-2 pl-9">
+              <div className="space-y-2">
                 <Skeleton className="h-3 w-full" />
                 <Skeleton className="h-3 w-4/5" />
               </div>
             ) : output[n] ? (
-              <div className="text-sm leading-relaxed pl-9 text-foreground/90">
+              <div className="text-sm leading-relaxed text-foreground/90">
                 <ReactMarkdown
                   components={{
                     p:      ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                    ul:     ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                    ol:     ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                    ul:     ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1 marker:text-orange">{children}</ul>,
+                    ol:     ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-orange">{children}</ol>,
                     li:     ({ children }) => <li>{children}</li>,
-                    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                    strong: ({ children }) => <strong className="font-semibold text-navy">{children}</strong>,
                     em:     ({ children }) => <em className="italic">{children}</em>,
-                    h3:     ({ children }) => <h3 className="font-semibold mt-3 mb-1">{children}</h3>,
-                    h4:     ({ children }) => <h4 className="font-medium mt-2 mb-1">{children}</h4>,
+                    blockquote: ({ children }) => <blockquote className="my-3 rounded-md border-l-[3px] border-orange bg-peach-soft/60 px-3.5 py-2.5 text-navy [&_p]:mb-0">{children}</blockquote>,
+                    h3:     ({ children }) => <h3 className="font-display font-bold text-navy mt-4 mb-1.5">{children}</h3>,
+                    h4:     ({ children }) => <h4 className="font-display font-semibold text-navy mt-3 mb-1">{children}</h4>,
                   } as Components}
                 >
                   {output[n].body_markdown
@@ -134,7 +141,7 @@ export default function CounselorPage() {
                 </ReactMarkdown>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground pl-9">Section non disponible.</p>
+              <p className="text-sm text-muted-foreground">Section non disponible.</p>
             )}
             <Separator className="mt-6" />
           </div>

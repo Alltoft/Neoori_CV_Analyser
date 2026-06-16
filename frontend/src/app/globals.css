@@ -5,10 +5,12 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  /* Literal names — no circular var() reference */
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  /* ── Typography (vars set by next/font in layout.tsx) ── */
+  --font-sans:    var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-mono:    var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
 
+  /* ── shadcn semantic colors ── */
   --color-background:         var(--background);
   --color-foreground:         var(--foreground);
   --color-card:               var(--card);
@@ -28,42 +30,65 @@
   --color-input:              var(--input);
   --color-ring:               var(--ring);
 
-  --radius-sm:  calc(var(--radius) * 0.6);
-  --radius-md:  calc(var(--radius) * 0.8);
+  /* ── neoori brand utilities (bg-navy, text-orange, bg-peach-soft, …) ── */
+  --color-navy:        var(--navy);
+  --color-navy-ink:    var(--navy-ink);
+  --color-navy-700:    var(--navy-700);
+  --color-orange:      var(--orange);
+  --color-orange-dark: var(--orange-dark);
+  --color-peach:       var(--peach);
+  --color-peach-soft:  var(--peach-soft);
+  --color-paper:       var(--paper);
+  --color-success:     var(--success);
+
+  --radius-sm:  calc(var(--radius) * 0.55);
+  --radius-md:  calc(var(--radius) * 0.75);
   --radius-lg:  var(--radius);
-  --radius-xl:  calc(var(--radius) * 1.4);
+  --radius-xl:  calc(var(--radius) * 1.35);
   --radius-2xl: calc(var(--radius) * 1.8);
 }
 
 :root {
-  /* neoori palette */
-  --background:           #faf7f0;
-  --foreground:           #1d1a17;
-  --card:                 #faf7f0;
-  --card-foreground:      #1d1a17;
-  --popover:              #faf7f0;
-  --popover-foreground:   #1d1a17;
-  --primary:              #c96442;   /* terracotta accent */
-  --primary-foreground:   #faf7f0;
-  --secondary:            #f3eee2;
-  --secondary-foreground: #1d1a17;
-  --muted:                #f3eee2;
-  --muted-foreground:     rgba(29, 26, 23, 0.55);
-  --accent:               #f3eee2;
-  --accent-foreground:    #1d1a17;
-  --destructive:          #b91c1c;
-  --border:               rgba(29, 26, 23, 0.15);
-  --input:                rgba(29, 26, 23, 0.08);
-  --ring:                 #c96442;
-  --radius:               0.5rem;
+  /* ── neoori brand — raw ── */
+  --navy:        #1c3561;
+  --navy-ink:    #16233c;
+  --navy-700:    #142a4d;
+  --orange:      #ea5624;
+  --orange-dark: #cf4a1c;
+  --peach:       #f7ae78;
+  --peach-soft:  #fdecdc;
+  --paper:       #f8f7f4;
+  --success:     #1f8a5b;
 
-  /* neoori raw tokens — use via var() in components */
-  --n-ink:     #1d1a17;
-  --n-ink-2:   rgba(29, 26, 23, 0.55);
-  --n-ink-3:   rgba(29, 26, 23, 0.32);
-  --n-paper:   #faf7f0;
-  --n-paper-2: #f3eee2;
-  --n-accent:  #c96442;
+  /* ── shadcn semantic ── */
+  --background:           #ffffff;
+  --foreground:           #16233c;
+  --card:                 #ffffff;
+  --card-foreground:      #16233c;
+  --popover:              #ffffff;
+  --popover-foreground:   #16233c;
+  --primary:              #ea5624;
+  --primary-foreground:   #ffffff;
+  --secondary:            #f4f2ee;   /* stays LIGHT — used as a fill everywhere */
+  --secondary-foreground: #16233c;
+  --muted:                #f4f2ee;
+  --muted-foreground:     rgba(22, 35, 60, 0.58);
+  --accent:               #f3efe9;
+  --accent-foreground:    #16233c;
+  --destructive:          #b3271b;
+  --border:               rgba(22, 35, 60, 0.12);
+  --input:                rgba(22, 35, 60, 0.16);
+  --ring:                 #ea5624;
+  --radius:               0.75rem;
+
+  /* ── legacy report tokens, repurposed to brand ── */
+  --n-ink:     #16233c;
+  --n-ink-2:   rgba(22, 35, 60, 0.58);
+  --n-ink-3:   rgba(22, 35, 60, 0.34);
+  --n-paper:   #ffffff;
+  --n-paper-2: #f4f2ee;
+  --n-accent:  #ea5624;
+  --n-navy:    #1c3561;
 }
 
 @layer base {
@@ -72,19 +97,78 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  h1, h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.022em;
+  }
+  ::selection {
+    background: var(--peach-soft);
+    color: var(--navy);
+  }
+}
+
+/* ── Brand helpers ── */
+.bg-brand-gradient {
+  background: linear-gradient(135deg, var(--orange) 0%, var(--peach) 100%);
+}
+.text-gradient-brand {
+  background: linear-gradient(120deg, var(--orange) 0%, var(--orange-dark) 60%, var(--navy) 140%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.ring-brand {
+  box-shadow: 0 0 0 1px rgba(22, 35, 60, 0.08), 0 1px 2px rgba(22, 35, 60, 0.06);
+}
+
+/* ── Motion (tasteful micro) ── */
+@keyframes neo-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes neo-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes neo-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes neo-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+.animate-fade-up   { animation: neo-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-fade-in   { animation: neo-fade 0.5s ease both; }
+.animate-float     { animation: neo-float 5s ease-in-out infinite; }
+
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -20px rgba(22, 35, 60, 0.35);
 }
 
 /* ── A4 report ── */
 .report-shell {
-  width: 560px;
+  width: 600px;
+  max-width: 100%;
   margin: 0 auto;
-  background: var(--n-paper);
-  padding: 46px 54px;
+  background: #ffffff;
   position: relative;
   min-height: 900px;
-  box-shadow: 0 4px 32px rgba(29, 26, 23, 0.12);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px -28px rgba(22, 35, 60, 0.35);
+}
+.report-rule {
+  height: 6px;
+  background: var(--orange);
 }
 
 /* ── Print ── */
@@ -93,18 +177,26 @@
   margin: 14mm 12mm;
 }
 @media print {
-  html, body        { background: white !important; }
-  .no-print         { display: none !important; }
-  .print-break      { break-inside: avoid; }
-  .report-shell     {
+  html, body    { background: #ffffff !important; }
+  .no-print     { display: none !important; }
+  .print-break  { break-inside: avoid; }
+  .report-shell {
     box-shadow: none !important;
+    border-radius: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     min-height: 0 !important;
     margin: 0 !important;
-    padding: 0 !important;
-    background: white !important;
   }
-  .opacity-60       { opacity: 1 !important; }
+  .opacity-60   { opacity: 1 !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

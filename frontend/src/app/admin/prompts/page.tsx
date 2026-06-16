@@ -87,12 +87,17 @@ export default function PromptsPage() {
   const visibleVersions = versions.filter(v => (v.path ?? "A") === path)
 
   return (
+    <>
+    <div className="mb-5">
+      <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
+      <h1 className="font-display font-bold text-2xl text-navy mt-1">prompts système</h1>
+    </div>
     <div className="grid grid-cols-[1.4fr_1fr] gap-4">
       {/* Editor */}
-      <div className="rounded-lg border border-border bg-card p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h2 id="prompt-editor-label" className="font-semibold text-sm">prompt système</h2>
+            <h2 id="prompt-editor-label" className="font-display font-bold text-sm text-navy">prompt système</h2>
             <p className="text-[10px] text-muted-foreground">
               éditable sans redéploiement · versionné · rollback possible
             </p>
@@ -105,8 +110,8 @@ export default function PromptsPage() {
                   className={cn(
                     "px-2.5 py-1 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-colors",
                     path === p
-                      ? "bg-primary border-primary text-primary-foreground"
-                      : "bg-background border-border hover:border-primary/50",
+                      ? "bg-orange border-orange text-white"
+                      : "bg-background border-border text-muted-foreground hover:border-orange/50 hover:text-orange",
                   )}
                 >
                   chemin {p}
@@ -115,7 +120,7 @@ export default function PromptsPage() {
             </div>
           </div>
           {activeVersion && (
-            <Badge className="bg-primary text-primary-foreground text-[10px]">
+            <Badge className="bg-orange text-white text-[10px] font-mono">
               {activeVersion.version_label} · ACTIF
             </Badge>
           )}
@@ -135,15 +140,16 @@ export default function PromptsPage() {
         )}
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mt-3">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mt-3">
             {error}
           </div>
         )}
 
         <div className="flex gap-2 mt-3 items-center">
           <Button
+            variant="navy"
             size="sm"
-            className="text-xs h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="text-xs h-7"
             disabled={!dirty || saving || loading}
             onClick={publish}
           >
@@ -165,8 +171,8 @@ export default function PromptsPage() {
       </div>
 
       {/* Version history */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="font-semibold text-sm mb-3">historique des versions</h2>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h2 className="font-display font-bold text-sm text-navy mb-3">historique des versions</h2>
         {loading ? (
           Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-10 mb-2" />)
         ) : visibleVersions.length === 0 ? (
@@ -178,9 +184,9 @@ export default function PromptsPage() {
                 key={v.id}
                 className="flex items-center gap-2 py-2 border-b border-dashed border-border last:border-0"
               >
-                <span className="font-mono text-xs font-medium w-12">{v.version_label}</span>
+                <span className="font-mono text-xs font-medium w-12 text-navy">{v.version_label}</span>
                 {v.is_active && (
-                  <span className="text-[10px] text-muted-foreground">actif</span>
+                  <span className="inline-flex items-center rounded-md bg-peach-soft px-1.5 py-0.5 text-[10px] font-mono text-orange-dark">actif</span>
                 )}
                 <span className="text-[10px] text-muted-foreground flex-1">
                   {v.author ?? "—"} · {new Date(v.created_at).toLocaleDateString("fr-FR")}
@@ -202,5 +208,6 @@ export default function PromptsPage() {
         )}
       </div>
     </div>
+    </>
   )
 }

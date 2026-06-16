@@ -15,6 +15,7 @@ import { SECTION_TITLES, FREE_SECTIONS, PAID_SECTIONS } from "@/types"
 import type { Analysis } from "@/types"
 import { Printer, Share2, Lock } from "lucide-react"
 import ReactMarkdown, { type Components } from "react-markdown"
+import { Logo } from "@/components/brand/Logo"
 
 export default function RapportPage() {
   const { id } = useParams<{ id: string }>()
@@ -65,13 +66,15 @@ export default function RapportPage() {
     const title = section?.title ?? SECTION_TITLES[n] ?? `Section ${n}`
 
     return (
-      <div key={n} className={cn("mb-6 print-break", isLocked && "opacity-60")}>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border-2 border-foreground text-xs font-bold font-mono shrink-0">
+      <div key={n} className={cn("mb-7 print-break", isLocked && "opacity-60")}>
+        <div className="flex items-stretch mb-3 rounded-md overflow-hidden">
+          <span className="flex items-center justify-center w-9 shrink-0 bg-orange text-white text-[11px] font-bold font-mono">
             §{n}
           </span>
-          <h2 className="font-bold text-base">{title}</h2>
-          {isPaidSection && <Badge variant="outline" className="text-[10px] ml-auto">plan payant</Badge>}
+          <div className="flex items-center gap-2 flex-1 bg-navy px-3 py-2">
+            <h2 className="font-display font-bold text-sm uppercase tracking-wide text-white leading-tight">{title}</h2>
+            {isPaidSection && <Badge variant="peach" className="text-[10px] ml-auto shrink-0">plan payant</Badge>}
+          </div>
         </div>
 
         {isLocked ? (
@@ -83,23 +86,25 @@ export default function RapportPage() {
             </span>
           </div>
         ) : section ? (
-          <div className="text-sm leading-relaxed text-foreground/90 pl-10">
+          <div className="text-sm leading-relaxed text-foreground/90">
             {n === "3"
-              ? <div className="flex flex-wrap gap-1.5 mt-1">
+              ? <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-1">
                   {(section.items?.length ? section.items.map((it: string | { fact?: string }) => typeof it === "string" ? it : (it.fact ?? String(it)))
                     : (section.body_markdown ?? "").split(/[·\n,]/).map((t: string) => t.trim()).filter(Boolean))
-                    .map((tag: string, i: number) => <Badge key={i} variant="secondary" className="text-xs">{tag}</Badge>)}
+                    .map((tag: string, i: number) => <span key={i} className="rounded-md bg-secondary text-navy text-xs font-medium px-2.5 py-1.5 text-center">{tag}</span>)}
                 </div>
               : (() => {
                   const mdComponents = {
                     p:      ({ children }: {children: React.ReactNode}) => <p className="mb-2 last:mb-0">{children}</p>,
-                    ul:     ({ children }: {children: React.ReactNode}) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                    ol:     ({ children }: {children: React.ReactNode}) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                    ul:     ({ children }: {children: React.ReactNode}) => <ul className="list-disc pl-4 mb-2 space-y-1 marker:text-orange">{children}</ul>,
+                    ol:     ({ children }: {children: React.ReactNode}) => <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-orange">{children}</ol>,
                     li:     ({ children }: {children: React.ReactNode}) => <li>{children}</li>,
-                    strong: ({ children }: {children: React.ReactNode}) => <strong className="font-semibold">{children}</strong>,
+                    strong: ({ children }: {children: React.ReactNode}) => <strong className="font-semibold text-navy">{children}</strong>,
                     em:     ({ children }: {children: React.ReactNode}) => <em className="italic">{children}</em>,
-                    h3:     ({ children }: {children: React.ReactNode}) => <h3 className="font-semibold mt-3 mb-1">{children}</h3>,
-                    h4:     ({ children }: {children: React.ReactNode}) => <h4 className="font-medium mt-2 mb-1">{children}</h4>,
+                    a:      ({ href, children }: {href?: string, children: React.ReactNode}) => <a href={href} className="text-orange underline underline-offset-2">{children}</a>,
+                    blockquote: ({ children }: {children: React.ReactNode}) => <blockquote className="my-3 rounded-md border-l-[3px] border-orange bg-peach-soft/60 px-3.5 py-2.5 text-navy [&_p]:mb-0">{children}</blockquote>,
+                    h3:     ({ children }: {children: React.ReactNode}) => <h3 className="font-display font-bold text-navy mt-4 mb-1.5">{children}</h3>,
+                    h4:     ({ children }: {children: React.ReactNode}) => <h4 className="font-display font-semibold text-navy mt-3 mb-1">{children}</h4>,
                   }
                   const content = section.body_markdown
                     || (section.items?.length
@@ -112,7 +117,7 @@ export default function RapportPage() {
             }
           </div>
         ) : (
-          <div className="pl-10 space-y-2">
+          <div className="space-y-2">
             <Skeleton className="h-3 w-full" />
             <Skeleton className="h-3 w-4/5" />
             <Skeleton className="h-3 w-3/5" />
@@ -134,7 +139,7 @@ export default function RapportPage() {
       <div className="no-print"><AppBar /></div>
 
       {/* Tabs bar */}
-      <div className="no-print flex justify-center gap-2 py-4 bg-secondary sticky top-12 z-40 border-b border-border">
+      <div className="no-print flex justify-center gap-2 py-4 bg-secondary sticky top-14 z-40 border-b border-border">
         <Tabs value={view} onValueChange={v => setView(v as typeof view)}>
           <TabsList className="bg-background border border-border">
             <TabsTrigger value="rapport" className="text-xs">vue rapport</TabsTrigger>
@@ -157,39 +162,41 @@ export default function RapportPage() {
       {/* A4 page */}
       <div className="py-6">
         <div className="report-shell">
-          {/* Page header */}
-          {view === "conseiller" && (
-            <Badge className="bg-primary text-primary-foreground mb-4">VERSION CONSEILLER</Badge>
-          )}
+          {/* Orange top rule */}
+          <div className="report-rule" />
 
-          {loading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-64" />
-            </div>
-          ) : (
-            <div className="flex justify-between items-end border-b-2 border-foreground pb-3 mb-6">
-              <div>
-                <p className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                  NEOORI · ANALYSE DE CV
-                </p>
-                <h2 className="text-xl font-bold mt-1">
+          {/* Navy header band */}
+          <div className="bg-navy text-white px-8 pt-5 pb-6">
+            <Logo tone="light" className="text-base" />
+            {loading ? (
+              <div className="space-y-2 mt-3">
+                <Skeleton className="h-7 w-48 bg-white/20" />
+                <Skeleton className="h-4 w-64 bg-white/10" />
+              </div>
+            ) : (
+              <>
+                <h1 className="font-display font-extrabold text-2xl text-white mt-3 leading-tight">
                   {[analysis?.inputs?.prenom, (analysis?.inputs?.nom ?? "").toUpperCase()]
                     .filter(Boolean).join(" ") || "—"}
-                </h2>
-                <p className="text-xs text-muted-foreground">
+                </h1>
+                <p className="text-sm text-peach italic mt-1">
                   {path === "B"
                     ? `Portrait de potentiel · ${new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`
                     : `Cible : ${analysis?.inputs?.cible_visee?.slice(0, 60) ?? "—"} · ${new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`}
                 </p>
-              </div>
-              <span className="font-bold text-lg tracking-tight">neoori</span>
-            </div>
+              </>
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="px-8 py-7">
+          {view === "conseiller" && (
+            <Badge variant="navy" className="mb-5">VERSION CONSEILLER</Badge>
           )}
 
           {/* Key facts strip for counselor view */}
           {view === "conseiller" && analysis?.inputs && (
-            <div className="grid grid-cols-4 gap-3 rounded-lg bg-secondary p-4 mb-6 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-secondary p-4 mb-6 text-xs">
               {(path === "B"
                 ? [
                     ["Sous-profil",     analysis.inputs._sub_profile?.toUpperCase() ?? "—"],
@@ -205,8 +212,8 @@ export default function RapportPage() {
                   ]
               ).map(([k, v]) => (
                 <div key={k}>
-                  <p className="font-mono text-[10px] uppercase text-muted-foreground">{k}</p>
-                  <p className="font-medium mt-0.5">{v}</p>
+                  <p className="font-mono text-[10px] tracking-wide uppercase text-orange">{k}</p>
+                  <p className="font-medium mt-0.5 text-navy">{v}</p>
                 </div>
               ))}
             </div>
@@ -217,12 +224,12 @@ export default function RapportPage() {
 
           {/* Free plan CTA — Chemin A only */}
           {view === "rapport" && path === "A" && !isPaid && (
-            <div className="rounded-lg bg-primary text-primary-foreground p-5 flex items-center justify-between mt-2 no-print">
+            <div className="rounded-xl bg-brand-gradient text-white p-5 flex items-center justify-between gap-4 mt-2 no-print">
               <div>
-                <p className="font-semibold">Débloquez les 5 sections restantes</p>
-                <p className="text-sm opacity-85 mt-0.5">préconisations · réécriture · synthèse · pistes d'évolution · CV retravaillé</p>
+                <p className="font-display font-bold">Débloquez les 5 sections restantes</p>
+                <p className="text-sm opacity-90 mt-0.5">préconisations · réécriture · synthèse · pistes d'évolution · CV retravaillé</p>
               </div>
-              <Button render={<Link href={`/analyse/${id}/debloquer`}/>} variant="secondary" size="sm" className="shrink-0">passer en payant — 9 € →</Button>
+              <Button render={<Link href={`/analyse/${id}/debloquer`}/>} size="sm" className="shrink-0 bg-white text-orange hover:bg-white/90">passer en payant — 9 € →</Button>
             </div>
           )}
 
@@ -230,6 +237,7 @@ export default function RapportPage() {
           <div className="flex justify-between mt-8 pt-4 border-t border-border">
             <span className="text-[10px] font-mono text-muted-foreground">neoori · v1.3 · confidentiel</span>
             <span className="text-[10px] font-mono text-muted-foreground">1 / 1</span>
+          </div>
           </div>
         </div>
       </div>

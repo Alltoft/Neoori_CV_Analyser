@@ -85,10 +85,15 @@ export default function AnalysesPage() {
     versions.find(v => v.id === id)?.version_label ?? "—"
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <>
+    <div className="mb-5">
+      <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
+      <h1 className="font-display font-bold text-2xl text-navy mt-1">analyses</h1>
+    </div>
+    <div className="rounded-xl border border-border bg-card p-4">
       {/* Filter bar */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold text-sm mr-2">analyses</h2>
+        <h2 className="font-display font-bold text-sm text-navy mr-2">analyses</h2>
         <Select
           value={status || "tous"}
           onValueChange={v => v !== null && setStatus(v === "tous" ? "" : v)}
@@ -122,7 +127,7 @@ export default function AnalysesPage() {
           placeholder="prénom ou cible…"
           className="h-7 text-xs w-44"
         />
-        <Button size="sm" className="h-7 text-xs" onClick={apply}>
+        <Button variant="navy" size="sm" className="h-7 text-xs" onClick={apply}>
           filtrer
         </Button>
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={reset}>
@@ -136,7 +141,7 @@ export default function AnalysesPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-3">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mb-3">
           {error}
         </div>
       )}
@@ -144,7 +149,7 @@ export default function AnalysesPage() {
       {/* Table */}
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-border text-muted-foreground text-[10px] font-mono uppercase">
+          <tr className="border-b border-navy/20 text-navy text-[10px] font-mono uppercase tracking-[0.1em]">
             <th className="text-left pb-2 pr-3 font-normal">heure</th>
             <th className="text-left pb-2 pr-3 font-normal">prénom</th>
             <th className="text-left pb-2 pr-3 font-normal">cible</th>
@@ -170,7 +175,7 @@ export default function AnalysesPage() {
                       hour: "2-digit", minute: "2-digit",
                     })}
                   </td>
-                  <td className="py-2 pr-3">{a.inputs?.prenom ?? "—"}</td>
+                  <td className="py-2 pr-3 text-navy font-medium">{a.inputs?.prenom ?? "—"}</td>
                   <td className="py-2 pr-3 max-w-[180px] truncate text-muted-foreground">
                     {a.inputs?.cible_visee ?? "—"}
                   </td>
@@ -178,16 +183,16 @@ export default function AnalysesPage() {
                     <Badge
                       variant="outline"
                       className={cn("text-[9px] px-1.5",
-                        a.status === "success" ? "bg-green-50 border-green-200 text-green-700" :
-                        a.status === "timeout" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
-                        a.status === "running"  ? "bg-blue-50 border-blue-200 text-blue-700" :
-                        "bg-red-50 border-red-200 text-red-700"
+                        a.status === "success" ? "bg-success/10 border-success/30 text-success" :
+                        a.status === "timeout" ? "bg-peach-soft border-peach text-orange-dark" :
+                        a.status === "running"  ? "bg-navy/10 border-navy/30 text-navy" :
+                        "bg-destructive/10 border-destructive/30 text-destructive"
                       )}
                     >
                       {a.status}
                     </Badge>
                   </td>
-                  <td className="py-2 pr-3 font-mono text-[10px]">
+                  <td className="py-2 pr-3 font-mono text-[10px] text-navy">
                     {versionLabel(a.prompt_version_id)}
                   </td>
                   <td className="py-2 font-mono text-[10px] text-muted-foreground">
@@ -230,5 +235,6 @@ export default function AnalysesPage() {
         </div>
       )}
     </div>
+    </>
   )
 }

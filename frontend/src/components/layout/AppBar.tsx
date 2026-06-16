@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDown, LogOut, LayoutDashboard, PlusCircle } from "lucide-react"
+import { Logo } from "@/components/brand/Logo"
 
 export function AppBar() {
   const { user, logout } = useAuth()
@@ -21,9 +22,9 @@ export function AppBar() {
 
   return (
     <header className="w-full border-b border-border bg-background sticky top-0 z-50">
-      <div className="max-w-[1100px] mx-auto px-8 h-12 flex items-center justify-between">
-        <Link href="/espace" className="font-bold text-base tracking-tight text-foreground">
-          neoori
+      <div className="max-w-[1100px] mx-auto px-8 h-14 flex items-center justify-between">
+        <Link href="/espace" className="text-lg transition-opacity hover:opacity-80">
+          <Logo />
         </Link>
 
         <div className="flex items-center gap-3">

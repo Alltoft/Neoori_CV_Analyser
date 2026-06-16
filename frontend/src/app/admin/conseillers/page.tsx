@@ -90,18 +90,23 @@ export default function ConseillersPage() {
   }, [])
 
   return (
+    <>
+    <div className="mb-5">
+      <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
+      <h1 className="font-display font-bold text-2xl text-navy mt-1">conseillers</h1>
+    </div>
     <div className="grid grid-cols-2 gap-6">
       {/* Left panel: Counselors */}
       <div>
         {errorCounselors && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mb-4">
             {errorCounselors}
           </div>
         )}
 
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-semibold text-sm">conseillers</h2>
+            <h2 className="font-display font-bold text-sm text-navy">conseillers</h2>
             <span className="text-[10px] text-muted-foreground">
               {counselors.length} conseiller{counselors.length !== 1 ? "s" : ""}
             </span>
@@ -109,7 +114,7 @@ export default function ConseillersPage() {
 
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border text-muted-foreground text-[10px] font-mono uppercase">
+              <tr className="border-b border-navy/20 text-navy text-[10px] font-mono uppercase tracking-[0.1em]">
                 <th className="text-left pb-2 pr-4 font-normal">email</th>
                 <th className="text-left pb-2 font-normal">créé le</th>
               </tr>
@@ -125,7 +130,7 @@ export default function ConseillersPage() {
                   ))
                 : counselors.map(c => (
                     <tr key={c.id} className="border-b border-dashed border-border last:border-0">
-                      <td className="py-2 pr-4">{c.email}</td>
+                      <td className="py-2 pr-4 text-navy">{c.email}</td>
                       <td className="py-2 text-[10px] text-muted-foreground">
                         {new Date(c.created_at).toLocaleDateString("fr-FR")}
                       </td>
@@ -145,14 +150,14 @@ export default function ConseillersPage() {
       {/* Right panel: Code manager */}
       <div>
         {errorCodes && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mb-4">
             {errorCodes}
           </div>
         )}
 
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-semibold text-sm">codes d'accès conseiller</h2>
+            <h2 className="font-display font-bold text-sm text-navy">codes d'accès conseiller</h2>
             <span className="text-[10px] text-muted-foreground">
               {codes.length} code{codes.length !== 1 ? "s" : ""}
             </span>
@@ -169,6 +174,7 @@ export default function ConseillersPage() {
               className="text-xs h-8"
             />
             <Button
+              variant="navy"
               size="sm"
               onClick={handleCreateCode}
               disabled={creatingCode || !newCodeLabel.trim()}
@@ -181,7 +187,7 @@ export default function ConseillersPage() {
           {/* Codes table */}
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border text-muted-foreground text-[10px] font-mono uppercase">
+              <tr className="border-b border-navy/20 text-navy text-[10px] font-mono uppercase tracking-[0.1em]">
                 <th className="text-left pb-2 pr-4 font-normal">code</th>
                 <th className="text-left pb-2 pr-4 font-normal">label</th>
                 <th className="text-left pb-2 pr-4 font-normal">statut</th>
@@ -204,14 +210,14 @@ export default function ConseillersPage() {
                       <td className="py-2 pr-4 font-mono text-[9px] text-muted-foreground">
                         {c.code}
                       </td>
-                      <td className="py-2 pr-4 text-[10px]">{c.label}</td>
+                      <td className="py-2 pr-4 text-[10px] text-navy">{c.label}</td>
                       <td className="py-2 pr-4">
                         <Badge
                           variant="outline"
                           className={`text-[9px] px-1.5 ${
                             c.is_active
-                              ? "bg-green-50 border-green-200 text-green-700"
-                              : "bg-gray-50 border-gray-200 text-gray-700"
+                              ? "bg-success/10 border-success/30 text-success"
+                              : "bg-secondary text-muted-foreground border-transparent"
                           }`}
                         >
                           {c.is_active ? "actif" : "inactif"}
@@ -239,7 +245,7 @@ export default function ConseillersPage() {
                             variant="ghost"
                             onClick={() => handleDeactivateCode(c.id)}
                             disabled={creatingCode || deletingId === c.id}
-                            className="text-[9px] h-6 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-[9px] h-6 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                           >
                             {deletingId === c.id ? "..." : "désactiver"}
                           </Button>
@@ -258,5 +264,6 @@ export default function ConseillersPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

@@ -22,7 +22,7 @@ interface LogEntry {
 }
 interface TimeseriesDay { date: string; count: number; tokens: number; free_count: number; paid_count: number }
 
-function MiniSparkline({ data, color = "var(--n-ink)" }: { data: number[]; color?: string }) {
+function MiniSparkline({ data, color = "var(--navy)" }: { data: number[]; color?: string }) {
   if (!data.length) return <div className="h-10 w-full" />
   const max = Math.max(...data, 1)
   const W = 240, H = 40
@@ -70,19 +70,25 @@ export default function AdminPage() {
     : []
 
   if (error) return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
   )
 
   return (
     <>
+      {/* Page heading */}
+      <div className="mb-5">
+        <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
+        <h1 className="font-display font-bold text-2xl text-navy mt-1">vue d&apos;ensemble</h1>
+      </div>
+
       {/* KPI strip */}
       <div className="grid grid-cols-5 gap-3 mb-5">
         {loading
           ? Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)
           : kpis.map(([k, v, d], i) => (
-              <div key={String(k)} className="rounded-lg border border-border bg-card p-3">
-                <p className="text-[10px] font-mono uppercase text-muted-foreground">{k}</p>
-                <p className={cn("text-2xl font-bold mt-1", i === 4 && "text-primary")}>{v}</p>
+              <div key={String(k)} className="rounded-xl border border-border bg-card p-3">
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground">{k}</p>
+                <p className={cn("text-2xl font-bold mt-1 text-navy", i === 4 && "text-orange")}>{v}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">{d}</p>
               </div>
             ))}
@@ -90,28 +96,28 @@ export default function AdminPage() {
 
       <div className="grid grid-cols-[1.4fr_1fr] gap-4">
         {/* Condensed prompt panel */}
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="font-semibold text-sm">prompt système</h2>
+              <h2 className="font-display font-bold text-sm text-navy">prompt système</h2>
               <p className="text-[10px] text-muted-foreground">versionné · rollback possible</p>
             </div>
             {stats?.active_prompt && (
-              <Badge className="bg-primary text-primary-foreground text-[10px]">
+              <Badge className="bg-orange text-white text-[10px] font-mono">
                 {stats.active_prompt.version_label} · ACTIF
               </Badge>
             )}
           </div>
-          <Link href="/admin/prompts" className="text-xs text-primary hover:underline">
+          <Link href="/admin/prompts" className="text-xs font-semibold text-orange hover:underline">
             gérer les prompts →
           </Link>
         </div>
 
         {/* Condensed analyses log */}
-        <div className="rounded-lg border border-border bg-card p-4 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card p-4 overflow-hidden">
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="font-semibold text-sm">analyses récentes</h2>
-            <Link href="/admin/analyses" className="text-[10px] text-primary hover:underline">
+            <h2 className="font-display font-bold text-sm text-navy">analyses récentes</h2>
+            <Link href="/admin/analyses" className="text-[10px] font-semibold text-orange hover:underline">
               voir toutes →
             </Link>
           </div>
@@ -127,15 +133,15 @@ export default function AdminPage() {
                     <span className="font-mono text-[10px] text-muted-foreground">
                       {new Date(log.created_at).toLocaleTimeString("fr", { hour: "2-digit", minute: "2-digit" })}
                     </span>
-                    <p className="text-xs truncate">
+                    <p className="text-xs truncate text-navy">
                       {log.inputs?.prenom ?? "—"} — {log.inputs?.cible_visee?.slice(0, 25) ?? "—"}
                     </p>
                     <Badge
                       variant="outline"
                       className={cn("text-[9px] px-1.5",
-                        log.status === "success" ? "bg-green-50 border-green-200 text-green-700" :
-                        log.status === "timeout" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
-                        "bg-red-50 border-red-200 text-red-700"
+                        log.status === "success" ? "bg-success/10 border-success/30 text-success" :
+                        log.status === "timeout" ? "bg-peach-soft border-peach text-orange-dark" :
+                        "bg-destructive/10 border-destructive/30 text-destructive"
                       )}
                     >
                       {log.status}
@@ -149,22 +155,22 @@ export default function AdminPage() {
       <Separator className="my-4" />
 
       {/* Sparklines */}
-      <div className="rounded-lg border border-border bg-card p-4 grid grid-cols-3 gap-6">
+      <div className="rounded-xl border border-border bg-card p-4 grid grid-cols-3 gap-6">
         {loading
           ? Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-14" />)
           : (
             <>
               <div>
-                <p className="text-[10px] font-mono uppercase text-muted-foreground mb-2">analyses · 30j</p>
-                <MiniSparkline data={timeseries.map(d => d.count)} />
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground mb-2">analyses · 30j</p>
+                <MiniSparkline data={timeseries.map(d => d.count)} color="var(--navy)" />
               </div>
               <div>
-                <p className="text-[10px] font-mono uppercase text-muted-foreground mb-2">tokens · 30j</p>
-                <MiniSparkline data={timeseries.map(d => d.tokens)} color="var(--n-accent)" />
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground mb-2">tokens · 30j</p>
+                <MiniSparkline data={timeseries.map(d => d.tokens)} color="var(--orange)" />
               </div>
               <div>
-                <p className="text-[10px] font-mono uppercase text-muted-foreground mb-2">plans payants · 30j</p>
-                <MiniSparkline data={timeseries.map(d => d.paid_count)} color="var(--n-ink-2)" />
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground mb-2">plans payants · 30j</p>
+                <MiniSparkline data={timeseries.map(d => d.paid_count)} color="var(--peach)" />
               </div>
             </>
           )}

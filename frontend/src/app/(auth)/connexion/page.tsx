@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Logo } from "@/components/brand/Logo"
 
 const schema = z.object({
   email:    z.string().email("Email invalide."),
@@ -41,13 +42,17 @@ function ConnexionForm() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-24 right-0 h-[360px] w-[360px] rounded-full bg-peach/20 blur-[110px]" />
+        <div className="absolute bottom-0 -left-20 h-[320px] w-[320px] rounded-full bg-orange/10 blur-[110px]" />
+      </div>
       <div className="w-full max-w-sm">
-        <Link href="/" className="block text-center font-bold text-xl mb-8 tracking-tight">
-          neoori
+        <Link href="/" className="flex justify-center mb-8 text-2xl">
+          <Logo />
         </Link>
 
-        <Card className="border-border">
+        <Card className="border-border shadow-xl shadow-navy/5">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Se connecter</CardTitle>
             <CardDescription>Accédez à vos analyses.</CardDescription>

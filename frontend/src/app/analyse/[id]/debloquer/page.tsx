@@ -126,15 +126,15 @@ function DebloquerContent() {
 
         <div className="grid grid-cols-2 gap-6">
           {/* Free card */}
-          <div className="rounded-lg border border-border bg-card p-6">
-            <p className="font-semibold text-sm">gratuit</p>
-            <p className="text-4xl font-bold mt-2">0 €</p>
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground">gratuit</p>
+            <p className="text-4xl font-display font-extrabold text-navy mt-2">0 €</p>
             <p className="text-xs text-muted-foreground">version d&apos;essai · 1 analyse</p>
             <Separator className="my-4" />
             <ul className="space-y-2">
               {FREE.map(n => (
                 <li key={n} className="flex items-center gap-2 text-xs">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-orange shrink-0" />
                   § {n} · {SECTION_TITLES[n]}
                 </li>
               ))}
@@ -148,32 +148,33 @@ function DebloquerContent() {
           </div>
 
           {/* Paid card */}
-          <div className="rounded-lg border-2 border-primary bg-primary text-primary-foreground p-6 relative">
-            <Badge className="absolute -top-3 right-5 bg-background text-foreground border border-border text-[10px]">
+          <div className="rounded-2xl border-2 border-navy bg-navy text-white p-6 relative shadow-xl shadow-navy/20">
+            <span className="absolute inset-x-0 top-0 h-1.5 bg-brand-gradient rounded-t-2xl" />
+            <Badge className="absolute -top-3 right-5 bg-orange text-white border-0 text-[10px]">
               recommandé
             </Badge>
-            <p className="font-semibold text-sm">complet</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-peach">complet</p>
             <div className="flex items-baseline gap-2">
-              <p className="text-4xl font-bold mt-2">9 €</p>
-              <span className="text-sm opacity-80">une fois · sans abonnement</span>
+              <p className="text-4xl font-display font-extrabold mt-2">9 €</p>
+              <span className="text-sm text-white/70">une fois · sans abonnement</span>
             </div>
-            <p className="text-xs opacity-80">livrable 9 sections + CV retravaillé + export conseiller</p>
-            <Separator className="my-4 opacity-30" />
+            <p className="text-xs text-white/70">livrable 9 sections + CV retravaillé + export conseiller</p>
+            <Separator className="my-4 bg-white/20" />
             <ul className="space-y-2 mb-5">
               {[...FREE,...PAID].map(n => (
                 <li key={n} className="flex items-center gap-2 text-xs">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-peach" />
                   § {n} · {SECTION_TITLES[n]}
                 </li>
               ))}
             </ul>
 
-            <label className="flex items-start gap-2 text-[11px] opacity-90 mb-3 cursor-pointer">
+            <label className="flex items-start gap-2 text-[11px] text-white/85 mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={waiverAccepted}
                 onChange={e => setWaiverAccepted(e.target.checked)}
-                className="mt-0.5 shrink-0"
+                className="mt-0.5 shrink-0 accent-orange"
               />
               <span>
                 Je demande l&apos;exécution immédiate du service et reconnais renoncer à mon droit de
@@ -183,7 +184,7 @@ function DebloquerContent() {
             </label>
 
             <Button
-              className="w-full bg-background text-primary hover:bg-background/90 font-semibold"
+              className="w-full bg-orange text-white hover:bg-orange-dark font-semibold"
               onClick={startCheckout}
               disabled={paymentsEnabled === false || payState === "redirecting"}
             >
@@ -193,7 +194,7 @@ function DebloquerContent() {
                   ? "paiement bientôt disponible"
                   : "débloquer pour 9 € →"}
             </Button>
-            <p className="text-[10px] opacity-75 text-center mt-2">
+            <p className="text-[10px] text-white/65 text-center mt-2">
               paiement sécurisé par Stripe · code conseiller — gratuit pour les bénéficiaires Cap Emploi / France Travail
             </p>
           </div>

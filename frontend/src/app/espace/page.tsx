@@ -60,7 +60,7 @@ export default function EspacePage() {
       <div className="max-w-[1100px] mx-auto px-8 py-8">
         <div className="flex items-end justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold">Mon espace</h1>
+            <h1 className="font-display font-bold text-2xl text-navy">Mon espace</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Vos analyses, vos brouillons{user?.role === "counselor" ? ", votre portefeuille candidats" : ""}.
             </p>
@@ -84,7 +84,7 @@ export default function EspacePage() {
         ) : (
           <div className="grid grid-cols-3 gap-4">
             {analyses.map(a => (
-              <div key={a.id} className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+              <div key={a.id} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 hover-lift">
                 <div className="flex items-start justify-between gap-2">
                   <Badge variant="outline" className="text-[10px] font-mono shrink-0">
                     {new Date(a.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
@@ -101,7 +101,7 @@ export default function EspacePage() {
                   </DropdownMenu>
                 </div>
 
-                <h3 className="font-semibold text-sm leading-tight line-clamp-2">
+                <h3 className="font-display font-semibold text-sm leading-tight line-clamp-2 text-navy">
                   {a.inputs?.cible_visee?.slice(0, 60) ?? "Brouillon"}
                 </h3>
 

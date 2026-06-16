@@ -111,8 +111,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       className={cn(
         "px-3 py-1.5 rounded-full border text-xs text-left transition-colors",
         active
-          ? "bg-primary border-primary text-primary-foreground"
-          : "bg-background border-border text-foreground hover:border-primary/50",
+          ? "bg-orange border-orange text-white"
+          : "bg-background border-border text-foreground hover:border-orange/50",
       )}
     >
       {children}
@@ -218,8 +218,9 @@ export default function OrientationPage() {
     <div className="min-h-screen bg-background">
       <AppBar />
       <div className="max-w-[720px] mx-auto px-6 py-8">
+        <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange mb-2">Chemin B · Orientation</p>
         <div className="flex items-baseline justify-between mb-6">
-          <h1 className="text-2xl font-bold">Portrait de potentiel</h1>
+          <h1 className="font-display text-2xl font-bold text-navy">Portrait de potentiel</h1>
           <Badge variant="outline" className="font-mono text-xs">
             étape {step + 1} / {totalSteps}
           </Badge>
@@ -235,7 +236,7 @@ export default function OrientationPage() {
         {/* ── Step 0 — Sub-profile ── */}
         {step === 0 && (
           <div className="space-y-3">
-            <p className="font-semibold text-sm">Quelle situation décrit le mieux votre point de départ ?</p>
+            <p className="font-display font-semibold text-sm text-navy">Quelle situation décrit le mieux votre point de départ ?</p>
             <div className="grid grid-cols-1 gap-3">
               {SUB_PROFILES.map(p => (
                 <button
@@ -243,16 +244,16 @@ export default function OrientationPage() {
                   type="button"
                   onClick={() => setSub(p.value)}
                   className={cn(
-                    "rounded-lg border-2 p-5 text-left transition-all",
+                    "rounded-xl border p-5 text-left transition-all hover-lift",
                     sub === p.value
-                      ? "border-primary bg-primary/5"
-                      : "border-border bg-card hover:border-primary/40",
+                      ? "border-orange bg-orange/5"
+                      : "border-border bg-card hover:border-orange/50",
                   )}
                 >
-                  <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-widest">
+                  <span className="inline-flex items-center justify-center px-2 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold uppercase tracking-widest">
                     {p.value.toUpperCase()}
-                  </Badge>
-                  <p className="mt-2 font-semibold text-base">{p.title}</p>
+                  </span>
+                  <p className="mt-2 font-display font-semibold text-base text-navy">{p.title}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{p.desc}</p>
                 </button>
               ))}
@@ -263,8 +264,11 @@ export default function OrientationPage() {
         {/* ── Step 1 — Common questions ── */}
         {step === 1 && (
           <div className="space-y-6">
-            <div className="rounded-lg border border-border bg-card p-5">
-              <Label className="text-xs font-semibold">① Votre prénom et nom</Label>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <Label className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+                Votre prénom et nom
+              </Label>
               <Input
                 value={form.nom}
                 onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
@@ -273,8 +277,11 @@ export default function OrientationPage() {
               />
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">② Qu&apos;est-ce que vous aimez faire — même hors travail ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+                Qu&apos;est-ce que vous aimez faire — même hors travail ?
+              </p>
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Choisissez tout ce qui vous correspond</p>
               <div className="flex flex-wrap gap-1.5">
                 {AIME_OPTIONS.map(opt => (
@@ -283,8 +290,11 @@ export default function OrientationPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">③ Dans quelles situations vous sentez-vous compétent(e) ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">3</span>
+                Dans quelles situations vous sentez-vous compétent(e) ?
+              </p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {COMPETENT_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.competent.includes(opt)} onClick={() => toggleMulti("competent", opt)}>{opt}</Chip>
@@ -292,8 +302,11 @@ export default function OrientationPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">④ Qu&apos;est-ce que vous refusez catégoriquement dans un travail ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">4</span>
+                Qu&apos;est-ce que vous refusez catégoriquement dans un travail ?
+              </p>
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Optionnel</p>
               <div className="flex flex-wrap gap-1.5">
                 {REFUSE_OPTIONS.map(opt => (
@@ -307,8 +320,11 @@ export default function OrientationPage() {
         {/* ── Step 2 — B2 specific ── */}
         {step === 2 && sub === "b2" && (
           <div className="space-y-6">
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">Quelle a été votre principale activité pendant la pause ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+                Quelle a été votre principale activité pendant la pause ?
+              </p>
               <div className="mt-3 flex flex-col gap-2">
                 {PAUSE_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.pause_activite === opt} onClick={() => setForm(f => ({ ...f, pause_activite: opt }))}>{opt}</Chip>
@@ -316,8 +332,11 @@ export default function OrientationPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">Avez-vous des contraintes pratiques pour reprendre ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+                Avez-vous des contraintes pratiques pour reprendre ?
+              </p>
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Optionnel</p>
               <div className="flex flex-wrap gap-1.5">
                 {CONTRAINTES_B2_OPTIONS.map(opt => (
@@ -338,8 +357,11 @@ export default function OrientationPage() {
               </AlertDescription>
             </Alert>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">Avez-vous un CV à partager ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+                Avez-vous un CV à partager ?
+              </p>
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
                 Optionnel — Si vous avez déjà travaillé, vos expériences passées permettent d&apos;identifier des compétences transférables, même si elles datent.
               </p>
@@ -351,7 +373,7 @@ export default function OrientationPage() {
                   onClick={() => document.getElementById("cv-b3-input")?.click()}
                   className={cn(
                     "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed h-28 cursor-pointer transition-colors",
-                    isDragging ? "border-primary bg-primary/5" : "border-border bg-secondary hover:border-primary/50",
+                    isDragging ? "border-orange bg-orange/5" : "border-border bg-secondary hover:border-orange/50",
                     uploadState === "done" && "border-green-500/50 bg-green-50",
                   )}
                 >
@@ -381,8 +403,11 @@ export default function OrientationPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">Quelles sont les contraintes que vous souhaitez prendre en compte ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+                Quelles sont les contraintes que vous souhaitez prendre en compte ?
+              </p>
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Optionnel</p>
               <div className="flex flex-wrap gap-1.5">
                 {CONTRAINTES_B3_OPTIONS.map(opt => (
@@ -391,8 +416,11 @@ export default function OrientationPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="text-xs font-semibold">Êtes-vous déjà accompagné(e) par une structure spécialisée ?</p>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="font-display text-sm font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">3</span>
+                Êtes-vous déjà accompagné(e) par une structure spécialisée ?
+              </p>
               <div className="mt-3 flex flex-col gap-2">
                 {ACCOMPAGNEMENT_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.accompagnement === opt} onClick={() => setForm(f => ({ ...f, accompagnement: opt }))}>{opt}</Chip>
@@ -405,11 +433,11 @@ export default function OrientationPage() {
         {/* ── Final step — consent ── */}
         {isLastStep && (
           <div className="space-y-5">
-            <div className="rounded-md overflow-hidden border border-border flex">
-              <div className="w-1 bg-primary shrink-0" />
-              <div className="bg-secondary/60 px-4 py-3 flex-1">
-                <p className="text-[10px] font-bold tracking-widest uppercase mb-1">Confidentialité</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
+            <div className="rounded-xl overflow-hidden border border-border flex">
+              <div className="w-1.5 bg-orange shrink-0" />
+              <div className="bg-peach-soft px-4 py-3 flex-1">
+                <p className="font-mono text-[10px] font-bold tracking-[0.15em] uppercase text-orange mb-1">Confidentialité</p>
+                <p className="text-xs text-navy/70 leading-relaxed">
                   Vos réponses sont utilisées uniquement pour produire cette analyse et vous faire des suggestions.
                   Elles ne sont pas partagées avec des tiers ni utilisées pour entraîner des modèles d&apos;IA.
                   Vous pouvez supprimer votre analyse à tout moment.
@@ -421,7 +449,7 @@ export default function OrientationPage() {
                 type="checkbox"
                 checked={form.consent}
                 onChange={e => setForm(f => ({ ...f, consent: e.target.checked }))}
-                className="mt-1 h-4 w-4"
+                className="mt-1 h-4 w-4 accent-orange"
               />
               <span className="text-sm">
                 Je confirme avoir lu et accepté la note de confidentialité.

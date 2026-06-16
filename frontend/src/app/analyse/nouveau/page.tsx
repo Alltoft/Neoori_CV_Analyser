@@ -186,7 +186,10 @@ function NouvelleAnalyseForm() {
 
           {/* ── Card 1 : CV ── */}
           <div className="rounded-lg border border-border bg-card p-5">
-            <p className="font-semibold text-sm mb-3">① votre CV</p>
+            <p className="font-display font-semibold text-sm mb-3 flex items-center">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+              votre CV
+            </p>
             <div className="grid grid-cols-[1.2fr_1fr] gap-3">
               {/* Drop zone */}
               <div
@@ -234,7 +237,10 @@ function NouvelleAnalyseForm() {
 
           {/* ── Card 2 : Votre projet ── */}
           <div className="rounded-lg border border-border bg-card p-5">
-            <p className="font-semibold text-sm mb-1">② votre projet</p>
+            <p className="font-display font-semibold text-sm mb-1 flex items-center">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+              votre projet
+            </p>
             <p className="text-xs text-muted-foreground mb-3">offre d'emploi · fiche métier · programme de formation</p>
             <div className="grid grid-cols-[1.2fr_1fr] gap-3">
               {/* Drop zone */}
@@ -285,7 +291,10 @@ function NouvelleAnalyseForm() {
           <div className="grid grid-cols-2 gap-4">
             {/* Card 3 : Qui êtes-vous */}
             <div className="rounded-lg border border-border bg-card p-5">
-              <p className="font-semibold text-sm mb-3">③ qui êtes-vous</p>
+              <p className="font-display font-semibold text-sm mb-3 flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">3</span>
+                qui êtes-vous
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Prénom</Label>
@@ -337,7 +346,10 @@ function NouvelleAnalyseForm() {
 
             {/* Card 4 : Mobilité + Notes */}
             <div className="rounded-lg border border-border bg-card p-5">
-              <p className="font-semibold text-sm mb-2">④ type de mobilité</p>
+              <p className="font-display font-semibold text-sm mb-2 flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">4</span>
+                type de mobilité
+              </p>
               <Controller name="type_mobilite" control={control} render={({ field }) => {
                 const selected: string[] = Array.isArray(field.value) ? field.value : []
                 const toggle = (opt: string) =>
@@ -364,7 +376,10 @@ function NouvelleAnalyseForm() {
               }} />
               {errors.type_mobilite && <p className="text-[10px] text-destructive mt-1">{errors.type_mobilite.message}</p>}
 
-              <p className="font-semibold text-sm mt-3 mb-1.5">⑤ notes spécifiques</p>
+              <p className="font-display font-semibold text-sm mt-3 mb-1.5 flex items-center">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">5</span>
+                notes spécifiques
+              </p>
               <Textarea
                 {...register("notes_specifiques")}
                 placeholder="RQTH, aidant, primo-arrivant, contraintes…"
@@ -400,12 +415,12 @@ function NouvelleAnalyseForm() {
                   type="button"
                   disabled={submittingTier !== null}
                   onClick={handleSubmit(data => onSubmit(data, "haiku"))}
-                  className="group flex flex-col items-start gap-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-left transition hover:bg-amber-100 disabled:opacity-50"
+                  className="group flex flex-col items-start gap-1 rounded-xl border border-border bg-card px-4 py-2.5 text-left transition hover:border-orange/50 hover:bg-secondary disabled:opacity-50"
                 >
-                  <span className="text-sm font-semibold text-amber-800">
+                  <span className="text-sm font-display font-semibold text-navy">
                     {submittingTier === "haiku" ? "Lancement…" : "👉 Clique ici pour générer la version gratuite"}
                   </span>
-                  <span className="text-[11px] text-amber-700/80">
+                  <span className="text-[11px] text-muted-foreground">
                     Si tu cliques ce bouton, tu verras exactement ce qu&apos;un utilisateur gratuit verra.
                   </span>
                 </button>
@@ -413,12 +428,12 @@ function NouvelleAnalyseForm() {
                   type="button"
                   disabled={submittingTier !== null}
                   onClick={handleSubmit(data => onSubmit(data, "sonnet"))}
-                  className="group flex flex-col items-start gap-1 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-left transition hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+                  className="group flex flex-col items-start gap-1 rounded-xl border-2 border-navy bg-navy px-4 py-2.5 text-left text-white transition hover:bg-navy-700 disabled:opacity-50"
                 >
-                  <span className="text-sm font-semibold">
+                  <span className="text-sm font-display font-semibold">
                     {submittingTier === "sonnet" ? "Lancement…" : "👉 Clique ici pour générer la version premium"}
                   </span>
-                  <span className="text-[11px] opacity-70">
+                  <span className="text-[11px] text-peach">
                     Si tu cliques ce bouton, tu verras exactement ce qu&apos;un utilisateur premium verra.
                   </span>
                 </button>
