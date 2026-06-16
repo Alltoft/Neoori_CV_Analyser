@@ -19,6 +19,8 @@ function InfinityMark({
   const C = 91.1
   const drawL = { strokeDasharray: C, strokeDashoffset: C } as const
 
+  // Solid stroke colors (NO gradient/id/var) so the mark renders reliably
+  // everywhere — including print/PDF and on navy bands.
   return (
     <svg
       viewBox="0 0 64 38"
@@ -27,21 +29,14 @@ function InfinityMark({
       className={className}
       style={{ height: "0.66em", width: "auto", ...style }}
     >
-      <defs>
-        <linearGradient id="neo-inf-grad" x1="0" y1="0" x2="64" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="var(--orange)" />
-          <stop offset="55%" stopColor="var(--orange)" />
-          <stop offset="100%" stopColor="var(--peach)" />
-        </linearGradient>
-      </defs>
       <circle
         cx="19" cy="19" r="14.5"
-        stroke="url(#neo-inf-grad)" strokeWidth="5"
+        stroke="#ea5624" strokeWidth="5"
         style={animate ? { ...drawL, animation: "neo-draw 1s cubic-bezier(0.65,0,0.35,1) 0.1s forwards" } : undefined}
       />
       <circle
         cx="45" cy="19" r="14.5"
-        stroke="url(#neo-inf-grad)" strokeWidth="5"
+        stroke="#f7ae78" strokeWidth="5"
         style={animate ? { ...drawL, animation: "neo-draw 1s cubic-bezier(0.65,0,0.35,1) 0.3s forwards" } : undefined}
       />
     </svg>
