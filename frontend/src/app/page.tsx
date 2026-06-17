@@ -175,13 +175,14 @@ export default function LandingPage() {
             <Photo
               src="/img/hero-counselor.jpg"
               alt="Un conseiller accompagne un candidat dans l’analyse de son CV"
-              className="aspect-[4/3] w-full shadow-card"
+              className="aspect-[3/2] w-full shadow-card"
+              imgClassName="object-top"
               rounded="rounded-3xl"
               sizes="(max-width: 1024px) 100vw, 460px"
               priority
               overlay
             />
-            <ReportPreview className="absolute -bottom-7 -left-6 hidden w-[62%] sm:block" />
+            <ReportPreview className="absolute -bottom-6 -left-4 hidden w-[48%] sm:block" />
             <div className="absolute -right-4 top-6 hidden rounded-xl bg-white px-3.5 py-2.5 shadow-float ring-1 ring-foreground/10 sm:block">
               <p className="font-display text-xl font-bold leading-none text-navy">9</p>
               <p className="eyebrow mt-1 text-muted-foreground">sections</p>
@@ -289,6 +290,7 @@ export default function LandingPage() {
                   src={p.img}
                   alt={p.title}
                   className="aspect-[4/5] w-full"
+                  imgClassName="scale-[1.1] origin-top"
                   rounded={false}
                   sizes="(max-width: 768px) 100vw, 380px"
                 />

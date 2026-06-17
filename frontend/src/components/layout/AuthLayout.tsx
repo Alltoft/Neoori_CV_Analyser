@@ -16,7 +16,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
       {/* Brand panel (lg+) */}
       <div className="relative hidden overflow-hidden lg:block">
         <div className="absolute inset-0">
-          <Photo src="/img/auth-side.jpg" alt="" rounded={false} overlay className="h-full w-full" sizes="50vw" priority />
+          <Photo src="/img/auth-side.jpg" alt="" rounded={false} overlay className="h-full w-full" imgClassName="scale-[1.08] origin-top" sizes="50vw" priority />
         </div>
         <div className="absolute inset-0 bg-navy/45" />
         <div className="relative flex h-full flex-col justify-between p-10 text-white">
