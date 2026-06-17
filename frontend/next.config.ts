@@ -5,6 +5,10 @@ const backendUrl =
 
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
+  images: {
+    // Next 16 requires non-default next/image quality values to be whitelisted.
+    qualities: [75, 92],
+  },
   async rewrites() {
     return [
       {
