@@ -1,40 +1,78 @@
 import type { Metadata, Viewport } from "next"
-import { Inter, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google"
+import { Bricolage_Grotesque, Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth"
 
+// Display — warm, distinctive geometric grotesque that echoes the logo wordmark.
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-bricolage",
+  display: "swap",
+})
+
+// Body — clean, legible workhorse for dense French copy.
 const inter = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-inter",
   display: "swap",
 })
 
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-jakarta",
-  display: "swap",
-})
-
+// Data / eyebrows — technical precision (section markers, B2G traceability).
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains",
   display: "swap",
 })
 
+const SITE_URL = "https://frontend-seven-fawn-59.vercel.app"
+
 export const metadata: Metadata = {
-  title: "neoori — Analyse de CV",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "neoori — Analyse stratégique de CV",
+    template: "%s · neoori",
+  },
   description:
-    "Une lecture stratégique de votre CV pour les parcours qu'on ne sait pas lire. Révélez votre potentiel, construisez votre avenir.",
+    "Une lecture stratégique du CV : forces, angles morts et préconisations concrètes au regard de la cible professionnelle. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
+  keywords: [
+    "analyse de CV", "conseiller en évolution professionnelle", "Cap Emploi",
+    "France Travail", "Mission Locale", "reconversion", "RGPD", "bilan de compétences",
+  ],
+  applicationName: "neoori",
+  authors: [{ name: "neoori" }],
+  openGraph: {
+    type: "website",
+    locale: "fr_FR",
+    url: SITE_URL,
+    siteName: "neoori",
+    title: "neoori — Analyse stratégique de CV",
+    description:
+      "Forces, angles morts et préconisations concrètes au regard de la cible. Pour les conseillers, les organisations de l'emploi et les candidats.",
+    images: [{ url: "/img/og-cover.png", width: 1200, height: 630, alt: "neoori" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "neoori — Analyse stratégique de CV",
+    description:
+      "Forces, angles morts et préconisations concrètes au regard de la cible professionnelle.",
+    images: ["/img/og-cover.png"],
+  },
+  icons: { icon: "/icon.svg" },
 }
 
 export const viewport: Viewport = {
-  themeColor: "#ea5624",
+  themeColor: "#0f1e34",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" className={`${inter.variable} ${jakarta.variable} ${jetbrains.variable}`}>
+    <html
+      lang="fr"
+      suppressHydrationWarning
+      className={`${bricolage.variable} ${inter.variable} ${jetbrains.variable}`}
+    >
       <body className="antialiased min-h-screen bg-background text-foreground">
+        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

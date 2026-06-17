@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { AppBar } from "@/components/layout/AppBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -107,12 +109,15 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   return (
     <button
       type="button"
+      role="checkbox"
+      aria-checked={active}
       onClick={onClick}
       className={cn(
-        "px-3 py-1.5 rounded-full border text-xs text-left transition-colors",
+        "inline-flex items-center rounded-full px-3.5 py-2 text-xs font-medium leading-snug text-left",
+        "ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2",
         active
-          ? "bg-orange border-orange text-white"
-          : "bg-background border-border text-foreground hover:border-orange/50",
+          ? "bg-navy text-white ring-navy"
+          : "bg-secondary text-navy ring-foreground/10 hover:bg-peach-soft hover:ring-orange/40",
       )}
     >
       {children}
@@ -217,44 +222,52 @@ export default function OrientationPage() {
   return (
     <div className="min-h-screen bg-background">
       <AppBar />
-      <div className="max-w-[720px] mx-auto px-6 py-8">
-        <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange mb-2">Chemin B · Orientation</p>
-        <div className="flex items-baseline justify-between mb-6">
-          <h1 className="font-display text-2xl font-bold text-navy">Portrait de potentiel</h1>
-          <Badge variant="outline" className="font-mono text-xs">
+      <div className="mx-auto max-w-2xl px-5 sm:px-8 py-8 sm:py-12">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-orange text-white font-mono text-sm font-bold shrink-0">
+            {step + 1}
+          </span>
+          <p className="eyebrow text-orange-dark">Chemin B · Orientation</p>
+        </div>
+        <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-navy">Portrait de potentiel</h1>
+          <Badge variant="navy" className="font-mono text-xs">
             étape {step + 1} / {totalSteps}
           </Badge>
         </div>
-        <p className="text-sm text-muted-foreground mb-8">
+        <p className="text-sm text-muted-foreground mb-6">
           Quelques questions pour identifier vos points d&apos;appui et des pistes compatibles avec votre situation.
         </p>
+        <Progress value={((step + 1) / totalSteps) * 100} className="mb-8" />
 
         {submitError && (
-          <Alert variant="destructive" className="mb-4"><AlertDescription>{submitError}</AlertDescription></Alert>
+          <Alert variant="destructive" className="mb-6"><AlertDescription>{submitError}</AlertDescription></Alert>
         )}
 
         {/* ── Step 0 — Sub-profile ── */}
         {step === 0 && (
-          <div className="space-y-3">
-            <p className="font-display font-semibold text-sm text-navy">Quelle situation décrit le mieux votre point de départ ?</p>
+          <div className="space-y-4">
+            <p className="font-display font-semibold text-base text-navy">Quelle situation décrit le mieux votre point de départ ?</p>
             <div className="grid grid-cols-1 gap-3">
               {SUB_PROFILES.map(p => (
                 <button
                   key={p.value}
                   type="button"
+                  aria-pressed={sub === p.value}
                   onClick={() => setSub(p.value)}
                   className={cn(
-                    "rounded-xl border p-5 text-left transition-all hover-lift",
+                    "rounded-2xl border bg-card p-5 text-left transition-all",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2",
                     sub === p.value
-                      ? "border-orange bg-orange/5"
-                      : "border-border bg-card hover:border-orange/50",
+                      ? "border-orange ring-1 ring-orange bg-peach-soft/40 shadow-card"
+                      : "border-border hover:border-orange/50 hover:shadow-soft",
                   )}
                 >
                   <span className="inline-flex items-center justify-center px-2 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold uppercase tracking-widest">
                     {p.value.toUpperCase()}
                   </span>
-                  <p className="mt-2 font-display font-semibold text-base text-navy">{p.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{p.desc}</p>
+                  <p className="mt-3 font-display font-semibold text-base text-navy">{p.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{p.desc}</p>
                 </button>
               ))}
             </div>
@@ -263,52 +276,53 @@ export default function OrientationPage() {
 
         {/* ── Step 1 — Common questions ── */}
         {step === 1 && (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-border bg-card p-5">
-              <Label className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <Label htmlFor="orientation-nom" className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">1</span>
                 Votre prénom et nom
               </Label>
               <Input
+                id="orientation-nom"
                 value={form.nom}
                 onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
                 placeholder="Prénom NOM"
-                className="mt-2 h-9 text-sm"
+                className="mt-3 h-10"
               />
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">2</span>
                 Qu&apos;est-ce que vous aimez faire — même hors travail ?
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Choisissez tout ce qui vous correspond</p>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-xs text-muted-foreground mt-1 mb-3">Choisissez tout ce qui vous correspond</p>
+              <div className="flex flex-wrap gap-2">
                 {AIME_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.aime.includes(opt)} onClick={() => toggleMulti("aime", opt)}>{opt}</Chip>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">3</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">3</span>
                 Dans quelles situations vous sentez-vous compétent(e) ?
               </p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {COMPETENT_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.competent.includes(opt)} onClick={() => toggleMulti("competent", opt)}>{opt}</Chip>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">4</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">4</span>
                 Qu&apos;est-ce que vous refusez catégoriquement dans un travail ?
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Optionnel</p>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-xs text-muted-foreground mt-1 mb-3">Optionnel</p>
+              <div className="flex flex-wrap gap-2">
                 {REFUSE_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.refuse.includes(opt)} onClick={() => toggleMulti("refuse", opt)}>{opt}</Chip>
                 ))}
@@ -319,26 +333,26 @@ export default function OrientationPage() {
 
         {/* ── Step 2 — B2 specific ── */}
         {step === 2 && sub === "b2" && (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">1</span>
                 Quelle a été votre principale activité pendant la pause ?
               </p>
-              <div className="mt-3 flex flex-col gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {PAUSE_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.pause_activite === opt} onClick={() => setForm(f => ({ ...f, pause_activite: opt }))}>{opt}</Chip>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">2</span>
                 Avez-vous des contraintes pratiques pour reprendre ?
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Optionnel</p>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-xs text-muted-foreground mt-1 mb-3">Optionnel</p>
+              <div className="flex flex-wrap gap-2">
                 {CONTRAINTES_B2_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.contraintes_pratiques.includes(opt)} onClick={() => toggleMulti("contraintes_pratiques", opt)}>{opt}</Chip>
                 ))}
@@ -349,7 +363,7 @@ export default function OrientationPage() {
 
         {/* ── Step 2 — B3 specific ── */}
         {step === 2 && sub === "b3" && (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <Alert>
               <AlertDescription className="text-xs">
                 Ces questions ne demandent jamais votre diagnostic ni la nature de votre handicap.
@@ -357,35 +371,46 @@ export default function OrientationPage() {
               </AlertDescription>
             </Alert>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">1</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">1</span>
                 Avez-vous un CV à partager ?
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
+              <p className="text-xs text-muted-foreground mt-1 mb-3">
                 Optionnel — Si vous avez déjà travaillé, vos expériences passées permettent d&apos;identifier des compétences transférables, même si elles datent.
               </p>
-              <div className="grid grid-cols-[1.2fr_1fr] gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[1.2fr_1fr] gap-3">
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Déposer ou choisir un fichier CV au format PDF"
                   onDrop={onDrop}
                   onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
                   onDragLeave={() => setIsDragging(false)}
                   onClick={() => document.getElementById("cv-b3-input")?.click()}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); document.getElementById("cv-b3-input")?.click() } }}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed h-28 cursor-pointer transition-colors",
-                    isDragging ? "border-orange bg-orange/5" : "border-border bg-secondary hover:border-orange/50",
-                    uploadState === "done" && "border-green-500/50 bg-green-50",
+                    "flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed h-32 cursor-pointer transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2",
+                    isDragging ? "border-orange bg-peach-soft/50" : "border-border bg-secondary hover:border-orange/50",
+                    uploadState === "done" && "border-success/40 bg-success/5",
+                    uploadState === "error" && "border-destructive/40 bg-destructive/5",
                   )}
                 >
                   <input id="cv-b3-input" type="file" accept="application/pdf" className="hidden"
                     onChange={e => e.target.files?.[0] && handleCvFile(e.target.files[0])} />
                   {uploadState === "done" ? (
                     <>
-                      <FileText className="h-5 w-5 text-green-600" />
-                      <span className="text-xs text-green-700 font-medium">{uploadedFilename}</span>
+                      <FileText className="h-5 w-5 text-success" />
+                      <span className="text-xs text-success font-medium">{uploadedFilename}</span>
                     </>
                   ) : uploadState === "uploading" ? (
                     <span className="text-xs text-muted-foreground">Extraction en cours…</span>
+                  ) : uploadState === "error" ? (
+                    <>
+                      <UploadCloud className="h-5 w-5 text-destructive" />
+                      <span className="text-xs text-destructive font-medium">Échec — déposez un PDF valide</span>
+                    </>
                   ) : (
                     <>
                       <UploadCloud className="h-5 w-5 text-muted-foreground" />
@@ -398,30 +423,30 @@ export default function OrientationPage() {
                   value={form.cv_b3}
                   onChange={e => setForm(f => ({ ...f, cv_b3: e.target.value }))}
                   placeholder="… ou collez votre CV / vos expériences"
-                  className="text-xs resize-none min-h-[112px] bg-background"
+                  className="text-sm resize-none min-h-32 bg-background"
                 />
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">2</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">2</span>
                 Quelles sont les contraintes que vous souhaitez prendre en compte ?
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">Optionnel</p>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-xs text-muted-foreground mt-1 mb-3">Optionnel</p>
+              <div className="flex flex-wrap gap-2">
                 {CONTRAINTES_B3_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.contraintes_b3.includes(opt)} onClick={() => toggleMulti("contraintes_b3", opt)}>{opt}</Chip>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-display text-sm font-semibold text-navy flex items-center">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-orange text-white text-[10px] font-mono font-bold mr-2 shrink-0">3</span>
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-soft">
+              <p className="font-display text-base font-semibold text-navy flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange text-white text-xs font-mono font-bold mr-2.5 shrink-0">3</span>
                 Êtes-vous déjà accompagné(e) par une structure spécialisée ?
               </p>
-              <div className="mt-3 flex flex-col gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {ACCOMPAGNEMENT_OPTIONS.map(opt => (
                   <Chip key={opt} active={form.accompagnement === opt} onClick={() => setForm(f => ({ ...f, accompagnement: opt }))}>{opt}</Chip>
                 ))}
@@ -433,25 +458,28 @@ export default function OrientationPage() {
         {/* ── Final step — consent ── */}
         {isLastStep && (
           <div className="space-y-5">
-            <div className="rounded-xl overflow-hidden border border-border flex">
-              <div className="w-1.5 bg-orange shrink-0" />
-              <div className="bg-peach-soft px-4 py-3 flex-1">
-                <p className="font-mono text-[10px] font-bold tracking-[0.15em] uppercase text-orange mb-1">Confidentialité</p>
-                <p className="text-xs text-navy/70 leading-relaxed">
+            <div className="flex overflow-hidden rounded-2xl border border-orange/20">
+              <div className="w-1.5 bg-orange shrink-0" aria-hidden="true" />
+              <div className="bg-peach-soft px-5 py-4 flex-1">
+                <p className="eyebrow text-orange-dark mb-1.5">Confidentialité</p>
+                <p className="text-sm text-navy/80 leading-relaxed">
                   Vos réponses sont utilisées uniquement pour produire cette analyse et vous faire des suggestions.
                   Elles ne sont pas partagées avec des tiers ni utilisées pour entraîner des modèles d&apos;IA.
-                  Vous pouvez supprimer votre analyse à tout moment.
+                  Vous pouvez supprimer votre analyse à tout moment. Pour en savoir plus, consultez notre{" "}
+                  <Link href="/confidentialite" className="link-underline font-medium text-orange-dark">
+                    politique de confidentialité
+                  </Link>.
                 </p>
               </div>
             </div>
-            <label className="flex items-start gap-3 cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-border bg-card p-4 has-[:checked]:border-orange/40 has-[:checked]:bg-peach-soft/30 transition-colors">
               <input
                 type="checkbox"
                 checked={form.consent}
                 onChange={e => setForm(f => ({ ...f, consent: e.target.checked }))}
-                className="mt-1 h-4 w-4 accent-orange"
+                className="mt-0.5 h-4 w-4 accent-orange"
               />
-              <span className="text-sm">
+              <span className="text-sm text-navy">
                 Je confirme avoir lu et accepté la note de confidentialité.
               </span>
             </label>
@@ -461,32 +489,35 @@ export default function OrientationPage() {
         <Separator className="my-8" />
 
         {/* ── Navigation ── */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={back}
             disabled={step === 0 || submitting}
           >
-            <ArrowLeft className="h-4 w-4 mr-1.5" /> retour
+            <ArrowLeft className="size-4" /> Retour
           </Button>
           {isLastStep ? (
             <Button
               type="button"
+              variant="navy"
+              size="lg"
               onClick={submit}
               disabled={!canNext() || submitting}
             >
               {submitting ? "Lancement…" : "Lancer mon analyse"}
-              <ArrowRight className="h-4 w-4 ml-1.5" />
+              <ArrowRight className="size-4" />
             </Button>
           ) : (
             <Button
               type="button"
+              variant="navy"
+              size="lg"
               onClick={next}
               disabled={!canNext()}
             >
-              continuer <ArrowRight className="h-4 w-4 ml-1.5" />
+              Continuer <ArrowRight className="size-4" />
             </Button>
           )}
         </div>

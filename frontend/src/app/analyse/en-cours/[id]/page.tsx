@@ -3,19 +3,18 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
 import { Logo, InfinityMark } from "@/components/brand/Logo"
-import { CheckCircle2, Circle, Lock, ArrowLeft } from "lucide-react"
+import { CheckCircle2, Circle, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import type { Analysis } from "@/types"
 
-const STEPS: { label: string; t: number; locked?: boolean }[] = [
-  { label: "Lecture du parcours…",          t: 0     },
-  { label: "Identification des forces…",    t: 8000  },
-  { label: "Analyse des écarts…",           t: 16000 },
-  { label: "Rédaction des préconisations…", t: 24000 },
-  { label: "Réécriture du CV…",             t: 32000 },
-  { label: "Relecture en 3 passes…",        t: 40000 },
+const STEPS: { label: string; t: number }[] = [
+  { label: "Lecture du CV",          t: 0     },
+  { label: "Analyse du profil",      t: 12000 },
+  { label: "Rédaction du rapport",   t: 24000 },
+  { label: "Finalisation",           t: 36000 },
 ]
 const ESTIMATED_TOTAL = 48000
 const POLL_INTERVAL_MS = 2000
@@ -99,86 +98,91 @@ export default function EnCoursPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
-      {/* ── Ambient brand gradient ── */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -right-24 h-[480px] w-[480px] rounded-full bg-orange/12 blur-[120px]" />
-        <div className="absolute -bottom-32 -left-32 h-[420px] w-[420px] rounded-full bg-peach/22 blur-[120px]" />
-      </div>
-
-      <div className="w-full max-w-[520px] animate-fade-up">
-        <div className="flex justify-center mb-7">
-          <Logo className="text-2xl" />
+    <div className="bg-mesh relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-12 sm:px-8">
+      <div className="w-full max-w-[540px] animate-fade-up">
+        <div className="mb-8 flex justify-center">
+          <Logo className="text-2xl" priority />
         </div>
 
-        <div className="text-center mb-8">
-          <p className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.15em] uppercase text-orange mb-3">
-            <InfinityMark animate={!error} className="h-[1.1em]" />
-            EN COURS · ~45 SEC
+        <div className="mb-8 text-center">
+          <p className="eyebrow mb-4 inline-flex items-center gap-2 text-orange-dark">
+            <InfinityMark animate={!error} className="h-[1.2em]" />
+            {error ? "Analyse interrompue" : "Analyse en cours · ~45 s"}
           </p>
-          <h1 className="text-3xl font-bold tracking-tight text-navy">Analyse en cours…</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            neoori lit votre profil et prépare votre rapport personnalisé.
+          <h1 className="font-display text-3xl font-bold tracking-tight text-navy">
+            {error ? "L’analyse n’a pas abouti" : "Analyse en cours"}
+          </h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+            {error
+              ? "Vous pouvez relancer une analyse, vos informations sont conservées."
+              : "Nous lisons votre profil et préparons votre rapport."}
           </p>
         </div>
 
         {error ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-center">
-            <p className="text-sm text-destructive mb-4">{error}</p>
-            <button onClick={() => router.push(`/analyse/nouveau`)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange hover:text-orange-dark transition-colors">
-              <ArrowLeft className="h-3.5 w-3.5" />
+          <div className="rounded-2xl border border-destructive/30 bg-card p-6 text-center shadow-card sm:p-8">
+            <p className="mb-5 text-sm text-destructive">{error}</p>
+            <Button
+              variant="navy"
+              size="lg"
+              onClick={() => router.push(`/analyse/nouveau`)}
+            >
+              <ArrowLeft className="size-4" />
               Nouvelle analyse
-            </button>
+            </Button>
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card p-6">
-            <div className="space-y-0 mb-6">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8">
+            <ol className="mb-7 space-y-0">
               {STEPS.map((step, i) => {
                 const state = done ? "done" : stepState(i)
                 return (
-                  <div key={step.label}
-                    className="flex items-center gap-3 py-2.5 border-b border-dashed border-border last:border-0">
+                  <li
+                    key={step.label}
+                    className="flex items-center gap-3 border-b border-dashed border-border py-3 last:border-0"
+                  >
                     <span className="shrink-0">
                       {state === "done" ? (
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                      ) : step.locked ? (
-                        <Lock className="h-4 w-4 text-muted-foreground/40" />
+                        <CheckCircle2 className="size-5 text-success" />
                       ) : (
-                        <Circle className={cn("h-4 w-4", state === "active" ? "text-orange" : "text-muted-foreground/40")} />
+                        <Circle
+                          className={cn(
+                            "size-5",
+                            state === "active" ? "animate-pulse text-orange" : "text-muted-foreground/35",
+                          )}
+                        />
                       )}
                     </span>
-                    <span className={cn(
-                      "text-sm flex-1",
-                      state === "active" && "font-medium text-navy italic",
-                      state === "done" && "text-navy",
-                      (state === "wait" || step.locked) && "text-muted-foreground/50",
-                    )}>
+                    <span
+                      className={cn(
+                        "flex-1 text-sm",
+                        state === "active" && "font-medium text-navy",
+                        state === "done" && "text-navy",
+                        state === "wait" && "text-muted-foreground/55",
+                      )}
+                    >
                       {step.label}
                     </span>
-                    {step.locked && (
-                      <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                        payant
-                      </span>
-                    )}
-                    {state === "active" && !step.locked && (
-                      <span className="text-[10px] font-mono text-orange tabular-nums">
+                    {state === "active" && (
+                      <span className="font-mono text-[11px] tabular-nums text-orange-dark">
                         {((Date.now() - startRef.current) / 1000).toFixed(1)} s
                       </span>
                     )}
-                  </div>
+                  </li>
                 )
               })}
-            </div>
+            </ol>
 
             <div>
-              <div className="flex justify-between text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5">
-                <span>PROGRESSION</span>
-                <span className="text-orange tabular-nums">{Math.round(progress)} %</span>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="eyebrow text-muted-foreground">Progression</span>
+                <span className="font-mono text-xs tabular-nums text-orange-dark">
+                  {Math.round(progress)} %
+                </span>
               </div>
               <Progress value={progress} className="h-2" />
-              <p className="text-[11px] text-center text-muted-foreground mt-3">
-                vous pouvez fermer cet onglet — on vous prévient par e-mail
+              <p className="mt-4 text-center text-[12px] leading-relaxed text-muted-foreground">
+                Laissez cet onglet ouvert, le rapport s’affiche automatiquement.
               </p>
             </div>
           </div>

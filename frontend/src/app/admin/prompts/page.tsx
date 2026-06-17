@@ -3,13 +3,29 @@
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import { api } from "@/lib/api"
+import { fmtDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import {
+  ChevronDown,
+  History,
+  Info,
+  RotateCcw,
+  ShieldCheck,
+  SquarePen,
+} from "lucide-react"
 import type { PromptVersion } from "@/types"
 
 type Path = "A" | "B"
+
+const PATH_HELP: Record<Path, string> = {
+  A: "Chemin A — analyse de parcours et de CV.",
+  B: "Chemin B — orientation et exploration de pistes.",
+}
 
 export default function PromptsPage() {
   const [versions, setVersions] = useState<PromptVersion[]>([])
@@ -20,6 +36,12 @@ export default function PromptsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rollingBackId, setRollingBackId] = useState<string | null>(null)
+
+  // Read-only preview of a past version's prompt text (expand/collapse).
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const [previewText, setPreviewText] = useState<Record<string, string>>({})
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const dirty = text !== savedText
 
@@ -37,6 +59,8 @@ export default function PromptsPage() {
 
   useEffect(() => {
     setLoading(true)
+    setPreviewId(null)
+    setPreviewError(null)
     loadData(path)
       .catch(err => setError(err?.message ?? "Erreur de chargement"))
       .finally(() => setLoading(false))
@@ -71,6 +95,7 @@ export default function PromptsPage() {
   }
 
   const rollback = async (id: string) => {
+    if (!window.confirm("Réactiver cette version comme prompt actif ? La version courante sera remplacée.")) return
     setRollingBackId(id)
     try {
       setError(null)
@@ -83,131 +108,266 @@ export default function PromptsPage() {
     }
   }
 
+  // Toggle the read-only preview; fetch the full text on first open.
+  const togglePreview = async (v: PromptVersion) => {
+    setPreviewError(null)
+    if (previewId === v.id) {
+      setPreviewId(null)
+      return
+    }
+    setPreviewId(v.id)
+    if (previewText[v.id] !== undefined) return
+    setPreviewLoadingId(v.id)
+    try {
+      const res = await api.get<{ prompt: PromptVersion }>(`/prompts/${v.id}`)
+      setPreviewText(prev => ({ ...prev, [v.id]: res.prompt?.system_prompt_text ?? "" }))
+    } catch (err: unknown) {
+      setPreviewError(err instanceof Error ? err.message : "Erreur lors du chargement de l’aperçu")
+      setPreviewId(null)
+    } finally {
+      setPreviewLoadingId(null)
+    }
+  }
+
   const activeVersion = versions.find(v => v.is_active && (v.path ?? "A") === path)
   const visibleVersions = versions.filter(v => (v.path ?? "A") === path)
 
   return (
     <>
-    <div className="mb-5">
-      <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
-      <h1 className="font-display font-bold text-2xl text-navy mt-1">prompts système</h1>
-    </div>
-    <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-      {/* Editor */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h2 id="prompt-editor-label" className="font-display font-bold text-sm text-navy">prompt système</h2>
-            <p className="text-[10px] text-muted-foreground">
-              éditable sans redéploiement · versionné · rollback possible
-            </p>
-            <div className="flex gap-1 mt-2">
+      <div className="mb-6">
+        <p className="eyebrow text-orange-dark">Administration</p>
+        <h1 className="font-display font-bold text-2xl sm:text-3xl text-navy mt-1">
+          Prompts système
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
+          Modifiez le prompt envoyé au modèle, sans redéploiement. Chaque publication crée une
+          nouvelle version conservée dans l’historique.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.5fr_1fr]">
+        {/* Editor */}
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <SquarePen className="size-4 text-orange" aria-hidden />
+                <h2 id="prompt-editor-label" className="font-display font-semibold text-base text-navy">
+                  Éditeur du prompt
+                </h2>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Éditable sans redéploiement · versionné · rollback possible
+              </p>
+            </div>
+            {activeVersion ? (
+              <Badge variant="peach" className="font-mono">
+                {activeVersion.version_label} · actif
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="font-mono">
+                aucune version active
+              </Badge>
+            )}
+          </div>
+
+          {/* Chemin A/B toggle */}
+          <div className="mt-4">
+            <span className="eyebrow text-navy-500">Chemin</span>
+            <div
+              role="group"
+              aria-label="Sélection du chemin d’analyse"
+              className="flex flex-wrap gap-2 mt-2"
+            >
               {(["A", "B"] as const).map(p => (
                 <button
                   key={p}
                   type="button"
+                  aria-pressed={path === p}
                   onClick={() => setPath(p)}
                   className={cn(
-                    "px-2.5 py-1 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-colors",
+                    "px-3 py-1.5 rounded-full border text-xs font-mono uppercase tracking-widest transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                     path === p
-                      ? "bg-orange border-orange text-white"
+                      ? "bg-navy border-navy text-white"
                       : "bg-background border-border text-muted-foreground hover:border-orange/50 hover:text-orange",
                   )}
                 >
-                  chemin {p}
+                  Chemin {p}
                 </button>
               ))}
             </div>
+            <div className="mt-2.5 flex items-start gap-2 rounded-lg bg-peach-soft/60 px-3 py-2 text-xs text-navy-700">
+              <Info className="size-3.5 mt-px shrink-0 text-orange-dark" aria-hidden />
+              <p>
+                <span className="font-medium">Chemin A</span> alimente l’analyse de parcours et de CV.{" "}
+                <span className="font-medium">Chemin B</span> alimente l’orientation et l’exploration de
+                pistes. Vous éditez ici le prompt du <span className="font-medium">chemin {path}</span> :{" "}
+                {PATH_HELP[path]}
+              </p>
+            </div>
           </div>
-          {activeVersion && (
-            <Badge className="bg-orange text-white text-[10px] font-mono">
-              {activeVersion.version_label} · ACTIF
-            </Badge>
+
+          <div className="mt-4">
+            {loading ? (
+              <Skeleton className="h-80" />
+            ) : (
+              <Textarea
+                id="prompt-editor"
+                aria-labelledby="prompt-editor-label"
+                value={text}
+                onChange={e => setText(e.target.value)}
+                className="min-h-[340px] font-mono text-xs leading-relaxed bg-secondary resize-y"
+                placeholder="Collez ici le texte complet du system prompt…"
+              />
+            )}
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mt-4"
+            >
+              {error}
+            </div>
           )}
-        </div>
 
-        {loading ? (
-          <Skeleton className="h-72" />
-        ) : (
-          <Textarea
-            id="prompt-editor"
-            aria-labelledby="prompt-editor-label"
-            value={text}
-            onChange={e => setText(e.target.value)}
-            className="min-h-[320px] font-mono text-xs bg-secondary resize-none"
-            placeholder="Collez ici le texte complet du system prompt…"
-          />
-        )}
-
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mt-3">
-            {error}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button
+              variant="navy"
+              size="sm"
+              disabled={!dirty || saving || loading}
+              onClick={publish}
+            >
+              {saving ? "Publication…" : "Publier la nouvelle version"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!dirty || saving}
+              onClick={() => setText(savedText)}
+            >
+              Annuler les modifications
+            </Button>
+            {!dirty && !loading && (
+              <span className="text-xs text-muted-foreground">
+                Modifiez le texte pour activer la publication.
+              </span>
+            )}
           </div>
-        )}
 
-        <div className="flex gap-2 mt-3 items-center">
-          <Button
-            variant="navy"
-            size="sm"
-            className="text-xs h-7"
-            disabled={!dirty || saving || loading}
-            onClick={publish}
-          >
-            {saving ? "publication…" : "publier nouvelle version"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7"
-            disabled={!dirty}
-            onClick={() => setText(savedText)}
-          >
-            annuler
-          </Button>
-          <span className="text-[10px] text-muted-foreground ml-auto">
-            traçabilité B2G : chaque analyse stocke la version utilisée
-          </span>
-        </div>
-      </div>
+          <Separator className="my-4" />
 
-      {/* Version history */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <h2 className="font-display font-bold text-sm text-navy mb-3">historique des versions</h2>
-        {loading ? (
-          Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-10 mb-2" />)
-        ) : visibleVersions.length === 0 ? (
-          <p className="text-xs text-muted-foreground">aucune version</p>
-        ) : (
-          <div>
-            {visibleVersions.map(v => (
-              <div
-                key={v.id}
-                className="flex items-center gap-2 py-2 border-b border-dashed border-border last:border-0"
-              >
-                <span className="font-mono text-xs font-medium w-12 text-navy">{v.version_label}</span>
-                {v.is_active && (
-                  <span className="inline-flex items-center rounded-md bg-peach-soft px-1.5 py-0.5 text-[10px] font-mono text-orange-dark">actif</span>
-                )}
-                <span className="text-[10px] text-muted-foreground flex-1">
-                  {v.author ?? "—"} · {new Date(v.created_at).toLocaleDateString("fr-FR")}
-                </span>
-                {!v.is_active && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-[10px] h-6 px-2"
-                    disabled={rollingBackId !== null}
-                    onClick={() => rollback(v.id)}
-                  >
-                    {rollingBackId === v.id ? "…" : "rollback"}
-                  </Button>
-                )}
-              </div>
-            ))}
+          <p className="flex items-start gap-2 text-xs text-muted-foreground">
+            <ShieldCheck className="size-3.5 mt-px shrink-0 text-navy-500" aria-hidden />
+            <span>
+              Traçabilité B2G : chaque analyse enregistre la version de prompt utilisée.
+            </span>
+          </p>
+        </Card>
+
+        {/* Version history */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <History className="size-4 text-orange" aria-hidden />
+            <h2 className="font-display font-semibold text-base text-navy">
+              Historique des versions
+            </h2>
           </div>
-        )}
+          <p className="text-xs text-muted-foreground mt-1">
+            Dépliez une version pour la prévisualiser en lecture seule avant un rollback.
+          </p>
+
+          {previewError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive mt-3"
+            >
+              {previewError}
+            </div>
+          )}
+
+          <div className="mt-4">
+            {loading ? (
+              Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-12 mb-2" />)
+            ) : visibleVersions.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">
+                Aucune version pour le chemin {path}.
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {visibleVersions.map(v => {
+                  const expanded = previewId === v.id
+                  return (
+                    <li
+                      key={v.id}
+                      className="border-b border-dashed border-border py-3 last:border-0"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-medium text-navy">
+                          {v.version_label}
+                        </span>
+                        {v.is_active && (
+                          <Badge variant="peach" className="font-mono">
+                            actif
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground flex-1 min-w-[8rem]">
+                          {v.author ?? "—"} · {fmtDate(v.created_at)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          aria-expanded={expanded}
+                          aria-controls={`preview-${v.id}`}
+                          onClick={() => togglePreview(v)}
+                        >
+                          {expanded ? "Masquer" : "Aperçu"}
+                          <ChevronDown
+                            className={cn(
+                              "size-3 transition-transform",
+                              expanded && "rotate-180",
+                            )}
+                            aria-hidden
+                          />
+                        </Button>
+                        {!v.is_active && (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled={rollingBackId !== null}
+                            onClick={() => rollback(v.id)}
+                          >
+                            <RotateCcw className="size-3" aria-hidden />
+                            {rollingBackId === v.id ? "…" : "Rollback"}
+                          </Button>
+                        )}
+                      </div>
+
+                      {expanded && (
+                        <div id={`preview-${v.id}`} className="mt-3">
+                          {previewLoadingId === v.id ? (
+                            <Skeleton className="h-32" />
+                          ) : (
+                            <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-secondary px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                              {previewText[v.id]?.trim()
+                                ? previewText[v.id]
+                                : "(version vide)"}
+                            </pre>
+                          )}
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            Lecture seule. Utilisez « Rollback » pour réactiver cette version.
+                          </p>
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </Card>
       </div>
-    </div>
     </>
   )
 }

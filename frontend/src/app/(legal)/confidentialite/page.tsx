@@ -64,7 +64,7 @@ export default function ConfidentialitePage() {
       <p>
         Vous disposez des droits d&apos;accès, de rectification, d&apos;effacement, de limitation,
         d&apos;opposition et de portabilité (art. 15 à 22 RGPD). Exercez-les auprès de
-        [À COMPLÉTER : email RGPD]. Vous pouvez saisir la CNIL (cnil.fr) à tout moment.
+        [À COMPLÉTER : email RGPD]. Vous pouvez saisir la CNIL (<a href="https://www.cnil.fr" target="_blank" rel="noopener noreferrer">cnil.fr</a>) à tout moment.
       </p>
 
       <h2>8. Cookies</h2>

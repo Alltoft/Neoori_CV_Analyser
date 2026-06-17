@@ -1,12 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StatCard } from "@/components/ui/stat-card"
 import { api, ApiError } from "@/lib/api"
+import { fmtDate, fmtInt } from "@/lib/format"
 import type { User } from "@/types"
+import { Ban, Check, Copy, KeyRound, Plus, TicketCheck, Users } from "lucide-react"
 
 interface CounselorCode {
   id: string
@@ -48,13 +52,17 @@ export default function ConseillersPage() {
       .finally(() => setLoadingCodes(false))
   }, [])
 
-  const handleCopyCode = useCallback((code: string, id: string) => {
-    navigator.clipboard.writeText(code)
-      .then(() => {
-        setCopiedId(id)
-        setTimeout(() => setCopiedId(null), 2000)
-      })
-      .catch(() => {})
+  const activeCodes = useMemo(() => codes.filter(c => c.is_active).length, [codes])
+
+  const handleCopyCode = useCallback(async (code: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      // Surface clipboard failures instead of swallowing them
+      setErrorCodes("Impossible de copier le code dans le presse-papiers.")
+    }
   }, [])
 
   const handleCreateCode = useCallback(async () => {
@@ -76,6 +84,7 @@ export default function ConseillersPage() {
   }, [newCodeLabel])
 
   const handleDeactivateCode = useCallback(async (id: string) => {
+    if (!window.confirm("Désactiver ce code d’accès ? Il ne pourra plus être utilisé.")) return
     setDeletingId(id)
     try {
       await api.delete(`/admin/counselor-codes/${id}`)
@@ -91,179 +100,249 @@ export default function ConseillersPage() {
 
   return (
     <>
-    <div className="mb-5">
-      <p className="font-mono text-[11px] tracking-[0.15em] uppercase text-orange">Administration</p>
-      <h1 className="font-display font-bold text-2xl text-navy mt-1">conseillers</h1>
-    </div>
-    <div className="grid grid-cols-2 gap-6">
-      {/* Left panel: Counselors */}
-      <div>
-        {errorCounselors && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mb-4">
-            {errorCounselors}
-          </div>
-        )}
+      {/* Page header */}
+      <div className="mb-6">
+        <p className="eyebrow text-orange-dark">Administration</p>
+        <h1 className="font-display font-bold text-2xl sm:text-3xl text-navy mt-1">
+          Conseillers
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Comptes conseillers et codes d’accès pour les bénéficiaires Cap Emploi / France Travail.
+        </p>
+      </div>
 
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-display font-bold text-sm text-navy">conseillers</h2>
-            <span className="text-[10px] text-muted-foreground">
-              {counselors.length} conseiller{counselors.length !== 1 ? "s" : ""}
+      {/* Summary tiles */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
+        <StatCard
+          label="Conseillers"
+          value={loadingCounselors ? "—" : fmtInt(counselors.length)}
+          hint="Comptes actifs"
+          icon={<Users className="size-4" />}
+        />
+        <StatCard
+          label="Codes d’accès"
+          value={loadingCodes ? "—" : fmtInt(codes.length)}
+          hint="Tous statuts"
+          icon={<TicketCheck className="size-4" />}
+        />
+        <StatCard
+          label="Codes actifs"
+          value={loadingCodes ? "—" : fmtInt(activeCodes)}
+          hint="Utilisables"
+          icon={<KeyRound className="size-4" />}
+          accent
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Left panel: Counselors */}
+        <section className="rounded-2xl bg-card ring-1 ring-foreground/10 shadow-soft">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div className="flex items-center gap-2">
+              <Users className="size-4 text-orange" />
+              <h2 className="font-display font-semibold text-base text-navy">
+                Comptes conseillers
+              </h2>
+            </div>
+            <span className="eyebrow text-muted-foreground">
+              {counselors.length} compte{counselors.length !== 1 ? "s" : ""}
             </span>
           </div>
 
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-navy/20 text-navy text-[10px] font-mono uppercase tracking-[0.1em]">
-                <th className="text-left pb-2 pr-4 font-normal">email</th>
-                <th className="text-left pb-2 font-normal">créé le</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingCounselors
-                ? Array.from({ length: 4 }, (_, i) => (
-                    <tr key={i} className="border-b border-dashed border-border">
-                      <td colSpan={2} className="py-2">
-                        <Skeleton className="h-5" />
-                      </td>
-                    </tr>
-                  ))
-                : counselors.map(c => (
-                    <tr key={c.id} className="border-b border-dashed border-border last:border-0">
-                      <td className="py-2 pr-4 text-navy">{c.email}</td>
-                      <td className="py-2 text-[10px] text-muted-foreground">
-                        {new Date(c.created_at).toLocaleDateString("fr-FR")}
-                      </td>
-                    </tr>
-                  ))}
-            </tbody>
-          </table>
+          <div className="px-5 py-4">
+            {errorCounselors && (
+              <div
+                role="alert"
+                className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              >
+                {errorCounselors}
+              </div>
+            )}
 
-          {!loadingCounselors && counselors.length === 0 && (
-            <p className="text-center text-xs text-muted-foreground py-8">
-              aucun conseiller inscrit
-            </p>
-          )}
-        </div>
-      </div>
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Email</th>
+                    <th className="eyebrow pb-2 font-medium text-muted-foreground">Créé le</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingCounselors
+                    ? Array.from({ length: 4 }, (_, i) => (
+                        <tr key={i} className="border-b border-border/60">
+                          <td colSpan={2} className="py-2.5">
+                            <Skeleton className="h-5" />
+                          </td>
+                        </tr>
+                      ))
+                    : counselors.map(c => (
+                        <tr key={c.id} className="border-b border-border/60 last:border-0">
+                          <td className="py-2.5 pr-4 text-navy">{c.email}</td>
+                          <td className="py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                            {fmtDate(c.created_at)}
+                          </td>
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </div>
 
-      {/* Right panel: Code manager */}
-      <div>
-        {errorCodes && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive mb-4">
-            {errorCodes}
+            {!loadingCounselors && counselors.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Aucun conseiller inscrit pour le moment.
+              </p>
+            )}
           </div>
-        )}
+        </section>
 
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-display font-bold text-sm text-navy">codes d'accès conseiller</h2>
-            <span className="text-[10px] text-muted-foreground">
+        {/* Right panel: Code manager */}
+        <section className="rounded-2xl bg-card ring-1 ring-foreground/10 shadow-soft">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div className="flex items-center gap-2">
+              <KeyRound className="size-4 text-orange" />
+              <h2 className="font-display font-semibold text-base text-navy">
+                Codes d’accès conseiller
+              </h2>
+            </div>
+            <span className="eyebrow text-muted-foreground">
               {codes.length} code{codes.length !== 1 ? "s" : ""}
             </span>
           </div>
 
-          {/* Code generation form */}
-          <div className="mb-4 pb-4 border-b border-border flex gap-2">
-            <Input
-              type="text"
-              placeholder="label du code..."
-              value={newCodeLabel}
-              onChange={e => setNewCodeLabel(e.target.value)}
-              disabled={creatingCode}
-              className="text-xs h-8"
-            />
-            <Button
-              variant="navy"
-              size="sm"
-              onClick={handleCreateCode}
-              disabled={creatingCode || !newCodeLabel.trim()}
-              className="text-xs h-8"
+          <div className="px-5 py-4">
+            {errorCodes && (
+              <div
+                role="alert"
+                className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              >
+                {errorCodes}
+              </div>
+            )}
+
+            {/* Code generation form */}
+            <form
+              onSubmit={e => {
+                e.preventDefault()
+                handleCreateCode()
+              }}
+              className="mb-5 border-b border-border pb-5"
             >
-              {creatingCode ? "..." : "+ générer"}
-            </Button>
+              <Label htmlFor="code-label" className="eyebrow text-muted-foreground">
+                Nouveau code
+              </Label>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="code-label"
+                  type="text"
+                  placeholder="Libellé du code…"
+                  value={newCodeLabel}
+                  onChange={e => setNewCodeLabel(e.target.value)}
+                  disabled={creatingCode}
+                  className="h-10"
+                />
+                <Button
+                  type="submit"
+                  variant="navy"
+                  size="lg"
+                  disabled={creatingCode || !newCodeLabel.trim()}
+                  className="shrink-0"
+                >
+                  <Plus className="size-4" />
+                  {creatingCode ? "Génération…" : "Générer"}
+                </Button>
+              </div>
+            </form>
+
+            {/* Codes table */}
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Code</th>
+                    <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Libellé</th>
+                    <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Statut</th>
+                    <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Utilisations</th>
+                    <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Créé le</th>
+                    <th className="eyebrow pb-2 text-right font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingCodes
+                    ? Array.from({ length: 4 }, (_, i) => (
+                        <tr key={i} className="border-b border-border/60">
+                          <td colSpan={6} className="py-2.5">
+                            <Skeleton className="h-5" />
+                          </td>
+                        </tr>
+                      ))
+                    : codes.map(c => (
+                        <tr key={c.id} className="border-b border-border/60 last:border-0 align-middle">
+                          <td className="py-3 pr-4">
+                            <span className="select-all font-mono text-sm font-medium text-navy">
+                              {c.code}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-sm text-navy">{c.label}</td>
+                          <td className="py-3 pr-4">
+                            <Badge variant={c.is_active ? "success" : "secondary"}>
+                              {c.is_active ? "Actif" : "Inactif"}
+                            </Badge>
+                          </td>
+                          <td className="py-3 pr-4 font-mono text-xs text-muted-foreground tabular-nums">
+                            {fmtInt(c.uses_count)}
+                          </td>
+                          <td className="py-3 pr-4 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                            {fmtDate(c.created_at)}
+                          </td>
+                          <td className="py-3">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCopyCode(c.code, c.id)}
+                                disabled={deletingId === c.id}
+                              >
+                                {copiedId === c.id ? (
+                                  <>
+                                    <Check className="size-3.5 text-success" />
+                                    Copié
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="size-3.5" />
+                                    Copier
+                                  </>
+                                )}
+                              </Button>
+                              {c.is_active && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDeactivateCode(c.id)}
+                                  disabled={creatingCode || deletingId === c.id}
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <Ban className="size-3.5" />
+                                  {deletingId === c.id ? "…" : "Désactiver"}
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </div>
+
+            {!loadingCodes && codes.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Aucun code généré pour le moment.
+              </p>
+            )}
           </div>
-
-          {/* Codes table */}
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-navy/20 text-navy text-[10px] font-mono uppercase tracking-[0.1em]">
-                <th className="text-left pb-2 pr-4 font-normal">code</th>
-                <th className="text-left pb-2 pr-4 font-normal">label</th>
-                <th className="text-left pb-2 pr-4 font-normal">statut</th>
-                <th className="text-left pb-2 pr-4 font-normal">uses</th>
-                <th className="text-left pb-2 pr-4 font-normal">créé le</th>
-                <th className="text-left pb-2 font-normal">actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingCodes
-                ? Array.from({ length: 4 }, (_, i) => (
-                    <tr key={i} className="border-b border-dashed border-border">
-                      <td colSpan={6} className="py-2">
-                        <Skeleton className="h-5" />
-                      </td>
-                    </tr>
-                  ))
-                : codes.map(c => (
-                    <tr key={c.id} className="border-b border-dashed border-border last:border-0">
-                      <td className="py-2 pr-4 font-mono text-[9px] text-muted-foreground">
-                        {c.code}
-                      </td>
-                      <td className="py-2 pr-4 text-[10px] text-navy">{c.label}</td>
-                      <td className="py-2 pr-4">
-                        <Badge
-                          variant="outline"
-                          className={`text-[9px] px-1.5 ${
-                            c.is_active
-                              ? "bg-success/10 border-success/30 text-success"
-                              : "bg-secondary text-muted-foreground border-transparent"
-                          }`}
-                        >
-                          {c.is_active ? "actif" : "inactif"}
-                        </Badge>
-                      </td>
-                      <td className="py-2 pr-4 text-[10px] text-muted-foreground">
-                        {c.uses_count}
-                      </td>
-                      <td className="py-2 pr-4 text-[10px] text-muted-foreground">
-                        {new Date(c.created_at).toLocaleDateString("fr-FR")}
-                      </td>
-                      <td className="py-2 flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleCopyCode(c.code, c.id)}
-                          disabled={deletingId === c.id}
-                          className="text-[9px] h-6 px-2"
-                        >
-                          {copiedId === c.id ? "copié ✓" : "copier"}
-                        </Button>
-                        {c.is_active && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDeactivateCode(c.id)}
-                            disabled={creatingCode || deletingId === c.id}
-                            className="text-[9px] h-6 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          >
-                            {deletingId === c.id ? "..." : "désactiver"}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-            </tbody>
-          </table>
-
-          {!loadingCodes && codes.length === 0 && (
-            <p className="text-center text-xs text-muted-foreground py-8">
-              aucun code généré
-            </p>
-          )}
-        </div>
+        </section>
       </div>
-    </div>
     </>
   )
 }

@@ -7,7 +7,7 @@
 @theme inline {
   /* ── Typography (vars set by next/font in layout.tsx) ── */
   --font-sans:    var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-inter), ui-sans-serif, sans-serif;
   --font-mono:    var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
 
   /* ── shadcn semantic colors ── */
@@ -34,6 +34,7 @@
   --color-navy:        var(--navy);
   --color-navy-ink:    var(--navy-ink);
   --color-navy-700:    var(--navy-700);
+  --color-navy-500:    var(--navy-500);
   --color-orange:      var(--orange);
   --color-orange-dark: var(--orange-dark);
   --color-peach:       var(--peach);
@@ -49,46 +50,47 @@
 }
 
 :root {
-  /* ── neoori brand — raw ── */
-  --navy:        #1c3561;
-  --navy-ink:    #16233c;
-  --navy-700:    #142a4d;
-  --orange:      #ea5624;
-  --orange-dark: #cf4a1c;
-  --peach:       #f7ae78;
-  --peach-soft:  #fdecdc;
-  --paper:       #f8f7f4;
+  /* ── neoori brand — raw (synced to neoori.fr) ── */
+  --navy:        #0f1e34;   /* primary ink / deep navy */
+  --navy-ink:    #0f1e34;
+  --navy-700:    #15386d;   /* mid blue */
+  --navy-500:    #1e4a8a;   /* light blue — links / hover */
+  --orange:      #ff7a39;   /* brand accent — marks, icons, ring, highlights */
+  --orange-dark: #c8491a;   /* deep — active states / gradient toward navy */
+  --peach:       #ffbf94;   /* warm peach accent */
+  --peach-soft:  #fff0e3;   /* peach tint surface */
+  --paper:       #fdf7ec;   /* warm cream accent surface */
   --success:     #1f8a5b;
 
   /* ── shadcn semantic ── */
   --background:           #ffffff;
-  --foreground:           #16233c;
+  --foreground:           #0f1e34;
   --card:                 #ffffff;
-  --card-foreground:      #16233c;
+  --card-foreground:      #0f1e34;
   --popover:              #ffffff;
-  --popover-foreground:   #16233c;
-  --primary:              #ea5624;
+  --popover-foreground:   #0f1e34;
+  --primary:              #cf4a19;   /* solid fills w/ white text — 4.5:1 AA on white */
   --primary-foreground:   #ffffff;
-  --secondary:            #f4f2ee;   /* stays LIGHT — used as a fill everywhere */
-  --secondary-foreground: #16233c;
-  --muted:                #f4f2ee;
-  --muted-foreground:     rgba(22, 35, 60, 0.58);
-  --accent:               #f3efe9;
-  --accent-foreground:    #16233c;
-  --destructive:          #b3271b;
-  --border:               rgba(22, 35, 60, 0.12);
-  --input:                rgba(22, 35, 60, 0.16);
-  --ring:                 #ea5624;
+  --secondary:            #f5f1ea;   /* warm light fill */
+  --secondary-foreground: #0f1e34;
+  --muted:                #f3eee6;
+  --muted-foreground:     #5b6577;   /* AA muted body on white */
+  --accent:               #fff0e3;   /* peach-soft */
+  --accent-foreground:    #0f1e34;
+  --destructive:          #cf3a2b;
+  --border:               rgba(15, 30, 52, 0.10);
+  --input:                rgba(15, 30, 52, 0.16);
+  --ring:                 #ff7a39;
   --radius:               0.75rem;
 
-  /* ── legacy report tokens, repurposed to brand ── */
-  --n-ink:     #16233c;
-  --n-ink-2:   rgba(22, 35, 60, 0.58);
-  --n-ink-3:   rgba(22, 35, 60, 0.34);
+  /* ── report tokens ── */
+  --n-ink:     #0f1e34;
+  --n-ink-2:   rgba(15, 30, 52, 0.58);
+  --n-ink-3:   rgba(15, 30, 52, 0.34);
   --n-paper:   #ffffff;
-  --n-paper-2: #f4f2ee;
-  --n-accent:  #ea5624;
-  --n-navy:    #1c3561;
+  --n-paper-2: #f5f1ea;
+  --n-accent:  #ff7a39;
+  --n-navy:    #15386d;
 }
 
 @layer base {
@@ -116,14 +118,67 @@
   background: linear-gradient(135deg, var(--orange) 0%, var(--peach) 100%);
 }
 .text-gradient-brand {
-  background: linear-gradient(120deg, var(--orange) 0%, var(--orange-dark) 60%, var(--navy) 140%);
+  background: linear-gradient(118deg, var(--orange) 0%, var(--orange-dark) 55%, var(--navy) 130%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .ring-brand {
-  box-shadow: 0 0 0 1px rgba(22, 35, 60, 0.08), 0 1px 2px rgba(22, 35, 60, 0.06);
+  box-shadow: 0 0 0 1px rgba(15, 30, 52, 0.08), 0 1px 2px rgba(15, 30, 52, 0.06);
 }
+
+/* ── Surfaces & elevation ── */
+.shadow-soft  { box-shadow: 0 1px 2px rgba(15,30,52,.05), 0 4px 12px -6px rgba(15,30,52,.10); }
+.shadow-card  { box-shadow: 0 1px 2px rgba(15,30,52,.06), 0 12px 28px -16px rgba(15,30,52,.20); }
+.shadow-float { box-shadow: 0 24px 60px -28px rgba(15,30,52,.40), 0 8px 20px -12px rgba(15,30,52,.18); }
+
+/* Warm ambient mesh for hero / CTA bands (light cream) */
+.bg-mesh {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(60% 55% at 12% 8%,  rgba(255,122,57,.14) 0%, transparent 60%),
+    radial-gradient(50% 50% at 92% 0%,  rgba(255,191,148,.30) 0%, transparent 55%),
+    radial-gradient(55% 60% at 88% 92%, rgba(21,56,109,.08) 0%, transparent 60%);
+}
+/* Navy variant for dark bands */
+.bg-mesh-navy {
+  background-color: var(--navy);
+  background-image:
+    radial-gradient(55% 60% at 10% 0%,   rgba(255,122,57,.22) 0%, transparent 55%),
+    radial-gradient(50% 55% at 95% 100%, rgba(30,74,138,.45) 0%, transparent 60%);
+}
+/* Hairline dotted texture */
+.bg-dots {
+  background-image: radial-gradient(rgba(15,30,52,.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Eyebrow label — mono, tracked, uppercase */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  line-height: 1;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+/* Animated underline for inline links */
+.link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size .25s ease;
+}
+.link-underline:hover { background-size: 100% 1.5px; }
+
+/* Scroll-reveal (progressive enhancement — only hides once JS marks <html class="js">) */
+.js .reveal { opacity: 0; transform: translateY(16px); }
+.js .reveal.is-in { animation: neo-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+/* Anchored sections clear the sticky 64px nav */
+:is([id]) { scroll-margin-top: 5.5rem; }
+html { scroll-behavior: smooth; }
 
 /* ── Motion (tasteful micro) ── */
 @keyframes neo-fade-up {
@@ -144,14 +199,14 @@
 
 .animate-fade-up   { animation: neo-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-fade-in   { animation: neo-fade 0.5s ease both; }
-.animate-float     { animation: neo-float 5s ease-in-out infinite; }
+.animate-float     { animation: neo-float 6s ease-in-out infinite; }
 
 .hover-lift {
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .hover-lift:hover {
   transform: translateY(-3px);
-  box-shadow: 0 18px 40px -20px rgba(22, 35, 60, 0.35);
+  box-shadow: 0 18px 40px -20px rgba(15, 30, 52, 0.32);
 }
 
 /* ── A4 report ── */
@@ -164,7 +219,7 @@
   min-height: 900px;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 24px 60px -28px rgba(22, 35, 60, 0.35);
+  box-shadow: 0 24px 60px -28px rgba(15, 30, 52, 0.32);
 }
 .report-rule {
   height: 6px;

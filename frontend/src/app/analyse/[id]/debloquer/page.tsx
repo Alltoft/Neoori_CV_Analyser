@@ -8,14 +8,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
-import { CheckCircle2, Circle } from "lucide-react"
+import { CheckCircle2, Circle, ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react"
 import { api, ApiError } from "@/lib/api"
 import { SECTION_TITLES } from "@/types"
 import type { Analysis } from "@/types"
 
-const FREE  = ["1","2","3","4"]
-const PAID  = ["5","6","7","8","9"]
+const FREE = ["1", "2", "3", "4"]
+const PAID = ["5", "6", "7", "8", "9"]
 
 export default function DebloquerPage() {
   return (
@@ -30,6 +31,9 @@ function DebloquerContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [loadingAnalysis, setLoadingAnalysis] = useState(true)
+
   const [code, setCode] = useState("")
   const [codeState, setCodeState] = useState<"idle" | "checking">("idle")
   const [error, setError] = useState<string | null>(null)
@@ -37,13 +41,21 @@ function DebloquerContent() {
   const [paymentsEnabled, setPaymentsEnabled] = useState<boolean | null>(null)
   const [waiverAccepted, setWaiverAccepted] = useState(false)
   const [payState, setPayState] = useState<"idle" | "redirecting" | "verifying">(
-    searchParams.get("session_id") ? "verifying" : "idle"
+    searchParams.get("session_id") ? "verifying" : "idle",
   )
   const canceled = searchParams.get("canceled") === "1"
 
+  // Guard: know whether this analysis actually needs unlocking.
+  useEffect(() => {
+    api.get<{ analysis: Analysis }>(`/analyses/${id}`)
+      .then((r) => setAnalysis(r.analysis))
+      .catch(() => setAnalysis(null))
+      .finally(() => setLoadingAnalysis(false))
+  }, [id])
+
   useEffect(() => {
     api.get<{ enabled: boolean }>("/payments/config")
-      .then(r => setPaymentsEnabled(r.enabled))
+      .then((r) => setPaymentsEnabled(r.enabled))
       .catch(() => setPaymentsEnabled(false))
   }, [])
 
@@ -53,7 +65,7 @@ function DebloquerContent() {
     if (!sessionId) return
     api.post<{ analysis: Analysis }>("/payments/verify", { session_id: sessionId })
       .then(() => router.replace(`/analyse/en-cours/${id}`))
-      .catch(e => {
+      .catch((e) => {
         setPayState("idle")
         setError(e instanceof ApiError ? e.message : "Vérification du paiement impossible. Contactez-nous si vous avez été débité.")
       })
@@ -62,7 +74,10 @@ function DebloquerContent() {
 
   const redeemCode = async () => {
     setError(null)
-    if (!code.trim()) { setError("Saisissez votre code conseiller."); return }
+    if (!code.trim()) {
+      setError("Saisissez votre code conseiller.")
+      return
+    }
     setCodeState("checking")
     try {
       await api.post(`/analyses/${id}/unlock`, { code })
@@ -76,7 +91,7 @@ function DebloquerContent() {
   const startCheckout = async () => {
     setError(null)
     if (!waiverAccepted) {
-      setError("Veuillez accepter l'exécution immédiate pour continuer (droit de rétractation).")
+      setError("Veuillez accepter l’exécution immédiate pour continuer (droit de rétractation).")
       return
     }
     setPayState("redirecting")
@@ -89,27 +104,64 @@ function DebloquerContent() {
     }
   }
 
+  // ── Verifying (return from Stripe) ──
   if (payState === "verifying") {
     return (
-      <div className="min-h-screen bg-background">
-        <AppBar />
-        <div className="max-w-[480px] mx-auto px-8 py-24 text-center">
-          <p className="font-semibold">Vérification du paiement…</p>
-          <p className="text-sm text-muted-foreground mt-2">Un instant, nous confirmons votre paiement auprès de Stripe.</p>
+      <Shell>
+        <div className="mx-auto max-w-md py-24 text-center">
+          <ShieldCheck className="mx-auto size-8 text-orange" />
+          <p className="mt-4 font-display font-semibold text-navy">Vérification du paiement…</p>
+          <p className="mt-2 text-sm text-muted-foreground">Un instant, nous confirmons votre paiement auprès de Stripe.</p>
         </div>
-      </div>
+      </Shell>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <AppBar />
-      <div className="max-w-[1000px] mx-auto px-8 py-10">
-        <div className="flex items-baseline justify-between mb-2">
-          <h1 className="text-2xl font-bold">Débloquer le livrable complet</h1>
-          <Badge variant="outline" className="font-mono text-xs">v1.3 · bêta</Badge>
+  // ── Loading the analysis (guard) ──
+  if (loadingAnalysis) {
+    return (
+      <Shell>
+        <div className="mx-auto max-w-4xl space-y-4 py-6">
+          <Skeleton className="h-8 w-72" />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <Skeleton className="h-80 rounded-2xl" />
+            <Skeleton className="h-80 rounded-2xl" />
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground mb-6">
+      </Shell>
+    )
+  }
+
+  const path = analysis?.inputs?._path ?? "A"
+  const alreadyComplete = path === "B" || "5" in (analysis?.output ?? {})
+
+  // ── Nothing to unlock ──
+  if (alreadyComplete) {
+    return (
+      <Shell>
+        <div className="mx-auto max-w-md py-24 text-center">
+          <CheckCircle2 className="mx-auto size-8 text-success" />
+          <h1 className="mt-4 font-display text-xl font-bold text-navy">Cette analyse est déjà complète</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Aucun déblocage n’est nécessaire. Vous pouvez consulter le rapport dès maintenant.
+          </p>
+          <Button render={<Link href={`/analyse/${id}/rapport`} />} size="lg" className="mt-6">
+            Voir le rapport <ArrowRight />
+          </Button>
+        </div>
+      </Shell>
+    )
+  }
+
+  // ── Unlock UI (Chemin A, not yet paid) ──
+  return (
+    <Shell>
+      <div className="mx-auto max-w-4xl py-8">
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <h1 className="font-display text-2xl font-bold text-navy">Débloquer le livrable complet</h1>
+          <Badge variant="outline" className="font-mono text-xs">Bêta</Badge>
+        </div>
+        <p className="mb-6 text-sm text-muted-foreground">
           Vous avez vu les 4 premières sections. Les 5 suivantes sont la partie actionnable.
         </p>
 
@@ -124,103 +176,109 @@ function DebloquerContent() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Free card */}
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground">gratuit</p>
-            <p className="text-4xl font-display font-extrabold text-navy mt-2">0 €</p>
-            <p className="text-xs text-muted-foreground">version d&apos;essai · 1 analyse</p>
+          <div className="rounded-2xl bg-card p-6 ring-1 ring-foreground/10 shadow-soft">
+            <p className="eyebrow text-muted-foreground">Gratuit</p>
+            <p className="mt-2 font-display text-4xl font-extrabold text-navy">0 €</p>
+            <p className="text-xs text-muted-foreground">Version d’essai · 1 analyse</p>
             <Separator className="my-4" />
             <ul className="space-y-2">
-              {FREE.map(n => (
+              {FREE.map((n) => (
                 <li key={n} className="flex items-center gap-2 text-xs">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-orange shrink-0" />
-                  § {n} · {SECTION_TITLES[n]}
+                  <CheckCircle2 className="size-3.5 shrink-0 text-orange" />§ {n} · {SECTION_TITLES[n]}
                 </li>
               ))}
-              {PAID.map(n => (
+              {PAID.map((n) => (
                 <li key={n} className="flex items-center gap-2 text-xs text-muted-foreground line-through">
-                  <Circle className="h-3.5 w-3.5 shrink-0 opacity-30" />
-                  § {n} · {SECTION_TITLES[n]}
+                  <Circle className="size-3.5 shrink-0 opacity-30" />§ {n} · {SECTION_TITLES[n]}
                 </li>
               ))}
             </ul>
           </div>
 
           {/* Paid card */}
-          <div className="rounded-2xl border-2 border-navy bg-navy text-white p-6 relative shadow-xl shadow-navy/20">
-            <span className="absolute inset-x-0 top-0 h-1.5 bg-brand-gradient rounded-t-2xl" />
-            <Badge className="absolute -top-3 right-5 bg-orange text-white border-0 text-[10px]">
-              recommandé
-            </Badge>
-            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-peach">complet</p>
+          <div className="relative overflow-hidden rounded-2xl bg-navy p-6 text-white shadow-float">
+            <span className="absolute inset-x-0 top-0 h-1.5 bg-brand-gradient" />
+            <span className="absolute right-5 top-5"><Badge variant="peach">Recommandé</Badge></span>
+            <p className="eyebrow text-peach">Complet</p>
             <div className="flex items-baseline gap-2">
-              <p className="text-4xl font-display font-extrabold mt-2">9 €</p>
+              <p className="mt-2 font-display text-4xl font-extrabold">9 €</p>
               <span className="text-sm text-white/70">une fois · sans abonnement</span>
             </div>
-            <p className="text-xs text-white/70">livrable 9 sections + CV retravaillé + export conseiller</p>
+            <p className="text-xs text-white/70">Livrable 9 sections + CV retravaillé + export conseiller</p>
             <Separator className="my-4 bg-white/20" />
-            <ul className="space-y-2 mb-5">
-              {[...FREE,...PAID].map(n => (
+            <ul className="mb-5 space-y-2">
+              {[...FREE, ...PAID].map((n) => (
                 <li key={n} className="flex items-center gap-2 text-xs">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-peach" />
-                  § {n} · {SECTION_TITLES[n]}
+                  <CheckCircle2 className="size-3.5 shrink-0 text-peach" />§ {n} · {SECTION_TITLES[n]}
                 </li>
               ))}
             </ul>
 
-            <label className="flex items-start gap-2 text-[11px] text-white/85 mb-3 cursor-pointer">
+            <label className="mb-3 flex cursor-pointer items-start gap-2 text-[11px] text-white/85">
               <input
                 type="checkbox"
                 checked={waiverAccepted}
-                onChange={e => setWaiverAccepted(e.target.checked)}
-                className="mt-0.5 shrink-0 accent-orange"
+                onChange={(e) => setWaiverAccepted(e.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-orange"
               />
               <span>
-                Je demande l&apos;exécution immédiate du service et reconnais renoncer à mon droit de
-                rétractation de 14 jours (art. L221-28 du Code de la consommation). Voir les{" "}
+                Je demande l’exécution immédiate du service et reconnais renoncer à mon droit de rétractation de
+                14 jours (art. L221-28 du Code de la consommation). Voir les{" "}
                 <Link href="/cgv" className="underline" target="_blank">CGV</Link>.
               </span>
             </label>
 
             <Button
-              className="w-full bg-orange text-white hover:bg-orange-dark font-semibold"
+              size="lg"
+              className="h-11 w-full bg-white font-semibold text-orange-dark hover:bg-white/90"
               onClick={startCheckout}
               disabled={paymentsEnabled === false || payState === "redirecting"}
             >
               {payState === "redirecting"
                 ? "Redirection vers le paiement…"
                 : paymentsEnabled === false
-                  ? "paiement bientôt disponible"
-                  : "débloquer pour 9 € →"}
+                  ? "Paiement bientôt disponible"
+                  : "Débloquer pour 9 €"}
+              {paymentsEnabled !== false && payState !== "redirecting" && <ArrowRight />}
             </Button>
-            <p className="text-[10px] text-white/65 text-center mt-2">
-              paiement sécurisé par Stripe · code conseiller — gratuit pour les bénéficiaires Cap Emploi / France Travail
+            <p className="mt-2 text-center text-[10px] text-white/65">
+              Paiement sécurisé par Stripe · gratuit pour les bénéficiaires Cap Emploi / France Travail (code conseiller)
             </p>
           </div>
         </div>
 
-        {/* Counselor code input */}
-        <div className="mt-6 rounded-lg border border-border bg-secondary p-4 flex items-center gap-4">
-          <span className="font-medium text-sm shrink-0">déjà un code conseiller ?</span>
+        {/* Counselor code */}
+        <div className="mt-6 flex flex-col gap-3 rounded-2xl bg-secondary p-4 sm:flex-row sm:items-center">
+          <span className="shrink-0 text-sm font-medium text-navy">Déjà un code conseiller ?</span>
           <Input
             value={code}
-            onChange={e => setCode(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") redeemCode() }}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") redeemCode() }}
             placeholder="ex. A1B2C3D4"
-            className="font-mono text-sm flex-1 bg-background"
+            className="h-10 flex-1 bg-background font-mono text-sm"
           />
-          <Button variant="outline" size="sm" onClick={redeemCode} disabled={codeState === "checking"}>
-            {codeState === "checking" ? "vérification…" : "activer"}
+          <Button variant="outline" size="lg" onClick={redeemCode} disabled={codeState === "checking"}>
+            {codeState === "checking" ? "Vérification…" : "Activer"}
           </Button>
         </div>
 
-        <div className="mt-4">
-          <Link href={`/analyse/${id}/rapport`} className="text-xs text-muted-foreground underline underline-offset-2">
-            ← Retour au rapport
+        <div className="mt-5">
+          <Link href={`/analyse/${id}/rapport`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:underline">
+            <ArrowLeft className="size-3.5" /> Retour au rapport
           </Link>
         </div>
       </div>
+    </Shell>
+  )
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-background">
+      <AppBar />
+      <div className="px-5 sm:px-8">{children}</div>
     </div>
   )
 }

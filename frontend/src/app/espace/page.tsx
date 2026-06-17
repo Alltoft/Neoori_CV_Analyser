@@ -5,6 +5,7 @@ import Link from "next/link"
 import { AppBar } from "@/components/layout/AppBar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -13,135 +14,134 @@ import {
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { copyToClipboard } from "@/lib/utils"
+import { fmtDate } from "@/lib/format"
 import type { Analysis } from "@/types"
-import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2 } from "lucide-react"
+import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2, ArrowRight } from "lucide-react"
 
-function statusLabel(s: string) {
-  if (s === "success") return "complète"
-  if (s === "draft")   return "brouillon"
-  return s
+function cardTitle(a: Analysis) {
+  if (a.status === "draft") return "Brouillon"
+  return a.inputs?.cible_visee?.slice(0, 60) || (a.inputs?._path === "B" ? "Portrait de potentiel" : "Analyse")
 }
 
 export default function EspacePage() {
   const { user } = useAuth()
   const [analyses, setAnalyses] = useState<Analysis[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const [loading, setLoading] = useState(true)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
+  const [origin, setOrigin] = useState("")
+
+  useEffect(() => setOrigin(window.location.origin), [])
 
   const copyShare = async (token: string) => {
-    const ok = await copyToClipboard(`${window.location.origin}/c/${token}`)
+    const url = `${window.location.origin}/c/${token}`
+    const ok = await copyToClipboard(url)
     if (!ok) {
-      window.prompt("Copiez le lien conseiller :", `${window.location.origin}/c/${token}`)
+      window.prompt("Copiez le lien conseiller :", url)
       return
     }
     setCopiedToken(token)
-    setTimeout(() => setCopiedToken(t => (t === token ? null : t)), 2500)
+    setTimeout(() => setCopiedToken((t) => (t === token ? null : t)), 2500)
   }
 
   useEffect(() => {
     api.get<{ analyses: Analysis[] }>("/analyses/")
-      .then(r => setAnalyses(r.analyses))
+      .then((r) => setAnalyses(r.analyses))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
   const remove = async (id: string) => {
+    if (!window.confirm("Supprimer cette analyse ? Cette action est définitive.")) return
     try {
       await api.delete(`/analyses/${id}`)
-      setAnalyses(prev => prev.filter(a => a.id !== id))
+      setAnalyses((prev) => prev.filter((a) => a.id !== id))
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : "Erreur.")
+      alert(e instanceof ApiError ? e.message : "Erreur lors de la suppression.")
     }
   }
+
+  const shareable = analyses.find((a) => a.status === "success" && a.share_token)
 
   return (
     <div className="min-h-screen bg-background">
       <AppBar />
-      <div className="max-w-[1100px] mx-auto px-8 py-8">
-        <div className="flex items-end justify-between mb-6">
+      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display font-bold text-2xl text-navy">Mon espace</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Vos analyses, vos brouillons{user?.role === "counselor" ? ", votre portefeuille candidats" : ""}.
-            </p>
+            <h1 className="font-display text-2xl font-bold text-navy">Mon espace</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Vos analyses et vos brouillons.</p>
           </div>
-          <Button render={<Link href="/analyse/nouveau"/>} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            <PlusCircle className="h-4 w-4 mr-1.5" />+ nouvelle analyse
+          <Button render={<Link href="/analyse/nouveau" />} size="lg">
+            <PlusCircle /> Nouvelle analyse
           </Button>
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-3 gap-4">
-            {[1,2,3].map(i => <Skeleton key={i} className="h-48 rounded-lg" />)}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
           </div>
         ) : analyses.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed border-border bg-secondary flex flex-col items-center justify-center py-20 gap-3">
-            <span className="text-3xl text-muted-foreground/40">+</span>
-            <p className="font-medium">Votre première analyse</p>
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary py-20 text-center">
+            <span className="grid size-12 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-6" /></span>
+            <p className="font-display font-semibold text-navy">Votre première analyse</p>
             <p className="text-sm text-muted-foreground">~2 min · 8 champs</p>
-            <Button render={<Link href="/analyse/nouveau"/>} className="mt-2 bg-primary hover:bg-primary/90 text-primary-foreground">Commencer →</Button>
+            <Button render={<Link href="/analyse/nouveau" />} size="lg" className="mt-2">
+              Commencer <ArrowRight />
+            </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
-            {analyses.map(a => (
-              <div key={a.id} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 hover-lift">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {analyses.map((a) => (
+              <div key={a.id} className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 shadow-soft hover-lift">
                 <div className="flex items-start justify-between gap-2">
-                  <Badge variant="outline" className="text-[10px] font-mono shrink-0">
-                    {new Date(a.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                  </Badge>
+                  <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{fmtDate(a.created_at)}</Badge>
                   <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-6 w-6 p-0"/>}>
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Options" />}>
+                      <MoreHorizontal className="size-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="text-destructive" onClick={() => remove(a.id)}>
-                        <Trash2 className="h-3.5 w-3.5 mr-2" />Supprimer
+                      <DropdownMenuItem variant="destructive" onClick={() => remove(a.id)}>
+                        <Trash2 /> Supprimer
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
 
-                <h3 className="font-display font-semibold text-sm leading-tight line-clamp-2 text-navy">
-                  {a.inputs?.cible_visee?.slice(0, 60) ?? "Brouillon"}
-                </h3>
+                <h3 className="line-clamp-2 font-display text-sm font-semibold leading-tight text-navy">{cardTitle(a)}</h3>
 
                 <div className="flex flex-wrap gap-1.5">
-                  <Badge variant="secondary" className="text-[10px]">{statusLabel(a.status)}</Badge>
-                  {a.output && (
-                    <Badge variant="outline" className="text-[10px]">
-                      {Object.keys(a.output).length} sections
-                    </Badge>
+                  <StatusBadge status={a.status} />
+                  {a.output && Object.keys(a.output).length > 0 && (
+                    <Badge variant="outline" className="text-[10px]">{Object.keys(a.output).length} sections</Badge>
                   )}
                 </div>
 
-                {/* Mini preview */}
-                <div className="rounded bg-secondary p-2 space-y-1 min-h-[48px]">
-                  {a.output?.["1"]?.body_markdown
-                    ? <p className="text-[11px] text-muted-foreground line-clamp-3">{a.output["1"].body_markdown}</p>
-                    : <div className="space-y-1.5">{[1,2,3].map(i => <div key={i} className="h-1.5 bg-border rounded-full" style={{ width: `${[100,80,55][i-1]}%` }} />)}</div>
-                  }
+                <div className="min-h-[48px] space-y-1 rounded-md bg-secondary p-2">
+                  {a.output?.["1"]?.body_markdown ? (
+                    <p className="line-clamp-3 text-[11px] text-muted-foreground">{a.output["1"].body_markdown}</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {[100, 80, 55].map((w, i) => <div key={i} className="h-1.5 rounded-full bg-border" style={{ width: `${w}%` }} />)}
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex gap-1.5 mt-auto pt-1">
+                <div className="mt-auto flex gap-1.5 pt-1">
                   {a.status === "draft" ? (
-                    <Button render={<Link href={`/analyse/nouveau?draft=${a.id}`}/>} size="sm" variant="outline" className="text-xs h-7 flex-1">
-                      <ExternalLink className="h-3 w-3 mr-1" />reprendre
+                    <Button render={<Link href={`/analyse/nouveau?draft=${a.id}`} />} size="sm" variant="outline" className="flex-1">
+                      <ExternalLink className="size-3.5" /> Reprendre
                     </Button>
                   ) : (
                     <>
-                      <Button render={<Link href={`/analyse/${a.id}/rapport`}/>} size="sm" variant="outline" className="text-xs h-7 flex-1">
-                        <ExternalLink className="h-3 w-3 mr-1" />ouvrir
+                      <Button render={<Link href={`/analyse/${a.id}/rapport`} />} size="sm" variant="outline" className="flex-1">
+                        <ExternalLink className="size-3.5" /> Ouvrir
                       </Button>
-                      <Button render={<Link href={`/analyse/${a.id}/rapport?print=1`}/>} size="sm" variant="outline" className="text-xs h-7 w-7 p-0">
-                        <Download className="h-3 w-3" />
+                      <Button render={<Link href={`/analyse/${a.id}/rapport?print=1`} />} size="icon-sm" variant="outline" aria-label="Télécharger le PDF">
+                        <Download className="size-3.5" />
                       </Button>
                       {a.share_token && (
-                        <Button size="sm" variant="outline" className="text-xs h-7 w-7 p-0"
-                          title="Copier le lien conseiller"
-                          onClick={() => copyShare(a.share_token!)}>
-                          {copiedToken === a.share_token
-                            ? <Check className="h-3 w-3 text-green-600" />
-                            : <Link2 className="h-3 w-3" />}
+                        <Button size="icon-sm" variant="outline" aria-label="Copier le lien conseiller" onClick={() => copyShare(a.share_token!)}>
+                          {copiedToken === a.share_token ? <Check className="size-3.5 text-success" /> : <Link2 className="size-3.5" />}
                         </Button>
                       )}
                     </>
@@ -151,10 +151,12 @@ export default function EspacePage() {
             ))}
 
             {/* New analysis card */}
-            <Link href="/analyse/nouveau"
-              className="rounded-lg border-2 border-dashed border-border bg-secondary flex flex-col items-center justify-center gap-2 min-h-[200px] hover:border-primary/50 transition-colors">
-              <span className="text-2xl text-muted-foreground">+</span>
-              <span className="text-sm font-medium">nouvelle analyse</span>
+            <Link
+              href="/analyse/nouveau"
+              className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-secondary transition-colors hover:border-orange/50"
+            >
+              <span className="grid size-10 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-5" /></span>
+              <span className="text-sm font-medium text-navy">Nouvelle analyse</span>
               <span className="text-xs text-muted-foreground">~2 min</span>
             </Link>
           </div>
@@ -163,33 +165,32 @@ export default function EspacePage() {
         <Separator className="my-8" />
 
         {/* Bottom strip */}
-        <div className="grid grid-cols-[2fr_1fr] gap-4">
-          <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-4">
-            <span className="font-medium text-sm shrink-0">Partagez avec votre conseiller</span>
-            {(() => {
-              const shareable = analyses.find(a => a.status === "success" && a.share_token)
-              return shareable ? (
-                <>
-                  <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded font-mono text-muted-foreground truncate">
-                    {typeof window !== "undefined" ? window.location.origin : "neoori.fr"}/c/{shareable.share_token}
-                  </code>
-                  <Button size="sm" variant="outline" className="text-xs shrink-0"
-                    onClick={() => copyShare(shareable.share_token!)}>
-                    {copiedToken === shareable.share_token ? "copié ✓" : "copier"}
-                  </Button>
-                </>
-              ) : (
-                <span className="text-xs text-muted-foreground">Aucune analyse complète disponible.</span>
-              )
-            })()}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+          <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:flex-row sm:items-center">
+            <span className="shrink-0 text-sm font-medium text-navy">Partagez avec votre conseiller</span>
+            {shareable ? (
+              <>
+                <code className="flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                  {origin}/c/{shareable.share_token}
+                </code>
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => copyShare(shareable.share_token!)}>
+                  {copiedToken === shareable.share_token ? <><Check className="size-3.5 text-success" /> Copié</> : "Copier"}
+                </Button>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">Aucune analyse complète disponible pour le moment.</span>
+            )}
           </div>
-          <div className="rounded-lg border border-border bg-card p-4 flex items-center justify-between">
+
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
             <div>
-              <p className="text-[10px] font-mono uppercase text-muted-foreground">Crédits restants</p>
-              <p className="text-xl font-bold mt-0.5">{user?.credits_remaining ?? "—"} analyse{(user?.credits_remaining ?? 0) > 1 ? "s" : ""}</p>
+              <p className="eyebrow text-muted-foreground">Crédits restants</p>
+              <p className="mt-1 font-display text-xl font-bold text-navy">
+                {user?.credits_remaining ?? "—"} analyse{(user?.credits_remaining ?? 0) > 1 ? "s" : ""}
+              </p>
             </div>
-            <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs">
-              recharger
+            <Button render={<Link href="/analyse/nouveau" />} size="sm">
+              <PlusCircle /> Lancer
             </Button>
           </div>
         </div>

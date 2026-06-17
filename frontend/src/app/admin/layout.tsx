@@ -3,17 +3,19 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
 import { Logo } from "@/components/brand/Logo"
+import { LogOut } from "lucide-react"
 
 const NAV = [
-  { label: "vue d'ensemble", href: "/admin" },
-  { label: "prompts",        href: "/admin/prompts" },
-  { label: "analyses",       href: "/admin/analyses" },
-  { label: "utilisateurs",   href: "/admin/utilisateurs" },
-  { label: "conseillers",    href: "/admin/conseillers" },
-  { label: "coûts API",      href: "/admin/couts" },
+  { label: "Vue d’ensemble", href: "/admin" },
+  { label: "Prompts",        href: "/admin/prompts" },
+  { label: "Analyses",       href: "/admin/analyses" },
+  { label: "Utilisateurs",   href: "/admin/utilisateurs" },
+  { label: "Conseillers",    href: "/admin/conseillers" },
+  { label: "Coûts API",      href: "/admin/couts" },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -21,17 +23,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const { logout } = useAuth()
 
+  const handleLogout = async () => {
+    await logout()
+    router.push("/")
+  }
+
   return (
     <div className="min-h-screen bg-secondary">
-      <div className="bg-background border-b border-border sticky top-0 z-40">
-        <div className="max-w-[1280px] mx-auto px-6 h-12 flex items-center gap-4">
-          <Link href="/admin" className="text-base transition-opacity hover:opacity-80">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-5 sm:gap-5 sm:px-8">
+          <Link
+            href="/admin"
+            className="text-[22px] transition-opacity hover:opacity-80"
+            aria-label="neoori — administration"
+          >
             <Logo />
           </Link>
-          <span className="inline-flex items-center rounded-md bg-navy px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] text-white">
-            admin
-          </span>
-          <nav className="flex gap-5 ml-4">
+          <Badge variant="navy">Admin</Badge>
+
+          <nav className="-mx-2 ml-1 flex flex-1 items-center gap-4 overflow-x-auto px-2 sm:gap-6">
             {NAV.map(({ label, href }) => {
               const active =
                 href === "/admin" ? pathname === "/admin" : pathname.startsWith(href)
@@ -39,11 +49,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={href}
                   href={href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "text-xs pb-1 -mb-px transition-colors",
+                    "shrink-0 whitespace-nowrap border-b-2 pb-1 text-sm transition-colors",
                     active
-                      ? "text-navy font-medium border-b-2 border-orange"
-                      : "text-muted-foreground hover:text-orange"
+                      ? "border-orange font-medium text-navy"
+                      : "border-transparent text-muted-foreground hover:text-orange"
                   )}
                 >
                   {label}
@@ -51,17 +62,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               )
             })}
           </nav>
+
           <Button
             variant="ghost"
             size="sm"
-            className="ml-auto text-xs h-7"
-            onClick={async () => { await logout(); router.push("/connexion") }}
+            className="ml-auto shrink-0"
+            onClick={handleLogout}
           >
-            déconnexion
+            <LogOut className="size-4" />
+            <span className="hidden sm:inline">Déconnexion</span>
           </Button>
         </div>
-      </div>
-      <div className="max-w-[1280px] mx-auto px-6 py-5">{children}</div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-5 py-6 sm:px-8 sm:py-8">{children}</main>
     </div>
   )
 }

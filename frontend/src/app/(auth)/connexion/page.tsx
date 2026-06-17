@@ -12,19 +12,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Logo } from "@/components/brand/Logo"
+import { AuthLayout } from "@/components/layout/AuthLayout"
 
 const schema = z.object({
-  email:    z.string().email("Email invalide."),
+  email: z.string().email("Email invalide."),
   password: z.string().min(1, "Mot de passe requis."),
 })
 type Fields = z.infer<typeof schema>
 
 function ConnexionForm() {
   const { login } = useAuth()
-  const router     = useRouter()
-  const params     = useSearchParams()
+  const router = useRouter()
+  const params = useSearchParams()
   const [error, setError] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
@@ -42,62 +41,48 @@ function ConnexionForm() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-24 right-0 h-[360px] w-[360px] rounded-full bg-peach/20 blur-[110px]" />
-        <div className="absolute bottom-0 -left-20 h-[320px] w-[320px] rounded-full bg-orange/10 blur-[110px]" />
-      </div>
-      <div className="w-full max-w-sm">
-        <Link href="/" className="flex justify-center mb-8 text-2xl">
-          <Logo />
+    <AuthLayout>
+      <h1 className="font-display text-2xl font-bold text-navy">Se connecter</h1>
+      <p className="mt-1.5 text-sm text-muted-foreground">Accédez à vos analyses.</p>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-1.5">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" type="email" autoComplete="email" className="h-10" placeholder="vous@exemple.fr" {...register("email")} />
+          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="password">Mot de passe</Label>
+          <Input id="password" type="password" autoComplete="current-password" className="h-10" placeholder="••••••••" {...register("password")} />
+          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+        </div>
+
+        <Button type="submit" size="lg" className="h-11 w-full" disabled={isSubmitting}>
+          {isSubmitting ? "Connexion…" : "Se connecter"}
+        </Button>
+      </form>
+
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        Pas encore de compte ?{" "}
+        <Link href="/inscription" className="link-underline font-medium text-orange-dark">
+          Créer un compte
         </Link>
-
-        <Card className="border-border shadow-xl shadow-navy/5">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Se connecter</CardTitle>
-            <CardDescription>Accédez à vos analyses.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" autoComplete="email"
-                  placeholder="vous@exemple.fr" {...register("email")} />
-                {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Mot de passe</Label>
-                <Input id="password" type="password" autoComplete="current-password"
-                  placeholder="••••••••" {...register("password")} />
-                {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
-              </div>
-
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                disabled={isSubmitting}>
-                {isSubmitting ? "Connexion…" : "Se connecter →"}
-              </Button>
-            </form>
-
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              Pas encore de compte ?{" "}
-              <Link href="/inscription" className="text-foreground underline underline-offset-2">
-                Créer un compte
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+      </p>
+    </AuthLayout>
   )
 }
 
 export default function ConnexionPage() {
-  return <Suspense><ConnexionForm /></Suspense>
+  return (
+    <Suspense>
+      <ConnexionForm />
+    </Suspense>
+  )
 }

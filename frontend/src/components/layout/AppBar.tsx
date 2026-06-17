@@ -8,9 +8,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, LogOut, LayoutDashboard, PlusCircle } from "lucide-react"
+import { ChevronDown, LogOut, LayoutDashboard, PlusCircle, Shield } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
 
+/** Authed-app top bar (espace + analysis flow). */
 export function AppBar() {
   const { user, logout } = useAuth()
   const router = useRouter()
@@ -21,35 +22,39 @@ export function AppBar() {
   }
 
   return (
-    <header className="w-full border-b border-border bg-background sticky top-0 z-50">
-      <div className="max-w-[1100px] mx-auto px-8 h-14 flex items-center justify-between">
-        <Link href="/espace" className="text-lg transition-opacity hover:opacity-80">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-md no-print">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+        <Link href="/espace" className="text-[24px] transition-opacity hover:opacity-80" aria-label="neoori — mon espace">
           <Logo />
         </Link>
 
-        <div className="flex items-center gap-3">
-          <Button render={<Link href="/analyse/nouveau"/>} size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 h-7 text-xs">
-            <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
-            Nouvelle analyse
+        <div className="flex items-center gap-2">
+          <Button render={<Link href="/analyse/nouveau" />} size="lg">
+            <PlusCircle />
+            <span className="hidden sm:inline">Nouvelle analyse</span>
+            <span className="sm:hidden">Analyse</span>
           </Button>
 
           {user && (
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-7 text-xs gap-1"/>}>
-                {user.email}
-                <ChevronDown className="h-3 w-3" />
+              <DropdownMenuTrigger render={<Button variant="ghost" size="lg" className="gap-1.5" />}>
+                <span className="hidden max-w-[14rem] truncate sm:inline">{user.email}</span>
+                <ChevronDown className="size-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem render={<Link href="/espace"/>}>
-                  <LayoutDashboard className="h-3.5 w-3.5 mr-2" />
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem render={<Link href="/espace" />}>
+                  <LayoutDashboard />
                   Mon espace
                 </DropdownMenuItem>
                 {user.role === "admin" && (
-                  <DropdownMenuItem render={<Link href="/admin"/>}>Administration</DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/admin" />}>
+                    <Shield />
+                    Administration
+                  </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive">
-                  <LogOut className="h-3.5 w-3.5 mr-2" />
+                <DropdownMenuItem onClick={handleLogout} variant="destructive">
+                  <LogOut />
                   Déconnexion
                 </DropdownMenuItem>
               </DropdownMenuContent>
