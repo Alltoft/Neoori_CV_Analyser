@@ -6,14 +6,15 @@ import { cn } from "@/lib/utils"
    artwork itself stays untouched. The SVG ring/figure marks below are brand MOTIFS
    (decorative accents that echo the logo's "oo" rings), not the logo. */
 
-const LOGO_SRC = "/neoori-logo.png"      // exact brand lockup, 1527×486
+const LOGO_SRC = "/neoori-logo.png"      // exact brand lockup, 800×525 (trimmed tight)
 const MARK_SRC = "/img/neoori-mark.png"  // optional square figure glyph, 512×512
 
 type Tone = "navy" | "light"
 
 /**
- * neoori logo. Sizing is font-relative: the artwork renders at `1em` tall, so set
- * the size with a text-* class (e.g. `className="text-2xl"`) on the Logo or a parent.
+ * neoori logo. Sizing is font-relative: this is a 2-line stacked lockup (wordmark +
+ * tagline), so the artwork renders at `2.4em` tall — set the size with a text-* class
+ * (e.g. `className="text-2xl"`) on the Logo or a parent.
  * `tone="light"` / `onDark` seats it on a white plate for navy/photo backgrounds.
  */
 export function Logo({
@@ -34,8 +35,8 @@ export function Logo({
   const dark = onDark ?? tone === "light"
   const isMark = variant === "mark"
   const src = isMark ? MARK_SRC : LOGO_SRC
-  const w = isMark ? 512 : 1527
-  const h = isMark ? 512 : 486
+  const w = isMark ? 512 : 800
+  const h = isMark ? 512 : 525
 
   const img = (
     <Image
@@ -44,10 +45,10 @@ export function Logo({
       width={w}
       height={h}
       priority={priority}
-      sizes="260px"
+      sizes="180px"
       quality={92}
       className={cn("select-none", !dark && className)}
-      style={{ height: "1em", width: "auto" }}
+      style={{ height: isMark ? "1em" : "2.4em", width: "auto" }}
     />
   )
 
@@ -55,7 +56,7 @@ export function Logo({
     return (
       <span
         className={cn(
-          "inline-flex items-center rounded-[0.5em] bg-white px-[0.5em] py-[0.32em] shadow-sm ring-1 ring-black/5",
+          "inline-flex items-center rounded-[0.5em] bg-white px-[0.55em] py-[0.45em] shadow-sm ring-1 ring-black/5",
           className,
         )}
       >

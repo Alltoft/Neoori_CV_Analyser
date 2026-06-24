@@ -31,7 +31,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-secondary">
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-5 sm:gap-5 sm:px-8">
+        <div className="mx-auto flex h-20 max-w-7xl items-center gap-3 px-5 sm:gap-5 sm:px-8">
           <Link
             href="/admin"
             className="text-[22px] transition-opacity hover:opacity-80"

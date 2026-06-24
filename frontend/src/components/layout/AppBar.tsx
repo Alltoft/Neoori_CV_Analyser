@@ -23,7 +23,7 @@ export function AppBar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-md no-print">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+      <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 sm:px-8">
         <Link href="/espace" className="text-[24px] transition-opacity hover:opacity-80" aria-label="neoori — mon espace">
           <Logo />
         </Link>
