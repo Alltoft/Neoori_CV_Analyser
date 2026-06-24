@@ -55,7 +55,7 @@ Do NOT use handwritten fonts (Caveat, Patrick Hand, etc.) — wireframes only.
 | 1 | Lecture stratégique du parcours | ✓ |
 | 2 | Forces du profil pour la cible | ✓ |
 | 3 | Compétences transférables (tag cloud) | ✓ |
-| 4 | Angles morts du CV actuel | ✓ |
+| 4 | Ce qui reste à renforcer | ✓ |
 | 5 | Préconisations terrain | Paid only |
 | 6 | Exemple de réécriture | Paid only |
 | 7 | Synthèse | Paid only |

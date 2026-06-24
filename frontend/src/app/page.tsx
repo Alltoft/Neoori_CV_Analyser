@@ -17,7 +17,7 @@ const PREVIEW_SECTIONS = [
   { n: "1", title: "Lecture stratégique du parcours" },
   { n: "2", title: "Forces du profil pour la cible" },
   { n: "3", title: "Compétences transférables" },
-  { n: "4", title: "Angles morts du CV" },
+  { n: "4", title: "Ce qui reste à renforcer" },
 ]
 const PREVIEW_TAGS = ["Gestion de projet", "Coordination", "Budget", "Animation d’équipe", "Reporting"]
 
@@ -85,7 +85,7 @@ const SECTIONS_FULL = [
   { n: "1", t: "Lecture stratégique du parcours", free: true },
   { n: "2", t: "Forces du profil pour la cible", free: true },
   { n: "3", t: "Compétences transférables", free: true },
-  { n: "4", t: "Angles morts du CV actuel", free: true },
+  { n: "4", t: "Ce qui reste à renforcer", free: true },
   { n: "5", t: "Préconisations terrain", free: false },
   { n: "6", t: "Exemple de réécriture", free: false },
   { n: "7", t: "Synthèse", free: false },
@@ -140,17 +140,16 @@ export default function LandingPage() {
 
       {/* ───────────────────── Hero ───────────────────── */}
       <section className="bg-mesh relative">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pb-28 lg:pt-20">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pb-28">
           <div className="animate-fade-up">
             <Eyebrow>Pour les acteurs de l’emploi</Eyebrow>
             <h1 className="mt-5 font-display text-[2.6rem] font-extrabold leading-[1.04] tracking-tight text-navy sm:text-6xl">
-              Objectivez chaque CV
+              Un CV,
               <br />
-              <span className="text-gradient-brand">au regard de sa cible.</span>
+              <span className="text-gradient-brand">une cible.</span>
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-muted-foreground">
-              neoori transforme un CV et son contexte en une analyse stratégique structurée —
-              forces, angles morts et préconisations concrètes. En quelques minutes.
+              Mesure l’adéquation en un clin d’œil.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button render={<Link href="/analyse/nouveau" />} size="xl">
@@ -175,14 +174,14 @@ export default function LandingPage() {
             <Photo
               src="/img/hero-counselor.jpg"
               alt="Un conseiller accompagne un candidat dans l’analyse de son CV"
-              className="aspect-[3/2] w-full shadow-card"
+              className="aspect-[3/2] w-full shadow-card lg:aspect-auto lg:h-[460px]"
               imgClassName="object-top"
               rounded="rounded-3xl"
               sizes="(max-width: 1024px) 100vw, 460px"
               priority
               overlay
             />
-            <ReportPreview className="absolute -bottom-6 -left-4 hidden w-[48%] sm:block" />
+            <ReportPreview className="absolute -bottom-6 -left-4 hidden w-[244px] sm:block" />
             <div className="absolute -right-4 top-6 hidden rounded-xl bg-white px-3.5 py-2.5 shadow-float ring-1 ring-foreground/10 sm:block">
               <p className="font-display text-xl font-bold leading-none text-navy">9</p>
               <p className="eyebrow mt-1 text-muted-foreground">sections</p>
@@ -425,7 +424,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-4xl px-5 py-20 text-center sm:px-8">
           <Reveal>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-navy sm:text-4xl">
-              Prêt à objectiver vos CV ?
+              Prêt à mesurer l’adéquation d’un CV ?
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
               Lancez une première analyse gratuite, ou échangeons sur un déploiement pour votre structure.

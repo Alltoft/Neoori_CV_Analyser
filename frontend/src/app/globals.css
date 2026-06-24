@@ -7,7 +7,7 @@
 @theme inline {
   /* ── Typography (vars set by next/font in layout.tsx) ── */
   --font-sans:    var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-bricolage), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
   --font-mono:    var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
 
   /* ── shadcn semantic colors ── */
@@ -58,8 +58,8 @@
   --orange:      #ff7a39;   /* brand accent — marks, icons, ring, highlights */
   --orange-dark: #c8491a;   /* deep — active states / gradient toward navy */
   --peach:       #ffbf94;   /* warm peach accent */
-  --peach-soft:  #fff0e3;   /* peach tint surface */
-  --paper:       #fdf7ec;   /* warm cream accent surface */
+  --peach-soft:  #fff0e3;   /* peach tint — kept warm: intentional accent (chips, badges, blockquote, selection) */
+  --paper:       #f1f5fb;   /* cool navy-tinted off-white — hero / CTA field base */
   --success:     #1f8a5b;
 
   /* ── shadcn semantic ── */
@@ -71,11 +71,11 @@
   --popover-foreground:   #0f1e34;
   --primary:              #cf4a19;   /* solid fills w/ white text — 4.5:1 AA on white */
   --primary-foreground:   #ffffff;
-  --secondary:            #f5f1ea;   /* warm light fill */
+  --secondary:            #eef2f8;   /* cool navy-tinted light fill */
   --secondary-foreground: #0f1e34;
-  --muted:                #f3eee6;
+  --muted:                #e8edf5;   /* cool navy-tinted muted */
   --muted-foreground:     #5b6577;   /* AA muted body on white */
-  --accent:               #fff0e3;   /* peach-soft */
+  --accent:               #edf2fa;   /* cool surface — decoupled from --peach-soft (was identical) */
   --accent-foreground:    #0f1e34;
   --destructive:          #cf3a2b;
   --border:               rgba(15, 30, 52, 0.10);
@@ -132,13 +132,13 @@
 .shadow-card  { box-shadow: 0 1px 2px rgba(15,30,52,.06), 0 12px 28px -16px rgba(15,30,52,.20); }
 .shadow-float { box-shadow: 0 24px 60px -28px rgba(15,30,52,.40), 0 8px 20px -12px rgba(15,30,52,.18); }
 
-/* Warm ambient mesh for hero / CTA bands (light cream) */
+/* Cool ambient mesh for hero / CTA bands — navy field with a single orange brand glow */
 .bg-mesh {
   background-color: var(--paper);
   background-image:
-    radial-gradient(60% 55% at 12% 8%,  rgba(255,122,57,.14) 0%, transparent 60%),
-    radial-gradient(50% 50% at 92% 0%,  rgba(255,191,148,.30) 0%, transparent 55%),
-    radial-gradient(55% 60% at 88% 92%, rgba(21,56,109,.08) 0%, transparent 60%);
+    radial-gradient(60% 55% at 12% 8%,  rgba(255,122,57,.10) 0%, transparent 60%),
+    radial-gradient(52% 52% at 92% 0%,  rgba(21,56,109,.10) 0%, transparent 58%),
+    radial-gradient(55% 60% at 88% 92%, rgba(21,56,109,.07) 0%, transparent 60%);
 }
 /* Navy variant for dark bands */
 .bg-mesh-navy {

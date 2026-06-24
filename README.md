@@ -111,7 +111,7 @@ The wireframes are intentionally hand-drawn so nobody mistakes them for a finish
   2. `cadrage sectoriel · cible identifiée`
   3. `lecture stratégique du parcours`
   4. `forces · compétences transférables`
-  5. `angles morts · préconisations`
+  5. `points à renforcer · préconisations`
   6. `proposition de CV retravaillé` (locked badge for free plan)
 - Progress bar (% of estimated total).
 - Sub-line: `vous pouvez fermer cet onglet — on vous prévient par e-mail`.
@@ -143,7 +143,7 @@ The wireframes are intentionally hand-drawn so nobody mistakes them for a finish
 | 1 | Lecture stratégique du parcours | Free plan ✓ |
 | 2 | Forces du profil pour la cible | Free plan ✓. Format: each force = **fact + condition of expression** (spec rule — never a quality without its condition). |
 | 3 | Compétences transférables | Free plan ✓. Renders as a tag cloud. |
-| 4 | Angles morts du CV actuel | Free plan ✓ |
+| 4 | Ce qui reste à renforcer | Free plan ✓ |
 | 5 | Préconisations terrain (réseau, formation, portfolio, CEP) | **Paid only** |
 | 6 | Exemple de réécriture | Paid only |
 | 7 | Synthèse | Paid only |

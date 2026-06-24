@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next"
-import { Bricolage_Grotesque, Inter, JetBrains_Mono } from "next/font/google"
+import { Inter, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth"
 
-// Display — warm, distinctive geometric grotesque that echoes the logo wordmark.
-const bricolage = Bricolage_Grotesque({
+// Display — neoori charter face (Plus Jakarta Sans): humanist geometric sans, brand-aligned.
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin", "latin-ext"],
-  variable: "--font-bricolage",
+  variable: "--font-jakarta",
   display: "swap",
 })
 
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     template: "%s · neoori",
   },
   description:
-    "Une lecture stratégique du CV : forces, angles morts et préconisations concrètes au regard de la cible professionnelle. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
+    "Une lecture stratégique du CV : forces, points à renforcer et préconisations concrètes au regard de la cible professionnelle. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
   keywords: [
     "analyse de CV", "conseiller en évolution professionnelle", "Cap Emploi",
     "France Travail", "Mission Locale", "reconversion", "RGPD", "bilan de compétences",
@@ -47,14 +47,14 @@ export const metadata: Metadata = {
     siteName: "neoori",
     title: "neoori — Analyse stratégique de CV",
     description:
-      "Forces, angles morts et préconisations concrètes au regard de la cible. Pour les conseillers, les organisations de l'emploi et les candidats.",
+      "Forces, points à renforcer et préconisations concrètes au regard de la cible. Pour les conseillers, les organisations de l'emploi et les candidats.",
     images: [{ url: "/img/og-cover.png", width: 1200, height: 630, alt: "neoori" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "neoori — Analyse stratégique de CV",
     description:
-      "Forces, angles morts et préconisations concrètes au regard de la cible professionnelle.",
+      "Forces, points à renforcer et préconisations concrètes au regard de la cible professionnelle.",
     images: ["/img/og-cover.png"],
   },
   icons: { icon: "/icon.svg" },
@@ -69,7 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="fr"
       suppressHydrationWarning
-      className={`${bricolage.variable} ${inter.variable} ${jetbrains.variable}`}
+      className={`${jakarta.variable} ${inter.variable} ${jetbrains.variable}`}
     >
       <body className="antialiased min-h-screen bg-background text-foreground">
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
