@@ -75,22 +75,22 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 /* ── Section data ── */
 const STEPS = [
-  { icon: ScanText, n: "01", title: "Le CV", desc: "Import d’un PDF (≤ 10 Mo) ou copier-coller du parcours." },
-  { icon: Target, n: "02", title: "La cible", desc: "Le poste ou le projet visé, plus huit informations de contexte." },
-  { icon: PenLine, n: "03", title: "L’analyse", desc: "Une lecture structurée par l’IA, fidèle au prompt validé en interne." },
-  { icon: FileCheck2, n: "04", title: "Le rapport", desc: "Neuf sections, exportables en PDF, plus une synthèse conseiller." },
+  { icon: ScanText, n: "01", title: "Votre CV", desc: "Importez votre PDF ou collez votre texte. En quelques secondes, c’est prêt." },
+  { icon: Target, n: "02", title: "Ce que vous recherchez", desc: "Dites-nous ce que vous recherchez. Et si vous avez des contraintes ou des besoins particuliers — mobilité, aménagement, situation personnelle — vous pouvez les renseigner ici. L’analyse en tient compte. Elle est faite pour vous, pas pour un profil standard." },
+  { icon: PenLine, n: "03", title: "La lecture", desc: "neoori lit votre CV du point de vue des recruteurs et en tenant compte des ATS." },
+  { icon: FileCheck2, n: "04", title: "Votre rapport", desc: "Vous repartez avec des réponses claires. Ce qui fonctionne. Ce qui coince. Et comment corriger, concrètement." },
 ]
 
 const SECTIONS_FULL = [
-  { n: "1", t: "Lecture stratégique du parcours", free: true },
-  { n: "2", t: "Forces du profil pour la cible", free: true },
-  { n: "3", t: "Compétences transférables", free: true },
-  { n: "4", t: "Ce qui reste à renforcer", free: true },
-  { n: "5", t: "Préconisations terrain", free: false },
-  { n: "6", t: "Exemple de réécriture", free: false },
-  { n: "7", t: "Synthèse", free: false },
-  { n: "8", t: "Pistes d’évolution", free: false },
-  { n: "9", t: "Proposition de CV retravaillé", free: false },
+  { n: "1", t: "Ce que le recruteur retient en premier", free: true },
+  { n: "2", t: "Vos forces réelles pour ce poste précis", free: true },
+  { n: "3", t: "Vos compétences transférables — celles que vous n’avez peut-être pas pensé à mettre en avant", free: true },
+  { n: "4", t: "Ce qui reste à renforcer — et comment", free: true },
+  { n: "5", t: "Des préconisations concrètes, issues du terrain", free: false },
+  { n: "6", t: "Un exemple de reformulation de votre expérience", free: false },
+  { n: "7", t: "Une synthèse de votre profil", free: false },
+  { n: "8", t: "Des pistes d’évolution", free: false },
+  { n: "9", t: "Une proposition de CV retravaillé, prête à envoyer", free: false },
 ]
 
 const PERSONAS = [
@@ -98,39 +98,39 @@ const PERSONAS = [
     img: "/img/persona-candidat.jpg",
     icon: UserRound,
     title: "Candidats",
-    desc: "Comprendre comment son CV est lu face à un poste précis, et obtenir des pistes concrètes pour le retravailler.",
-    cta: { href: "/analyse/nouveau", label: "Démarrer mon analyse" },
+    desc: "Vous postulez avec un parcours qui vous appartient — y compris ses contraintes, ses spécificités, ses besoins. neoori ne les efface pas. Il les intègre. Pour vous donner des recommandations qui tiennent vraiment la route, dans votre vie réelle.",
+    cta: { href: "/analyse/nouveau", label: "Lancer mon analyse" },
   },
   {
     img: "/img/persona-conseiller.jpg",
     icon: Users,
     title: "Conseillers",
-    desc: "Une synthèse prête pour l’entretien — cible, points sensibles, préconisations — sans ressaisie ni double travail.",
+    desc: "Vos bénéficiaires arrivent en entretien avec un rapport déjà structuré : leurs forces, leurs fragilités, vos préconisations. Vous travaillez ensemble, à partir d’une même base. Vous gagnez du temps. Eux, de la confiance.",
     cta: { href: "/#rapport", label: "Voir la vue conseiller" },
   },
   {
     img: "/img/persona-organisation.jpg",
     icon: Building2,
     title: "Organisations",
-    desc: "Un outil cadré pour vos dispositifs : RGPD, hébergement européen, traçabilité des versions, accès conseiller gratuit.",
+    desc: "Un outil cadré pour vos dispositifs — RGPD, hébergement européen, traçabilité des analyses, accès conseiller gratuit.",
     cta: { href: "mailto:nneoori@proton.me?subject=neoori%20—%20demande%20organisation", label: "Nous contacter" },
   },
 ]
 
 const TRUST = [
-  { icon: Server, t: "Hébergement européen", d: "Données traitées et hébergées dans l’Union européenne." },
-  { icon: EyeOff, t: "Sans entraînement IA", d: "Vos données ne servent jamais à entraîner des modèles." },
-  { icon: History, t: "Traçabilité B2G", d: "Chaque analyse conserve la version exacte du prompt utilisé." },
-  { icon: ShieldCheck, t: "RGPD & maîtrise", d: "Consentement explicite, suppression possible à tout moment." },
+  { icon: Server, t: "Hébergement européen", d: "Vos données sont traitées et stockées dans l’Union européenne." },
+  { icon: EyeOff, t: "Sans entraînement IA", d: "Votre CV ne sert jamais à former un modèle." },
+  { icon: History, t: "Vos analyses, toujours accessibles", d: "Chaque analyse est conservée et retrouvable. Vous pouvez y revenir, la partager, l’utiliser pour d’autres candidatures." },
+  { icon: ShieldCheck, t: "RGPD & maîtrise", d: "Consentement explicite, suppression possible à tout moment. Vous gardez la main." },
 ]
 
 const FAQ = [
-  { q: "Combien ça coûte ?", a: "Les quatre premières sections sont gratuites et réellement utiles. L’analyse complète (neuf sections) est à 9 €, en paiement unique — sans abonnement." },
-  { q: "C’est gratuit pour les conseillers ?", a: "Oui. Les bénéficiaires accompagnés par Cap Emploi, France Travail ou une Mission Locale accèdent à l’analyse complète gratuitement via un code conseiller." },
-  { q: "Que deviennent les données ?", a: "Elles servent uniquement à produire l’analyse demandée. Elles sont hébergées dans l’UE, ne sont pas partagées à des tiers, ne servent pas à entraîner de modèles, et restent supprimables à tout moment." },
-  { q: "Combien de temps pour un rapport ?", a: "Quelques minutes. L’analyse se génère en arrière-plan ; le rapport s’affiche dès qu’il est prêt." },
-  { q: "Quels formats de CV ?", a: "Un PDF de 10 Mo maximum, ou du texte collé directement. La cible peut aussi être une offre d’emploi importée ou décrite en quelques lignes." },
-  { q: "Rapport candidat et synthèse conseiller, quelle différence ?", a: "Une seule analyse produit deux exports : le rapport complet pour le candidat, et une synthèse ciblée (cible, points sensibles, préconisations) pour le conseiller, partageable par lien." },
+  { q: "Combien ça coûte ?", a: "Les sections 1 à 4 sont gratuites, sans carte bancaire. Le rapport complet — neuf sections, dont la proposition de CV retravaillé — est à 9 €. Si votre conseiller vous a remis un code, l’accès complet est offert." },
+  { q: "Les conseillers peuvent-ils utiliser neoori ?", a: "Vous accompagnez des candidats et vous souhaitez intégrer neoori à vos entretiens ? Contactez-nous. Nous offrons l’accès complet aux 5 premiers candidats, pour que vous puissiez tester l’outil dans vos conditions réelles." },
+  { q: "Que deviennent mes données ?", a: "Elles sont hébergées dans l’Union européenne, chiffrées, et ne servent jamais à entraîner des modèles d’IA. Vous pouvez demander leur suppression à tout moment." },
+  { q: "Combien de temps pour avoir mon rapport ?", a: "Quelques minutes. Le temps de renseigner votre cible et vos informations, l’analyse est déjà en cours." },
+  { q: "Quels formats de CV sont acceptés ?", a: "Un PDF jusqu’à 10 Mo, ou un copier-coller de votre texte directement dans l’interface." },
+  { q: "Quelle différence entre le rapport candidat et la synthèse conseiller ?", a: "C’est la même base : une seule et même synthèse — pour pouvoir travailler ensemble, candidat et conseiller, à partir d’une même lecture partagée." },
 ]
 
 export default function LandingPage() {
@@ -143,25 +143,24 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pb-28">
           <div className="animate-fade-up">
             <Eyebrow>Pour les acteurs de l’emploi</Eyebrow>
-            <h1 className="mt-5 font-display text-[2.6rem] font-extrabold leading-[1.04] tracking-tight text-navy sm:text-6xl">
-              Un CV,
-              <br />
-              <span className="text-gradient-brand">une cible.</span>
+            <h1 className="mt-5 font-display text-[2rem] font-extrabold leading-[1.12] tracking-tight text-navy sm:text-5xl">
+              Vous postulez. Assurez-vous que votre CV exprime vraiment{" "}
+              <span className="text-gradient-brand">ce que vous valez.</span>
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-muted-foreground">
-              Mesure l’adéquation en un clin d’œil.
+              neoori analyse votre CV face au poste que vous visez — et vous dit exactement ce qui retient l’attention, ce qui freine, et comment faire la différence.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button render={<Link href="/analyse/nouveau" />} size="xl">
-                Démarrer une analyse
+                Lancer mon analyse
                 <ArrowRight />
               </Button>
               <Button render={<Link href="/#rapport" />} size="xl" variant="outline">
-                Voir un rapport type
+                Voir un exemple de rapport
               </Button>
             </div>
             <ul className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-              {["RGPD", "Hébergé dans l’UE", "Sans entraînement de modèles"].map((t) => (
+              {["Une première analyse gratuite", "Résultat en quelques minutes", "Vos données restent les vôtres"].map((t) => (
                 <li key={t} className="inline-flex items-center gap-1.5">
                   <Check className="size-4 text-success" /> {t}
                 </li>
@@ -211,10 +210,10 @@ export default function LandingPage() {
         <Reveal className="max-w-2xl">
           <Eyebrow>Le module</Eyebrow>
           <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-navy sm:text-4xl">
-            Du CV au rapport, en quatre temps.
+            Quatre étapes. Un regard neuf sur votre parcours.
           </h2>
           <p className="mt-4 text-muted-foreground">
-            Un parcours simple, pensé pour tenir dans un rendez-vous d’accompagnement.
+            Vous avez déjà fait le plus dur — construire votre expérience. neoori vous aide à la montrer sous son meilleur jour.
           </p>
         </Reveal>
 
@@ -241,28 +240,29 @@ export default function LandingPage() {
           <Reveal className="order-2 lg:order-1">
             <Eyebrow>Le rapport</Eyebrow>
             <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-navy sm:text-4xl">
-              Une analyse, deux livrables.
+              Un regard qui tient compte de votre réalité.
             </h2>
             <p className="mt-4 text-muted-foreground">
-              D’une seule analyse, neoori produit un <strong className="font-semibold text-navy">rapport candidat</strong> complet
-              et une <strong className="font-semibold text-navy">synthèse conseiller</strong> ciblée — partageable par lien sécurisé,
-              avec le badge <span className="rounded bg-navy px-1.5 py-0.5 text-[11px] font-semibold text-white">VERSION CONSEILLER</span>.
+              Votre rapport part de ce que vous avez partagé — votre parcours, votre cible, votre situation personnelle. Les recommandations sont pensées pour vous, pour votre situation, pour votre vie réelle.
             </p>
 
             <ul className="mt-7 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
               {SECTIONS_FULL.map((s) => (
-                <li key={s.n} className="flex items-center gap-2.5 text-sm">
+                <li key={s.n} className="flex items-start gap-2.5 text-sm">
                   {s.free ? (
-                    <Check className="size-4 shrink-0 text-success" />
+                    <Check className="mt-0.5 size-4 shrink-0 text-success" />
                   ) : (
-                    <Lock className="size-3.5 shrink-0 text-orange" />
+                    <Lock className="mt-0.5 size-3.5 shrink-0 text-orange" />
                   )}
                   <span className={s.free ? "text-navy" : "text-muted-foreground"}>{s.t}</span>
                 </li>
               ))}
             </ul>
             <p className="mt-6 text-sm text-muted-foreground">
-              <span className="font-medium text-navy">Sections 1 à 4 gratuites.</span> Analyse complète (5 à 9) avec le plan à 9 €.
+              <span className="font-medium text-navy">Les quatre premières sections sont offertes.</span> Rapport complet à 9 €.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Si vous êtes accompagné par un conseiller, il a peut-être un code qui vous donne accès à tout — gratuitement. Ça vaut la peine de lui demander.
             </p>
           </Reveal>
 
@@ -277,7 +277,7 @@ export default function LandingPage() {
         <Reveal className="max-w-2xl">
           <Eyebrow>Pour qui</Eyebrow>
           <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-navy sm:text-4xl">
-            Un même objet d’analyse, trois usages.
+            Un outil. Trois façons de s’en emparer.
           </h2>
         </Reveal>
 
@@ -321,7 +321,7 @@ export default function LandingPage() {
           <Reveal className="mx-auto max-w-2xl text-center">
             <Eyebrow>Tarifs</Eyebrow>
             <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-navy sm:text-4xl">
-              Simple, et sans abonnement.
+              Commencez gratuitement. Allez aussi loin que vous voulez.
             </h2>
           </Reveal>
 
@@ -331,9 +331,13 @@ export default function LandingPage() {
               <div className="flex w-full flex-col rounded-3xl bg-card p-7 ring-1 ring-foreground/10 shadow-soft">
                 <h3 className="font-display text-lg font-semibold text-navy">Gratuit</h3>
                 <p className="mt-2 font-display text-4xl font-extrabold text-navy">0 €</p>
-                <p className="mt-1 text-sm text-muted-foreground">Sections 1 à 4 — une lecture déjà actionnable.</p>
-                <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-6 w-full">
-                  Démarrer
+                <p className="mt-2 text-sm font-medium text-navy">Une première analyse qui change déjà le regard.</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Vous découvrez comment votre CV est perçu face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour corriger ce qui freine.
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">Sections 1 à 4 incluses. Aucune carte bancaire demandée.</p>
+                <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-auto w-full">
+                  Je commence maintenant
                 </Button>
               </div>
             </Reveal>
@@ -342,22 +346,29 @@ export default function LandingPage() {
             <Reveal delayMs={90} className="flex">
               <div className="relative flex w-full flex-col rounded-3xl bg-navy p-7 text-white shadow-float">
                 <span className="absolute right-5 top-5">
-                  <Badge variant="peach">Le plus choisi</Badge>
+                  <Badge variant="peach">✦ Le plus choisi</Badge>
                 </span>
                 <h3 className="font-display text-lg font-semibold text-white">Analyse complète</h3>
                 <p className="mt-2 font-display text-4xl font-extrabold text-white">
                   9 € <span className="text-base font-medium text-white/60">/ analyse</span>
                 </p>
-                <p className="mt-1 text-sm text-white/70">Les neuf sections, dont la réécriture et le CV retravaillé.</p>
-                <ul className="mt-5 space-y-2 text-sm text-white/80">
-                  {["Préconisations terrain", "Exemple de réécriture", "Proposition de CV retravaillé", "Export PDF"].map((f) => (
-                    <li key={f} className="flex items-center gap-2">
-                      <Check className="size-4 text-peach" /> {f}
+                <p className="mt-1 text-sm text-white/70">Le rapport en entier — pour repartir avec un CV retravaillé, prêt à envoyer.</p>
+                <p className="mt-4 text-sm text-white/70">En plus des 4 premières sections, vous accédez à :</p>
+                <ul className="mt-3 space-y-2.5 text-sm text-white/80">
+                  {[
+                    "Des préconisations terrain — pas des conseils génériques, des recommandations issues de l’expérience professionnelle réelle du recrutement",
+                    "Un exemple concret de reformulation de votre expérience — pour voir la différence, pas juste la comprendre",
+                    "Une synthèse de votre profil — claire, structurée, réutilisable pour d’autres candidatures",
+                    "Des pistes d’évolution — pour aller plus loin que cette candidature",
+                    "Une proposition de CV retravaillé — prête à personnaliser et à envoyer",
+                  ].map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-peach" /> <span>{f}</span>
                     </li>
                   ))}
                 </ul>
-                <Button render={<Link href="/analyse/nouveau" />} size="lg" className="mt-6 w-full bg-white text-orange-dark hover:bg-white/90">
-                  Démarrer
+                <Button render={<Link href="/analyse/nouveau" />} size="lg" className="mt-auto w-full bg-white text-orange-dark hover:bg-white/90">
+                  Accéder au rapport complet
                 </Button>
               </div>
             </Reveal>
@@ -368,9 +379,9 @@ export default function LandingPage() {
                 <h3 className="font-display text-lg font-semibold text-navy">Code conseiller</h3>
                 <p className="mt-2 font-display text-4xl font-extrabold text-navy">Gratuit</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Analyse complète offerte aux bénéficiaires Cap Emploi & France Travail.
+                  Vous êtes accompagné par un conseiller ? Il a peut-être un code qui vous ouvre l’accès au rapport complet — gratuitement. Ça vaut la peine de lui demander.
                 </p>
-                <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-6 w-full">
+                <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-auto w-full">
                   J’ai un code
                 </Button>
               </div>
@@ -387,8 +398,11 @@ export default function LandingPage() {
               <InfinityMark tone="light" className="text-[1.05em]" /> Confiance & conformité
             </p>
             <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Cadré pour le secteur public.
+              Sérieux, du premier au dernier octet.
             </h2>
+            <p className="mt-4 text-white/70">
+              neoori a été pensé et créé par une professionnelle de l’emploi. La rigueur du terrain, la puissance de l’IA.
+            </p>
           </Reveal>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {TRUST.map((t, i) => (
@@ -424,14 +438,14 @@ export default function LandingPage() {
         <div className="mx-auto max-w-4xl px-5 py-20 text-center sm:px-8">
           <Reveal>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-navy sm:text-4xl">
-              Prêt à mesurer l’adéquation d’un CV ?
+              Votre CV a des choses à dire. Aidez-le à les dire.
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-              Lancez une première analyse gratuite, ou échangeons sur un déploiement pour votre structure.
+              Lancez votre première analyse maintenant — gratuitement, en quelques minutes. Vous repartez déjà avec quelque chose de concret.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Button render={<Link href="/analyse/nouveau" />} size="xl">
-                Démarrer une analyse
+                Lancer mon analyse
                 <ArrowRight />
               </Button>
               <Button
@@ -440,7 +454,7 @@ export default function LandingPage() {
                 variant="outline"
               >
                 <Mail />
-                Nous contacter
+                Contacter l’équipe pour votre structure
               </Button>
             </div>
           </Reveal>
