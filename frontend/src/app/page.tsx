@@ -195,13 +195,6 @@ export default function LandingPage() {
           <p className="text-center text-sm text-muted-foreground">
             Conçu avec les contraintes des acteurs publics de l’emploi
           </p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-2.5">
-            {["France Travail", "Cap Emploi", "Missions Locales", "CEP", "Organismes de formation"].map((o) => (
-              <span key={o} className="rounded-full bg-secondary px-4 py-1.5 text-sm font-medium text-navy/80">
-                {o}
-              </span>
-            ))}
-          </div>
         </div>
       </section>
 
