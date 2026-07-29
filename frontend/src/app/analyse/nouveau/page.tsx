@@ -359,7 +359,7 @@ function NouvelleAnalyseForm() {
             <ShieldCheck className="size-3.5 text-success" />
             {canPremium
               ? "Analyse complète · 9 sections. Données chiffrées, supprimables à tout moment."
-              : "4 sections gratuites — les 5 suivantes après déblocage (9 € ou code conseiller). Données chiffrées."}
+              : "3 sections gratuites — les 6 suivantes après déblocage (9 € ou code conseiller). Données chiffrées."}
           </p>
         </form>
       </div>

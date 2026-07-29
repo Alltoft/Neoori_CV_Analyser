@@ -17,7 +17,6 @@ const PREVIEW_SECTIONS = [
   { n: "1", title: "Lecture stratégique du parcours" },
   { n: "2", title: "Forces du profil pour la cible" },
   { n: "3", title: "Compétences transférables" },
-  { n: "4", title: "Ce qui reste à renforcer" },
 ]
 const PREVIEW_TAGS = ["Gestion de projet", "Coordination", "Budget", "Animation d’équipe", "Reporting"]
 
@@ -52,13 +51,13 @@ function ReportPreview({ className }: { className?: string }) {
             ) : (
               <div className="space-y-1">
                 <Bar w="100%" />
-                <Bar w={s.n === "4" ? "62%" : "84%"} />
+                <Bar w={s.n === "2" ? "62%" : "84%"} />
               </div>
             )}
           </div>
         ))}
         <div className="flex items-center gap-1.5 rounded-md bg-secondary/70 px-2.5 py-2 text-[10px] text-muted-foreground">
-          <Lock className="size-3" /> §5 Préconisations terrain · §6 Réécriture · §7 Synthèse — plan complet
+          <Lock className="size-3" /> §4 Ce qui reste à renforcer · §5 Préconisations terrain · §6 Réécriture — plan complet
         </div>
       </div>
     </div>
@@ -85,7 +84,7 @@ const SECTIONS_FULL = [
   { n: "1", t: "Ce que le recruteur retient en premier", free: true },
   { n: "2", t: "Vos forces réelles pour ce poste précis", free: true },
   { n: "3", t: "Vos compétences transférables — celles que vous n’avez peut-être pas pensé à mettre en avant", free: true },
-  { n: "4", t: "Ce qui reste à renforcer — et comment", free: true },
+  { n: "4", t: "Ce qui reste à renforcer — et comment", free: false },
   { n: "5", t: "Des préconisations concrètes, issues du terrain", free: false },
   { n: "6", t: "Un exemple de reformulation de votre expérience", free: false },
   { n: "7", t: "Une synthèse de votre profil", free: false },
@@ -125,7 +124,7 @@ const TRUST = [
 ]
 
 const FAQ = [
-  { q: "Combien ça coûte ?", a: "Les sections 1 à 4 sont gratuites, sans carte bancaire. Le rapport complet — neuf sections, dont la proposition de CV retravaillé — est à 9 €. Si votre conseiller vous a remis un code, l’accès complet est offert." },
+  { q: "Combien ça coûte ?", a: "Les sections 1 à 3 et le verdict de diagnostic sont gratuits, sans carte bancaire. Le rapport complet — neuf sections, dont la proposition de CV retravaillé — est à 9 €. Si votre conseiller vous a remis un code, l’accès complet est offert." },
   { q: "Les conseillers peuvent-ils utiliser neoori ?", a: "Vous accompagnez des candidats et vous souhaitez intégrer neoori à vos entretiens ? Contactez-nous. Nous offrons l’accès complet aux 5 premiers candidats, pour que vous puissiez tester l’outil dans vos conditions réelles." },
   { q: "Que deviennent mes données ?", a: "Elles sont hébergées dans l’Union européenne, chiffrées, et ne servent jamais à entraîner des modèles d’IA. Vous pouvez demander leur suppression à tout moment." },
   { q: "Combien de temps pour avoir mon rapport ?", a: "Quelques minutes. Le temps de renseigner votre cible et vos informations, l’analyse est déjà en cours." },
@@ -252,7 +251,7 @@ export default function LandingPage() {
               ))}
             </ul>
             <p className="mt-6 text-sm text-muted-foreground">
-              <span className="font-medium text-navy">Les quatre premières sections sont offertes.</span> Rapport complet à 9 €.
+              <span className="font-medium text-navy">Les trois premières sections sont offertes.</span> Rapport complet à 9 €.
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               Si vous êtes accompagné par un conseiller, il a peut-être un code qui vous donne accès à tout — gratuitement. Ça vaut la peine de lui demander.
@@ -328,7 +327,7 @@ export default function LandingPage() {
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   Vous découvrez comment votre CV est perçu face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour corriger ce qui freine.
                 </p>
-                <p className="mt-3 text-xs text-muted-foreground">Sections 1 à 4 incluses. Aucune carte bancaire demandée.</p>
+                <p className="mt-3 text-xs text-muted-foreground">Sections 1 à 3 et verdict de diagnostic inclus. Aucune carte bancaire demandée.</p>
                 <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-auto w-full">
                   Je commence maintenant
                 </Button>
@@ -346,7 +345,7 @@ export default function LandingPage() {
                   9 € <span className="text-base font-medium text-white/60">/ analyse</span>
                 </p>
                 <p className="mt-1 text-sm text-white/70">Le rapport en entier — pour repartir avec un CV retravaillé, prêt à envoyer.</p>
-                <p className="mt-4 text-sm text-white/70">En plus des 4 premières sections, vous accédez à :</p>
+                <p className="mt-4 text-sm text-white/70">En plus des 3 premières sections, vous accédez à :</p>
                 <ul className="mt-3 space-y-2.5 text-sm text-white/80">
                   {[
                     "Des préconisations terrain — pas des conseils génériques, des recommandations issues de l’expérience professionnelle réelle du recrutement",

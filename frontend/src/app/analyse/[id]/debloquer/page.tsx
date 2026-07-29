@@ -15,8 +15,8 @@ import { api, ApiError } from "@/lib/api"
 import { SECTION_TITLES } from "@/types"
 import type { Analysis } from "@/types"
 
-const FREE = ["1", "2", "3", "4"]
-const PAID = ["5", "6", "7", "8", "9"]
+const FREE = ["1", "2", "3"]
+const PAID = ["4", "5", "6", "7", "8", "9"]
 
 export default function DebloquerPage() {
   return (
@@ -162,7 +162,7 @@ function DebloquerContent() {
           <Badge variant="outline" className="font-mono text-xs">Bêta</Badge>
         </div>
         <p className="mb-6 text-sm text-muted-foreground">
-          Vous avez vu les 4 premières sections. Les 5 suivantes sont la partie actionnable.
+          Vous avez vu les 3 premières sections. Les 6 suivantes sont la partie actionnable.
         </p>
 
         {error && (

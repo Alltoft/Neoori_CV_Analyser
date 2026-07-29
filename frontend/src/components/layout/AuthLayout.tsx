@@ -4,7 +4,7 @@ import { Logo, InfinityMark } from "@/components/brand/Logo"
 import { Check } from "lucide-react"
 
 const POINTS = [
-  "4 sections gratuites, sans carte bancaire",
+  "3 sections gratuites, sans carte bancaire",
   "Export PDF et synthèse conseiller",
   "Données hébergées dans l’Union européenne",
 ]

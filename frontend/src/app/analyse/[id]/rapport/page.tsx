@@ -178,7 +178,7 @@ export default function RapportPage() {
             {view === "rapport" && path === "A" && hasOutput && !isPaid && (
               <div className="no-print mt-2 flex flex-col items-start justify-between gap-4 rounded-xl bg-brand-gradient p-5 text-white sm:flex-row sm:items-center">
                 <div>
-                  <p className="font-display font-bold">Débloquez les 5 sections restantes</p>
+                  <p className="font-display font-bold">Débloquez les 6 sections restantes</p>
                   <p className="mt-0.5 text-sm opacity-90">préconisations · réécriture · synthèse · pistes d’évolution · CV retravaillé</p>
                 </div>
                 <Button render={<Link href={`/analyse/${id}/debloquer`} />} size="lg" className="shrink-0 bg-white text-orange-dark hover:bg-white/90">
