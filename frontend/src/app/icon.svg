@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="16" fill="#0f1e34"/>
+  <rect width="64" height="64" rx="16" fill="#1c3561"/>
   <g transform="translate(5.5,5.7) scale(0.536)">
     <path d="M14,78 C10,67 23,59 33,63 C43,67 45,82 35,90 C26,97 17,90 14,78 Z" fill="#ffd9bf"/>
-    <path d="M58,8 C79,20 85,46 66,66 C56,77 40,80 28,72 C41,60 38,29 58,8 Z" fill="#ff7a39"/>
+    <path d="M58,8 C79,20 85,46 66,66 C56,77 40,80 28,72 C41,60 38,29 58,8 Z" fill="#ea5624"/>
     <path d="M58,8 C79,20 85,46 66,66 C72,45 65,24 49,14 C52,11 55,9 58,8 Z" fill="#ffb877"/>
     <circle cx="33" cy="17" r="12" fill="#ff9a4d"/>
   </g>

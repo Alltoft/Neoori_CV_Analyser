@@ -39,6 +39,7 @@
   --color-orange-dark: var(--orange-dark);
   --color-peach:       var(--peach);
   --color-peach-soft:  var(--peach-soft);
+  --color-teal:        var(--teal);
   --color-paper:       var(--paper);
   --color-success:     var(--success);
 
@@ -50,47 +51,54 @@
 }
 
 :root {
-  /* ── neoori brand — raw (synced to neoori.fr) ── */
-  --navy:        #0f1e34;   /* primary ink / deep navy */
-  --navy-ink:    #0f1e34;
-  --navy-700:    #15386d;   /* mid blue */
-  --navy-500:    #1e4a8a;   /* light blue — links / hover */
-  --orange:      #ff7a39;   /* brand accent — marks, icons, ring, highlights */
-  --orange-dark: #c8491a;   /* deep — active states / gradient toward navy */
-  --peach:       #ffbf94;   /* warm peach accent */
-  --peach-soft:  #fff0e3;   /* peach tint — kept warm: intentional accent (chips, badges, blockquote, selection) */
-  --paper:       #f1f5fb;   /* cool navy-tinted off-white — hero / CTA field base */
-  --success:     #1f8a5b;
+  /* ── neoori brand — charte graphique CDC v1.2 §3.5 ──
+     Also what docs/superpowers/specs/2026-06-14-neoori-brand-redesign-design.md
+     specified; the shipped values had drifted from it. */
+  --navy:        #1c3561;   /* charter navy — primary ink */
+  --navy-ink:    #1c3561;
+  --navy-700:    #234279;   /* mid blue */
+  --navy-500:    #2a4f91;   /* light blue — links / hover */
+  --orange:      #ea5624;   /* charter orange — marks, icons, ring, highlights */
+  --orange-dark: #c4481e;   /* deep — active states / gradient toward navy */
+  --teal:        #2e8b6e;   /* charter teal — third accent */
+  --peach:       #f7b394;   /* warm peach accent, rebased on the charter orange */
+  --peach-soft:  #fdeee5;   /* peach tint — chips, badges, blockquote, selection */
+  --paper:       #f0f7f4;   /* charter light ground — hero / CTA field base */
+  --success:     #2e8b6e;   /* the charter teal doubles as the success tone */
 
   /* ── shadcn semantic ── */
   --background:           #ffffff;
-  --foreground:           #0f1e34;
+  --foreground:           #1c3561;
   --card:                 #ffffff;
-  --card-foreground:      #0f1e34;
+  --card-foreground:      #1c3561;
   --popover:              #ffffff;
-  --popover-foreground:   #0f1e34;
-  --primary:              #cf4a19;   /* solid fills w/ white text — 4.5:1 AA on white */
+  --popover-foreground:   #1c3561;
+  /* Charter orange is 3.59:1 on white — below AA for text and for white text
+     on an orange fill. --orange stays the charter value for marks and icons;
+     --primary is the darkened variant used wherever contrast is load-bearing
+     (4.71:1). Same split the previous palette used, rebased. */
+  --primary:              #c9491e;
   --primary-foreground:   #ffffff;
-  --secondary:            #eef2f8;   /* cool navy-tinted light fill */
-  --secondary-foreground: #0f1e34;
-  --muted:                #e8edf5;   /* cool navy-tinted muted */
-  --muted-foreground:     #5b6577;   /* AA muted body on white */
-  --accent:               #edf2fa;   /* cool surface — decoupled from --peach-soft (was identical) */
-  --accent-foreground:    #0f1e34;
-  --destructive:          #cf3a2b;
-  --border:               rgba(15, 30, 52, 0.10);
-  --input:                rgba(15, 30, 52, 0.16);
-  --ring:                 #ff7a39;
+  --secondary:            #eef4f1;   /* charter-tinted light fill */
+  --secondary-foreground: #1c3561;
+  --muted:                #e6efeb;
+  --muted-foreground:     #5c6b72;   /* AA muted body on white */
+  --accent:               #edf4f1;
+  --accent-foreground:    #1c3561;
+  --destructive:          #c0392b;   /* charter alert red */
+  --border:               rgba(28, 53, 97, 0.10);
+  --input:                rgba(28, 53, 97, 0.16);
+  --ring:                 #ea5624;
   --radius:               0.75rem;
 
   /* ── report tokens ── */
-  --n-ink:     #0f1e34;
-  --n-ink-2:   rgba(15, 30, 52, 0.58);
-  --n-ink-3:   rgba(15, 30, 52, 0.34);
+  --n-ink:     #1c3561;
+  --n-ink-2:   rgba(28, 53, 97, 0.58);
+  --n-ink-3:   rgba(28, 53, 97, 0.34);
   --n-paper:   #ffffff;
-  --n-paper-2: #f5f1ea;
-  --n-accent:  #ff7a39;
-  --n-navy:    #15386d;
+  --n-paper-2: #f0f7f4;
+  --n-accent:  #ea5624;
+  --n-navy:    #234279;
 }
 
 @layer base {
@@ -124,32 +132,32 @@
   color: transparent;
 }
 .ring-brand {
-  box-shadow: 0 0 0 1px rgba(15, 30, 52, 0.08), 0 1px 2px rgba(15, 30, 52, 0.06);
+  box-shadow: 0 0 0 1px rgba(28, 53, 97, 0.08), 0 1px 2px rgba(28, 53, 97, 0.06);
 }
 
 /* ── Surfaces & elevation ── */
-.shadow-soft  { box-shadow: 0 1px 2px rgba(15,30,52,.05), 0 4px 12px -6px rgba(15,30,52,.10); }
-.shadow-card  { box-shadow: 0 1px 2px rgba(15,30,52,.06), 0 12px 28px -16px rgba(15,30,52,.20); }
-.shadow-float { box-shadow: 0 24px 60px -28px rgba(15,30,52,.40), 0 8px 20px -12px rgba(15,30,52,.18); }
+.shadow-soft  { box-shadow: 0 1px 2px rgba(28,53,97,.05), 0 4px 12px -6px rgba(28,53,97,.10); }
+.shadow-card  { box-shadow: 0 1px 2px rgba(28,53,97,.06), 0 12px 28px -16px rgba(28,53,97,.20); }
+.shadow-float { box-shadow: 0 24px 60px -28px rgba(28,53,97,.40), 0 8px 20px -12px rgba(28,53,97,.18); }
 
 /* Cool ambient mesh for hero / CTA bands — navy field with a single orange brand glow */
 .bg-mesh {
   background-color: var(--paper);
   background-image:
-    radial-gradient(60% 55% at 12% 8%,  rgba(255,122,57,.10) 0%, transparent 60%),
-    radial-gradient(52% 52% at 92% 0%,  rgba(21,56,109,.10) 0%, transparent 58%),
-    radial-gradient(55% 60% at 88% 92%, rgba(21,56,109,.07) 0%, transparent 60%);
+    radial-gradient(60% 55% at 12% 8%,  rgba(234,86,36,.10) 0%, transparent 60%),
+    radial-gradient(52% 52% at 92% 0%,  rgba(35,66,121,.10) 0%, transparent 58%),
+    radial-gradient(55% 60% at 88% 92%, rgba(35,66,121,.07) 0%, transparent 60%);
 }
 /* Navy variant for dark bands */
 .bg-mesh-navy {
   background-color: var(--navy);
   background-image:
-    radial-gradient(55% 60% at 10% 0%,   rgba(255,122,57,.22) 0%, transparent 55%),
-    radial-gradient(50% 55% at 95% 100%, rgba(30,74,138,.45) 0%, transparent 60%);
+    radial-gradient(55% 60% at 10% 0%,   rgba(234,86,36,.22) 0%, transparent 55%),
+    radial-gradient(50% 55% at 95% 100%, rgba(42,79,145,.45) 0%, transparent 60%);
 }
 /* Hairline dotted texture */
 .bg-dots {
-  background-image: radial-gradient(rgba(15,30,52,.07) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(28,53,97,.07) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
@@ -206,20 +214,22 @@ html { scroll-behavior: smooth; }
 }
 .hover-lift:hover {
   transform: translateY(-3px);
-  box-shadow: 0 18px 40px -20px rgba(15, 30, 52, 0.32);
+  box-shadow: 0 18px 40px -20px rgba(28, 53, 97, 0.32);
 }
 
 /* ── A4 report ── */
 .report-shell {
-  width: 600px;
+  /* A4 proportions (1:1.414). This used to be 600x900 — a 2:3 ratio — so the
+     on-screen "page" was not shaped like what actually printed. */
+  width: 620px;
   max-width: 100%;
   margin: 0 auto;
   background: #ffffff;
   position: relative;
-  min-height: 900px;
+  min-height: 877px;
   border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: 0 24px 60px -28px rgba(15, 30, 52, 0.32);
+  /* No overflow:hidden — it clips content that should flow onto page 2. */
+  box-shadow: 0 24px 60px -28px rgba(28, 53, 97, 0.32);
 }
 .report-rule {
   height: 6px;
@@ -242,8 +252,11 @@ html { scroll-behavior: smooth; }
     max-width: 100% !important;
     min-height: 0 !important;
     margin: 0 !important;
+    overflow: visible !important;
   }
-  .opacity-60   { opacity: 1 !important; }
+  /* A locked section prints as its lock message; un-dimming it made that
+     message look like content. Keep it visibly secondary. */
+  .opacity-60   { opacity: 0.75 !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 

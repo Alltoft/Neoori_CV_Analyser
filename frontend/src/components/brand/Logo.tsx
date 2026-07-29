@@ -70,8 +70,8 @@ export function Logo({
 /* ── Brand motif: the interlocking "oo" / ∞ rings (orange + navy). ──
    Signature device for parcours→avenir, section markers and the loading moment.
    Solid strokes (print-safe), optional draw-on-mount. */
-const ORANGE = "#ff7a39"
-const NAVY_RING = "#15386d"
+const ORANGE = "#ea5624"
+const NAVY_RING = "#234279"
 
 export function InfinityMark({
   tone = "navy",
@@ -120,13 +120,13 @@ export function BrandMark({
   className?: string
   style?: React.CSSProperties
 }) {
-  const base = tone === "light" ? "#ffd9bf" : "#0f1e34"
+  const base = tone === "light" ? "#fbd9c6" : "#1c3561"
   return (
     <svg viewBox="0 0 96 100" fill="none" aria-hidden="true" className={className} style={{ height: "1em", width: "auto", ...style }}>
       <path d="M14,78 C10,67 23,59 33,63 C43,67 45,82 35,90 C26,97 17,90 14,78 Z" fill={base} />
-      <path d="M58,8 C79,20 85,46 66,66 C56,77 40,80 28,72 C41,60 38,29 58,8 Z" fill="#ff7a39" />
-      <path d="M58,8 C79,20 85,46 66,66 C72,45 65,24 49,14 C52,11 55,9 58,8 Z" fill="#ffb877" />
-      <circle cx="33" cy="17" r="12" fill="#ff9a4d" />
+      <path d="M58,8 C79,20 85,46 66,66 C56,77 40,80 28,72 C41,60 38,29 58,8 Z" fill="#ea5624" />
+      <path d="M58,8 C79,20 85,46 66,66 C72,45 65,24 49,14 C52,11 55,9 58,8 Z" fill="#f4a276" />
+      <circle cx="33" cy="17" r="12" fill="#ef7d4b" />
     </svg>
   )
 }
