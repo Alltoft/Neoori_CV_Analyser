@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ReportSection } from "@/components/report/ReportSection"
+import { PriceProbe } from "@/components/report/PriceProbe"
 import { api } from "@/lib/api"
 import { copyToClipboard } from "@/lib/utils"
 import type { Analysis } from "@/types"
@@ -187,6 +188,10 @@ export default function RapportPage() {
                 </Button>
               </div>
             )}
+
+            {/* Sits below the unlock CTA on purpose: asking what someone would
+                pay before offering them the thing reads as a negotiation. */}
+            {view === "rapport" && hasOutput && !isPaid && <PriceProbe analysisId={id} />}
 
             {/* Page footer */}
             <div className="mt-8 flex items-center justify-between border-t border-border pt-4">

@@ -82,3 +82,39 @@ def test_another_user_cannot_burn_a_code_against_it(client, app):
     res = client.post(f"/api/analyses/{a.id}/unlock", json={"code": "ABCD1234"},
                       headers=_headers(intruder))
     assert res.status_code == 403
+
+
+# ── willingness-to-pay probe ─────────────────────────────────────────────────
+
+def test_price_feedback_is_recorded(client, app):
+    a = _analysis(owner=None)
+    res = client.post(f"/api/analyses/{a.id}/price-feedback",
+                      json={"bucket": "5_10", "useful": True})
+    assert res.status_code == 200
+    assert res.get_json()["feedback"]["label"] == "5 à 10 €"
+
+
+def test_price_feedback_rejects_an_unknown_bucket(client, app):
+    a = _analysis(owner=None)
+    res = client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": "1000_eur"})
+    assert res.status_code == 400
+
+
+def test_price_feedback_replaces_rather_than_stacks(client, app):
+    """One answer per analysis, so resubmitting can't skew the distribution."""
+    from app.models.price_feedback import PriceFeedback
+    a = _analysis(owner=None)
+    client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": "moins_5"})
+    client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": "plus_20"})
+    rows = PriceFeedback.query.filter_by(analysis_id=a.id).all()
+    assert len(rows) == 1
+    assert rows[0].bucket == "plus_20"
+
+
+def test_price_feedback_honours_ownership(client, app):
+    owner = _user("pf-owner@test.fr")
+    intruder = _user("pf-intruder@test.fr")
+    a = _analysis(owner)
+    res = client.post(f"/api/analyses/{a.id}/price-feedback",
+                      json={"bucket": "5_10"}, headers=_headers(intruder))
+    assert res.status_code == 403

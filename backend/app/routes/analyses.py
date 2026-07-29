@@ -5,6 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_req
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
+from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..utils.tokens import generate_share_token
 from ..services import section_registry as registry
@@ -149,6 +150,33 @@ def unlock_with_code(analysis_id):
     code.uses_count += 1
     db.session.commit()
     return jsonify({"analysis": analysis.to_dict()}), 200
+
+
+@analyses_bp.post("/<analysis_id>/price-feedback")
+def submit_price_feedback(analysis_id):
+    """Willingness-to-pay probe, shown after a free report.
+
+    Idempotent per analysis: re-answering replaces the previous answer rather
+    than stacking, so one person can't skew the distribution by resubmitting.
+    """
+    analysis = Analysis.query.get_or_404(analysis_id)
+    if not _may_access(analysis):
+        return jsonify({"error": "Accès non autorisé."}), 403
+
+    data = request.get_json(silent=True) or {}
+    bucket = (data.get("bucket") or "").strip()
+    if bucket not in BUCKETS:
+        return jsonify({"error": "Réponse invalide."}), 400
+
+    row = PriceFeedback.query.filter_by(analysis_id=analysis_id).first()
+    if row is None:
+        row = PriceFeedback(analysis_id=analysis_id, bucket=bucket)
+        db.session.add(row)
+    row.bucket = bucket
+    if "useful" in data:
+        row.useful = bool(data.get("useful"))
+    db.session.commit()
+    return jsonify({"feedback": row.to_dict()}), 200
 
 
 @analyses_bp.delete("/<analysis_id>")
