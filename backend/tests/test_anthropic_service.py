@@ -148,6 +148,17 @@ def test_section_keys_per_parcours_tier():
     assert _section_keys("3", "sonnet") == ["I", "II", "III", "IV", "V", "VI"]
 
 
+def test_plan_names_and_legacy_nicknames_agree():
+    """Tier moved from model nicknames to plan names; both must resolve."""
+    assert _section_keys("1", "free") == _section_keys("1", "haiku")
+    assert _section_keys("1", "paid") == _section_keys("1", "sonnet")
+    assert _section_keys("1", "premium") == _section_keys("1", "opus")
+
+
+def test_premium_adds_the_interview_modules():
+    assert _section_keys("1", "premium")[-2:] == ["10", "11"]
+
+
 def test_legacy_path_codes_still_resolve():
     """Rows written before the 3-parcours migration carry 'A'/'B'."""
     assert _section_keys("A", "sonnet") == _section_keys("1", "sonnet")

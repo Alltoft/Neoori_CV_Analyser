@@ -7,6 +7,7 @@ from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
 from ..utils.tokens import generate_share_token
 from ..services import section_registry as registry
+from ..services import tiers
 from ..services.anthropic_service import start_analysis
 from ..services.unlock_service import unlock_analysis
 
@@ -34,13 +35,12 @@ def create_analysis():
 
     if path == "3":
         # Parcours 3 is forced to Sonnet (free for vulnerable populations).
-        inputs["_tier"] = "sonnet"
+        inputs["_tier"] = tiers.PAID
         errors = _validate_inputs_b(inputs)
     else:
-        tier = data.get("tier", "haiku")
-        if tier not in ("haiku", "sonnet"):
-            tier = "haiku"
-        inputs["_tier"] = tier
+        # normalize() accepts the legacy "haiku"/"sonnet" nicknames and
+        # falls back to free for anything unrecognised.
+        inputs["_tier"] = tiers.normalize(data.get("tier"))
         errors = _validate_inputs(inputs)
     if errors:
         return jsonify({"errors": errors}), 400

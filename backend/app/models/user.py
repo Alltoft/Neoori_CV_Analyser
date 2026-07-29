@@ -15,7 +15,7 @@ class User(db.Model):
         default="candidate",
     )
     plan = db.Column(
-        db.Enum("free", "paid", name="user_plan"),
+        db.Enum("free", "paid", "premium", name="user_plan"),
         nullable=False,
         default="free",
     )

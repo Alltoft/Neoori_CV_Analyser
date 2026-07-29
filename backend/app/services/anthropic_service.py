@@ -10,23 +10,16 @@ from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.prompt_version import PromptVersion
 from . import section_registry as registry
-
-_MODEL_HAIKU  = os.getenv("MODEL_FREE", "claude-haiku-4-5-20251001")
-_MODEL_SONNET = os.getenv("MODEL_PAID", "claude-sonnet-4-6")
+from . import tiers
 
 
 def _get_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-def _clean_model_id(model: str) -> str:
-    return model.removeprefix("anthropic/")
-
-
 def _select_model_by_tier(tier: str) -> tuple[str, int]:
-    if tier == "sonnet":
-        return _clean_model_id(_MODEL_SONNET), 8000
-    return _clean_model_id(_MODEL_HAIKU), 8000
+    """(model id, max_tokens) for a tier. See services/tiers.py."""
+    return tiers.model_for(tier)
 
 
 _SUB_PROFILE_LABELS = {
@@ -112,26 +105,12 @@ Notes spécifiques : {inputs.get("notes_specifiques", "") or "Aucune note spéci
 # enforced at the API layer with a JSON-schema output format, never via the
 # prompt text. See https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 
-# The persisted `_tier` values are model nicknames from the two-tier era.
-# The registry speaks plan names. Phase 0.4 migrates the stored values;
-# translate at the boundary until then.
-_TIER_TO_PLAN = {
-    "haiku": registry.FREE,
-    "sonnet": registry.PAID,
-    "opus": registry.PREMIUM,
-}
-
-
-def _plan_for_tier(tier: str) -> str:
-    return _TIER_TO_PLAN.get(tier, registry.FREE)
-
-
 def _section_keys(path: str, tier: str) -> list[str]:
-    return registry.section_keys(path, _plan_for_tier(tier))
+    return registry.section_keys(path, tiers.normalize(tier))
 
 
 def _build_output_schema(path: str, tier: str) -> dict:
-    plan = _plan_for_tier(tier)
+    plan = tiers.normalize(tier)
     entries = registry.sections(path, plan)
     properties = {}
     for s in entries:
@@ -287,7 +266,9 @@ def _run_analysis(analysis_id: str, app) -> None:
             return
 
         # Chemin B is free + Sonnet for all users (decision 4.6 / 4.7).
-        tier = "sonnet" if path == "3" else inputs.get("_tier", "haiku")
+        # Parcours 3 runs on the paid model for everyone (free for the
+        # vulnerable populations it serves).
+        tier = tiers.PAID if path == "3" else tiers.normalize(inputs.get("_tier"))
         model, max_tokens = _select_model_by_tier(tier)
 
         analysis.status = "running"

@@ -4,6 +4,7 @@ from flask import current_app
 from ..extensions import db
 from ..models.analysis import Analysis
 from . import section_registry as registry
+from . import tiers
 from .anthropic_service import start_analysis
 
 
@@ -27,7 +28,7 @@ def unlock_analysis(analysis: Analysis, method: str, stripe_session_id: str | No
 
     # JSON column: reassign a new dict so SQLAlchemy sees the change
     new_inputs = dict(inputs)
-    new_inputs["_tier"] = "sonnet"
+    new_inputs["_tier"] = tiers.PAID
     analysis.inputs = new_inputs
 
     analysis.status = "queued"

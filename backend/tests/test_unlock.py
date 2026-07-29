@@ -31,7 +31,7 @@ def test_unlock_with_valid_code(mock_start, client, app):
     assert r.status_code == 200
     db.session.refresh(a)
     assert a.status == "queued"
-    assert a.inputs["_tier"] == "sonnet"
+    assert a.inputs["_tier"] == "paid"
     assert a.unlock_method == "code"
     db.session.refresh(c)
     assert c.uses_count == 1

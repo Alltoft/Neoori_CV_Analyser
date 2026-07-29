@@ -7,25 +7,38 @@ import { api } from "@/lib/api"
 import { fmtCompact, fmtEur, fmtInt } from "@/lib/format"
 import { CircleDollarSign, FileText, Sparkles, Zap } from "lucide-react"
 
+/** Tier ids match services/tiers.py on the backend. */
+const TIERS = ["free", "paid", "premium"] as const
+type Tier = (typeof TIERS)[number]
+
+interface TierUsage { count: number; tokens_in: number; tokens_out: number }
+interface TierPrice { label: string; model: string; usd_in: number; usd_out: number }
+
 interface CostDay {
-  date: string; analyses_count: number
-  haiku_tokens_in: number; haiku_tokens_out: number
-  sonnet_tokens_in: number; sonnet_tokens_out: number
+  date: string
+  analyses_count: number
+  tiers: Record<Tier, TierUsage>
   cost_eur: number
 }
 interface CostsResponse {
   days: CostDay[]
-  total: {
-    analyses_count: number
-    haiku_tokens_in: number; haiku_tokens_out: number
-    sonnet_tokens_in: number; sonnet_tokens_out: number
-    cost_eur: number
-  }
+  total: { analyses_count: number; tiers: Record<Tier, TierUsage>; cost_eur: number }
+  pricing: Record<Tier, TierPrice>
+  usd_to_eur: number
 }
 
-/** Compute the sonnet (paid) portion of a day's cost, mirroring the table math. */
-function sonnetCostOf(d: CostDay) {
-  return (d.sonnet_tokens_in * 3 + d.sonnet_tokens_out * 15) / 1_000_000 * 0.92
+const tokensOf = (u: TierUsage | undefined) => (u ? u.tokens_in + u.tokens_out : 0)
+
+/** Cost of one tier on one day, using the rates the backend reported. */
+function tierCostEur(u: TierUsage | undefined, price: TierPrice | undefined, fx: number) {
+  if (!u || !price) return 0
+  return ((u.tokens_in * price.usd_in + u.tokens_out * price.usd_out) / 1_000_000) * fx
+}
+
+/** Everything above the free tier — what the paying traffic actually costs. */
+function payingCostEur(d: CostDay, pricing: CostsResponse["pricing"], fx: number) {
+  return tierCostEur(d.tiers?.paid, pricing?.paid, fx)
+       + tierCostEur(d.tiers?.premium, pricing?.premium, fx)
 }
 
 const fmtDayLong = (iso: string) =>
@@ -33,7 +46,7 @@ const fmtDayLong = (iso: string) =>
 const fmtDayShort = (iso: string) =>
   new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
 
-function BarChart({ data }: { data: CostDay[] }) {
+function BarChart({ data, pricing, fx }: { data: CostDay[]; pricing: CostsResponse["pricing"]; fx: number }) {
   if (!data.length) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -52,12 +65,12 @@ function BarChart({ data }: { data: CostDay[] }) {
       viewBox={`0 0 ${W} ${H}`}
       className="overflow-visible"
       role="img"
-      aria-label="Coût quotidien estimé sur 30 jours, réparti entre sonnet (payant) et haiku (gratuit)"
+      aria-label="Coût quotidien estimé sur 30 jours, réparti entre les paliers payants et le palier gratuit"
     >
       {data.map((d, i) => {
         const totalH = Math.max(0, Math.min((d.cost_eur / maxCost) * (H - 4), H - 2))
-        const sonnetCost = sonnetCostOf(d)
-        const sonnetH = Math.max(0, Math.min((sonnetCost / maxCost) * (H - 4), totalH))
+        const payingCost = payingCostEur(d, pricing, fx)
+        const payingH = Math.max(0, Math.min((payingCost / maxCost) * (H - 4), totalH))
         const x = i * (W / data.length) + gap / 2
         const tooltip = `${fmtDayLong(d.date)} — ${fmtEur(d.cost_eur)} · ${d.analyses_count} analyse${d.analyses_count > 1 ? "s" : ""}`
 
@@ -71,7 +84,7 @@ function BarChart({ data }: { data: CostDay[] }) {
               fill="var(--navy)" opacity={0.2} rx={2}
             />
             <rect
-              x={x} y={H - sonnetH} width={barW} height={sonnetH}
+              x={x} y={H - payingH} width={barW} height={payingH}
               fill="var(--orange)" opacity={0.9} rx={2}
             />
           </g>
@@ -152,18 +165,15 @@ export default function CoutsPage() {
                 hint="Sur les 30 derniers jours"
                 icon={<FileText className="size-4" />}
               />
-              <StatCard
-                label="Tokens haiku"
-                value={fmtCompact(t.haiku_tokens_in + t.haiku_tokens_out)}
-                hint="Plan gratuit"
-                icon={<Zap className="size-4" />}
-              />
-              <StatCard
-                label="Tokens sonnet"
-                value={fmtCompact(t.sonnet_tokens_in + t.sonnet_tokens_out)}
-                hint="Plan payant"
-                icon={<Sparkles className="size-4" />}
-              />
+              {TIERS.map(tier => (
+                <StatCard
+                  key={tier}
+                  label={`Tokens ${data?.pricing?.[tier]?.label ?? tier}`}
+                  value={fmtCompact(tokensOf(t.tiers?.[tier]))}
+                  hint={data?.pricing?.[tier]?.model ?? ""}
+                  icon={tier === "free" ? <Zap className="size-4" /> : <Sparkles className="size-4" />}
+                />
+              ))}
             </>
           )}
       </div>
@@ -179,7 +189,7 @@ export default function CoutsPage() {
         </div>
         {loading
           ? <Skeleton className="h-44 w-full rounded-lg" />
-          : data && <BarChart data={data.days} />}
+          : data && <BarChart data={data.days} pricing={data.pricing} fx={data.usd_to_eur} />}
       </div>
 
       {/* Daily breakdown table */}
@@ -191,26 +201,28 @@ export default function CoutsPage() {
               <tr className="border-b border-border text-navy">
                 <th className="eyebrow pb-2 pr-4 text-left text-muted-foreground">Date</th>
                 <th className="eyebrow pb-2 pr-4 text-right text-muted-foreground">Analyses</th>
-                <th className="eyebrow pb-2 pr-4 text-right text-muted-foreground">Tok. haiku</th>
-                <th className="eyebrow pb-2 pr-4 text-right text-muted-foreground">Tok. sonnet</th>
+                {TIERS.map(tier => (
+                  <th key={tier} className="eyebrow pb-2 pr-4 text-right text-muted-foreground">
+                    Tok. {data?.pricing?.[tier]?.label ?? tier}
+                  </th>
+                ))}
                 <th className="eyebrow pb-2 text-right text-muted-foreground">Coût</th>
               </tr>
             </thead>
             <tbody>
               {loading
                 ? Array.from({ length: 7 }, (_, i) => (
-                    <tr key={i}><td colSpan={5} className="py-2"><Skeleton className="h-4" /></td></tr>
+                    <tr key={i}><td colSpan={TIERS.length + 3} className="py-2"><Skeleton className="h-4" /></td></tr>
                   ))
                 : data?.days.map(d => (
                     <tr key={d.date} className="border-b border-dashed border-border last:border-0">
                       <td className="py-2 pr-4 font-mono text-xs text-navy">{fmtDayShort(d.date)}</td>
                       <td className="py-2 pr-4 text-right tabular-nums">{fmtInt(d.analyses_count)}</td>
-                      <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
-                        {fmtInt(d.haiku_tokens_in + d.haiku_tokens_out)}
-                      </td>
-                      <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
-                        {fmtInt(d.sonnet_tokens_in + d.sonnet_tokens_out)}
-                      </td>
+                      {TIERS.map(tier => (
+                        <td key={tier} className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                          {fmtInt(tokensOf(d.tiers?.[tier]))}
+                        </td>
+                      ))}
                       <td className="py-2 text-right font-mono text-xs tabular-nums text-navy">
                         {fmtEur(d.cost_eur)}
                       </td>
@@ -221,12 +233,11 @@ export default function CoutsPage() {
                 <tr className="border-t-2 border-navy/30 font-semibold text-navy">
                   <td className="pt-3 pr-4 text-xs">Total</td>
                   <td className="pt-3 pr-4 text-right tabular-nums">{fmtInt(t.analyses_count)}</td>
-                  <td className="pt-3 pr-4 text-right font-mono text-xs tabular-nums">
-                    {fmtInt(t.haiku_tokens_in + t.haiku_tokens_out)}
-                  </td>
-                  <td className="pt-3 pr-4 text-right font-mono text-xs tabular-nums">
-                    {fmtInt(t.sonnet_tokens_in + t.sonnet_tokens_out)}
-                  </td>
+                  {TIERS.map(tier => (
+                    <td key={tier} className="pt-3 pr-4 text-right font-mono text-xs tabular-nums">
+                      {fmtInt(tokensOf(t.tiers?.[tier]))}
+                    </td>
+                  ))}
                   <td className="pt-3 text-right font-mono text-xs tabular-nums text-orange-dark">
                     {fmtEur(t.cost_eur)}
                   </td>

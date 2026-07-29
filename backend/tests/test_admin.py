@@ -153,7 +153,30 @@ def test_costs(client, admin_headers):
     body = res.get_json()
     assert len(body["days"]) == 7
     assert "total" in body
+    # Pricing is per tier now, not a hardcoded haiku/sonnet pair.
+    assert set(body["pricing"]) == {"free", "paid", "premium"}
     day = body["days"][0]
-    for key in ("date", "analyses_count", "haiku_tokens_in", "haiku_tokens_out",
-                "sonnet_tokens_in", "sonnet_tokens_out", "cost_eur"):
+    for key in ("date", "analyses_count", "tiers", "cost_eur"):
         assert key in day
+    for tier in ("free", "paid", "premium"):
+        assert set(day["tiers"][tier]) == {"count", "tokens_in", "tokens_out"}
+        assert set(body["total"]["tiers"][tier]) == {"count", "tokens_in", "tokens_out"}
+
+
+def test_costs_bills_legacy_nickname_rows(app, client, admin_headers):
+    """Rows written before the plan-name migration store 'sonnet' in
+    inputs._tier and must still land in the paid bucket, not vanish."""
+    from app.models.analysis import Analysis
+    from app.extensions import db as _db
+
+    _db.session.add(Analysis(
+        inputs={"_tier": "sonnet"}, status="success",
+        tokens_in=1_000_000, tokens_out=1_000_000,
+    ))
+    _db.session.commit()
+
+    body = client.get("/api/admin/costs?days=7", headers=admin_headers).get_json()
+    assert body["total"]["tiers"]["paid"]["count"] == 1
+    assert body["total"]["tiers"]["paid"]["tokens_in"] == 1_000_000
+    # 1M in @ $3 + 1M out @ $15 = $18, converted to EUR
+    assert body["total"]["cost_eur"] == round(18.0 * 0.92, 4)

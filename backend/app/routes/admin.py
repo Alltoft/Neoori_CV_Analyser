@@ -8,9 +8,17 @@ from ..models.user import User
 from ..models.prompt_version import PromptVersion
 from ..models.counselor_code import CounselorCode
 from ..services import section_registry as registry
+from ..services import tiers
 from ..utils.decorators import admin_required
 
 admin_bp = Blueprint("admin", __name__)
+
+# Pricing and model routing live in services/tiers.py so the generation path
+# and this dashboard can't drift. Legacy rows store the old model nicknames
+# in inputs._tier; tiers.normalize() folds them into plan names.
+
+# Dialect-portable: JSON_UNQUOTE(JSON_EXTRACT(...)) on MySQL, json_extract on SQLite
+_TIER_EXPR = Analysis.inputs["_tier"].as_string()
 
 
 @admin_bp.get("/stats")
@@ -160,7 +168,7 @@ def stats_timeseries():
         .all()
     )
 
-    # Sonnet-tier counts grouped by day
+    # Paying tiers (paid + premium) grouped by day
     paid_rows = (
         db.session.query(
             func.date(Analysis.created_at).label("day"),
@@ -169,7 +177,7 @@ def stats_timeseries():
         .filter(
             Analysis.created_at >= window_start,
             Analysis.created_at < window_end,
-            _TIER_EXPR == "sonnet",
+            db.or_(*[_tier_filter(t) for t in (tiers.PAID, tiers.PREMIUM)]),
         )
         .group_by(func.date(Analysis.created_at))
         .all()
@@ -197,16 +205,14 @@ def stats_timeseries():
     return jsonify({"days": result}), 200
 
 
-# Anthropic pricing as of 2026-05 — https://www.anthropic.com/pricing
-# Model is determined by inputs._tier ('haiku' or 'sonnet'), not user plan.
-_HAIKU_IN  = 0.80    # $/MTok input
-_HAIKU_OUT = 4.00    # $/MTok output
-_SONNET_IN  = 3.00   # $/MTok input
-_SONNET_OUT = 15.00  # $/MTok output
-_USD_TO_EUR = 0.92
-
-# Dialect-portable: JSON_UNQUOTE(JSON_EXTRACT(...)) on MySQL, json_extract on SQLite
-_TIER_EXPR = Analysis.inputs["_tier"].as_string()
+def _tier_filter(tier: str):
+    """Match a plan tier, including the nickname legacy rows were written with."""
+    aliases = [tier] + [old for old, new in tiers.LEGACY.items() if new == tier]
+    clause = _TIER_EXPR.in_(aliases)
+    if tier == tiers.FREE:
+        # Analyses created before _tier existed bill as free.
+        return db.or_(clause, _TIER_EXPR.is_(None))
+    return clause
 
 
 @admin_bp.get("/costs")
@@ -223,79 +229,67 @@ def costs():
     window_start = datetime.combine(today - timedelta(days=days_param - 1), datetime.min.time())
     window_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
 
-    # Haiku = tier is 'haiku' or not set (analyses created before tier was introduced)
-    haiku_rows = (
-        db.session.query(
-            func.date(Analysis.created_at).label("day"),
-            func.count(Analysis.id).label("cnt"),
-            func.coalesce(func.sum(Analysis.tokens_in), 0).label("tin"),
-            func.coalesce(func.sum(Analysis.tokens_out), 0).label("tout"),
+    # One grouped query per tier, indexed by day.
+    by_tier = {}
+    for tier in tiers.TIERS:
+        rows = (
+            db.session.query(
+                func.date(Analysis.created_at).label("day"),
+                func.count(Analysis.id).label("cnt"),
+                func.coalesce(func.sum(Analysis.tokens_in), 0).label("tin"),
+                func.coalesce(func.sum(Analysis.tokens_out), 0).label("tout"),
+            )
+            .filter(
+                Analysis.created_at >= window_start,
+                Analysis.created_at < window_end,
+                _tier_filter(tier),
+            )
+            .group_by(func.date(Analysis.created_at))
+            .all()
         )
-        .filter(
-            Analysis.created_at >= window_start,
-            Analysis.created_at < window_end,
-            db.or_(_TIER_EXPR == "haiku", _TIER_EXPR.is_(None)),
-        )
-        .group_by(func.date(Analysis.created_at))
-        .all()
-    )
+        by_tier[tier] = {str(r.day): r for r in rows}
 
-    # Sonnet = tier is 'sonnet'
-    sonnet_rows = (
-        db.session.query(
-            func.date(Analysis.created_at).label("day"),
-            func.count(Analysis.id).label("cnt"),
-            func.coalesce(func.sum(Analysis.tokens_in), 0).label("tin"),
-            func.coalesce(func.sum(Analysis.tokens_out), 0).label("tout"),
-        )
-        .filter(
-            Analysis.created_at >= window_start,
-            Analysis.created_at < window_end,
-            _TIER_EXPR == "sonnet",
-        )
-        .group_by(func.date(Analysis.created_at))
-        .all()
-    )
-
-    haiku_by_day = {str(r.day): r for r in haiku_rows}
-    sonnet_by_day = {str(r.day): r for r in sonnet_rows}
-
-    result = []
+    days = []
     total_cost_usd = 0.0
-    totals = dict(analyses_count=0, haiku_tokens_in=0, haiku_tokens_out=0,
-                  sonnet_tokens_in=0, sonnet_tokens_out=0)
+    totals = {
+        "analyses_count": 0,
+        "tiers": {t: {"count": 0, "tokens_in": 0, "tokens_out": 0} for t in tiers.TIERS},
+    }
 
     for i in range(days_param - 1, -1, -1):
-        d = today - timedelta(days=i)
-        day_str = d.isoformat()
-        h = haiku_by_day.get(day_str)
-        s = sonnet_by_day.get(day_str)
+        day_str = (today - timedelta(days=i)).isoformat()
+        day_cost_usd = 0.0
+        day_count = 0
+        per_tier = {}
 
-        h_in  = int(h.tin)  if h else 0
-        h_out = int(h.tout) if h else 0
-        s_in  = int(s.tin)  if s else 0
-        s_out = int(s.tout) if s else 0
-        count = (int(h.cnt) if h else 0) + (int(s.cnt) if s else 0)
+        for tier in tiers.TIERS:
+            r = by_tier[tier].get(day_str)
+            t_in = int(r.tin) if r else 0
+            t_out = int(r.tout) if r else 0
+            cnt = int(r.cnt) if r else 0
 
-        cost_usd = (h_in * _HAIKU_IN + h_out * _HAIKU_OUT
-                    + s_in * _SONNET_IN + s_out * _SONNET_OUT) / 1_000_000
-        total_cost_usd += cost_usd
+            per_tier[tier] = {"count": cnt, "tokens_in": t_in, "tokens_out": t_out}
+            day_cost_usd += tiers.cost_usd(tier, t_in, t_out)
+            day_count += cnt
 
-        totals["analyses_count"]   += count
-        totals["haiku_tokens_in"]  += h_in
-        totals["haiku_tokens_out"] += h_out
-        totals["sonnet_tokens_in"] += s_in
-        totals["sonnet_tokens_out"]+= s_out
+            totals["tiers"][tier]["count"] += cnt
+            totals["tiers"][tier]["tokens_in"] += t_in
+            totals["tiers"][tier]["tokens_out"] += t_out
 
-        result.append({
+        total_cost_usd += day_cost_usd
+        totals["analyses_count"] += day_count
+
+        days.append({
             "date": day_str,
-            "analyses_count": count,
-            "haiku_tokens_in": h_in,
-            "haiku_tokens_out": h_out,
-            "sonnet_tokens_in": s_in,
-            "sonnet_tokens_out": s_out,
-            "cost_eur": round(cost_usd * _USD_TO_EUR, 4),
+            "analyses_count": day_count,
+            "tiers": per_tier,
+            "cost_eur": round(day_cost_usd * tiers.USD_TO_EUR, 4),
         })
 
-    totals["cost_eur"] = round(total_cost_usd * _USD_TO_EUR, 4)
-    return jsonify({"days": result, "total": totals}), 200
+    totals["cost_eur"] = round(total_cost_usd * tiers.USD_TO_EUR, 4)
+    return jsonify({
+        "days": days,
+        "total": totals,
+        "pricing": tiers.pricing(),
+        "usd_to_eur": tiers.USD_TO_EUR,
+    }), 200
