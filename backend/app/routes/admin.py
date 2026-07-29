@@ -7,6 +7,7 @@ from ..models.analysis import Analysis
 from ..models.user import User
 from ..models.prompt_version import PromptVersion
 from ..models.counselor_code import CounselorCode
+from ..services import section_registry as registry
 from ..utils.decorators import admin_required
 
 admin_bp = Blueprint("admin", __name__)
@@ -30,7 +31,10 @@ def stats():
     total_tokens_in = int(tokens_row.total_in or 0)
     total_tokens_out = int(tokens_row.total_out or 0)
 
-    active_prompt = PromptVersion.query.filter_by(is_active=True).first()
+    # One active prompt per parcours. This used to be a single unfiltered
+    # .first(), which returned whichever row the DB happened to yield.
+    active_prompts = PromptVersion.query.filter_by(is_active=True).all()
+    by_path = {p.path: p.to_dict(include_text=False) for p in active_prompts}
 
     return jsonify({
         "total_analyses": total_analyses,
@@ -41,7 +45,9 @@ def stats():
         "conversion_rate": round(paid_count / total_users * 100, 1) if total_users else 0,
         "total_tokens_in": total_tokens_in,
         "total_tokens_out": total_tokens_out,
-        "active_prompt": active_prompt.to_dict(include_text=False) if active_prompt else None,
+        "active_prompts": by_path,
+        # Kept so an older frontend build doesn't lose the KPI tile mid-deploy.
+        "active_prompt": by_path.get(registry.DEFAULT_PARCOURS),
     }), 200
 
 

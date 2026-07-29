@@ -2,25 +2,49 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
 from ..models.prompt_version import PromptVersion
+from ..services import section_registry as registry
 from ..utils.decorators import admin_required
 
 prompts_bp = Blueprint("prompts", __name__)
+
+_PATHS_LABEL = ", ".join(f"'{p}'" for p in registry.PARCOURS)
+
+
+def _read_path(raw):
+    """Validate a parcours id from the request, accepting legacy 'A'/'B'.
+
+    Returns (path, error_response). Rows written before the 3-parcours
+    migration still carry the old codes, so the admin UI can address them.
+    """
+    value = (raw or registry.DEFAULT_PARCOURS).strip().upper()
+    if value in ("A", "B"):
+        return registry.normalize(value), None
+    if not registry.is_valid(value):
+        return None, (jsonify({"error": f"path doit être l'un de {_PATHS_LABEL}."}), 400)
+    return value, None
 
 
 @prompts_bp.get("/")
 @jwt_required()
 def list_prompts():
     """All prompt versions, newest first. Text excluded to keep payload small."""
-    versions = PromptVersion.query.order_by(PromptVersion.created_at.desc()).all()
+    query = PromptVersion.query
+    path = request.args.get("path")
+    if path:
+        resolved, error = _read_path(path)
+        if error:
+            return error
+        query = query.filter_by(path=resolved)
+    versions = query.order_by(PromptVersion.created_at.desc()).all()
     return jsonify({"prompts": [p.to_dict(include_text=False) for p in versions]}), 200
 
 
 @prompts_bp.get("/active")
 def get_active_prompt():
-    """Public — returns the currently active prompt for a given path (default 'A')."""
-    path = (request.args.get("path") or "A").upper()
-    if path not in ("A", "B"):
-        return jsonify({"error": "path doit être 'A' ou 'B'."}), 400
+    """Public — the active prompt for a parcours (default '1')."""
+    path, error = _read_path(request.args.get("path"))
+    if error:
+        return error
     prompt = PromptVersion.query.filter_by(is_active=True, path=path).first()
     if not prompt:
         return jsonify({"error": "Aucun prompt actif."}), 404
@@ -44,15 +68,17 @@ def create_prompt():
     version_label = (data.get("version_label") or "").strip()
     system_prompt_text = (data.get("system_prompt_text") or "").strip()
     activate = data.get("activate", False)
-    path = (data.get("path") or "A").upper()
-    if path not in ("A", "B"):
-        return jsonify({"error": "path doit être 'A' ou 'B'."}), 400
+    path, error = _read_path(data.get("path"))
+    if error:
+        return error
 
     if not version_label or not system_prompt_text:
         return jsonify({"error": "version_label et system_prompt_text requis."}), 400
 
-    if PromptVersion.query.filter_by(version_label=version_label).first():
-        return jsonify({"error": f"Version '{version_label}' existe déjà."}), 409
+    # Scoped to the parcours: the same label may exist once per parcours.
+    # It used to be a global check, so "v1.7" could only ever belong to one.
+    if PromptVersion.query.filter_by(version_label=version_label, path=path).first():
+        return jsonify({"error": f"Version '{version_label}' existe déjà pour ce parcours."}), 409
 
     if activate:
         PromptVersion.query.filter_by(is_active=True, path=path).update({"is_active": False})

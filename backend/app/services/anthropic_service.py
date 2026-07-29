@@ -88,7 +88,7 @@ def _format_user_message_b(inputs: dict) -> str:
 
 
 def _format_user_message(inputs: dict) -> str:
-    if (inputs or {}).get("_path") == "B":
+    if registry.normalize((inputs or {}).get("_path")) == "3":
         return _format_user_message_b(inputs)
     return f"""--- CV DU CANDIDAT ---
 {inputs.get("cv_text", "").strip()}
@@ -278,7 +278,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             return
 
         inputs = analysis.inputs or {}
-        path = inputs.get("_path", "A")
+        path = registry.normalize(inputs.get("_path"))
         prompt = PromptVersion.query.filter_by(is_active=True, path=path).first()
         if not prompt:
             analysis.status = "error"
@@ -287,7 +287,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             return
 
         # Chemin B is free + Sonnet for all users (decision 4.6 / 4.7).
-        tier = "sonnet" if path == "B" else inputs.get("_tier", "haiku")
+        tier = "sonnet" if path == "3" else inputs.get("_tier", "haiku")
         model, max_tokens = _select_model_by_tier(tier)
 
         analysis.status = "running"

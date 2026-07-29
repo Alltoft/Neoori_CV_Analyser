@@ -190,7 +190,7 @@ export default function OrientationPage() {
     setSubmitError(null)
     const payload = {
       inputs: {
-        _path: "B",
+        _path: "3",
         _sub_profile: sub,
         nom: form.nom.trim(),
         aime: form.aime,

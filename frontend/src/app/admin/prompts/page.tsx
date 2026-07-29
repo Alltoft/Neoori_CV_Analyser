@@ -20,16 +20,32 @@ import {
 } from "lucide-react"
 import type { PromptVersion } from "@/types"
 
-type Path = "A" | "B"
+type Path = "1" | "2" | "3"
+
+const PATHS: Path[] = ["1", "2", "3"]
+
+const PATH_LABEL: Record<Path, string> = {
+  "1": "J'ai une cible",
+  "2": "Je cherche ma direction",
+  "3": "Je pars de zéro",
+}
 
 const PATH_HELP: Record<Path, string> = {
-  A: "Chemin A — analyse de parcours et de CV.",
-  B: "Chemin B — orientation et exploration de pistes.",
+  "1": "Parcours 1 — CV en main et cible identifiée. Rapport §1 à §9.",
+  "2": "Parcours 2 — un parcours mais pas de cible. Rapport §A à §G.",
+  "3": "Parcours 3 — sans CV, à partir des expériences de vie. Rapport §I à §VI.",
+}
+
+/** Rows written before the v1.2 migration carry the old A/B codes. */
+function toPath(raw: string | undefined): Path {
+  if (raw === "A") return "1"
+  if (raw === "B") return "3"
+  return (PATHS as string[]).includes(raw ?? "") ? (raw as Path) : "1"
 }
 
 export default function PromptsPage() {
   const [versions, setVersions] = useState<PromptVersion[]>([])
-  const [path, setPath] = useState<Path>("A")
+  const [path, setPath] = useState<Path>("1")
   const [text, setText] = useState("")
   const [savedText, setSavedText] = useState("")
   const [loading, setLoading] = useState(true)
@@ -71,14 +87,16 @@ export default function PromptsPage() {
     setSaving(true)
     setError(null)
     try {
-      const activeVersion = versions.find(v => v.is_active && (v.path ?? "A") === path)
-      const suffix = path === "B" ? "-B" : ""
+      const activeVersion = versions.find(v => v.is_active && toPath(v.path) === path)
+      // Every parcours gets an explicit suffix now. The old scheme left
+      // parcours A unsuffixed, which made the strip regex asymmetric.
+      const suffix = `-P${path}`
       const fallback = `v1.${new Date().toISOString().slice(0,10).replace(/-/g,"")}${suffix}`
       const lastLabel = activeVersion?.version_label ?? fallback
-      const stripped = lastLabel.replace(/-[AB]$/, "")
+      const stripped = lastLabel.replace(/-(?:P[123]|[AB])$/, "")
       const bumped = /^v\d+\.\d+$/.test(stripped)
         ? stripped.replace(/v(\d+)\.(\d+)/, (_, maj, min) => `v${maj}.${+min + 1}`)
-        : `v1.${versions.filter(v => (v.path ?? "A") === path).length + 1}`
+        : `v1.${versions.filter(v => toPath(v.path) === path).length + 1}`
       const nextLabel = `${bumped}${suffix}`
       await api.post("/prompts/", {
         version_label: nextLabel,
@@ -129,8 +147,8 @@ export default function PromptsPage() {
     }
   }
 
-  const activeVersion = versions.find(v => v.is_active && (v.path ?? "A") === path)
-  const visibleVersions = versions.filter(v => (v.path ?? "A") === path)
+  const activeVersion = versions.find(v => v.is_active && toPath(v.path) === path)
+  const visibleVersions = versions.filter(v => toPath(v.path) === path)
 
   return (
     <>
@@ -171,39 +189,38 @@ export default function PromptsPage() {
             )}
           </div>
 
-          {/* Chemin A/B toggle */}
+          {/* Parcours selector */}
           <div className="mt-4">
-            <span className="eyebrow text-navy-500">Chemin</span>
+            <span className="eyebrow text-navy-500">Parcours</span>
             <div
               role="group"
-              aria-label="Sélection du chemin d’analyse"
+              aria-label="Sélection du parcours"
               className="flex flex-wrap gap-2 mt-2"
             >
-              {(["A", "B"] as const).map(p => (
+              {PATHS.map(p => (
                 <button
                   key={p}
                   type="button"
                   aria-pressed={path === p}
                   onClick={() => setPath(p)}
                   className={cn(
-                    "px-3 py-1.5 rounded-full border text-xs font-mono uppercase tracking-widest transition-colors",
+                    "px-3 py-1.5 rounded-full border text-xs font-medium transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                     path === p
                       ? "bg-navy border-navy text-white"
                       : "bg-background border-border text-muted-foreground hover:border-orange/50 hover:text-orange",
                   )}
                 >
-                  Chemin {p}
+                  <span className="font-mono uppercase tracking-widest">P{p}</span>
+                  <span className="ml-1.5">· {PATH_LABEL[p]}</span>
                 </button>
               ))}
             </div>
             <div className="mt-2.5 flex items-start gap-2 rounded-lg bg-peach-soft/60 px-3 py-2 text-xs text-navy-700">
               <Info className="size-3.5 mt-px shrink-0 text-orange-dark" aria-hidden />
               <p>
-                <span className="font-medium">Chemin A</span> alimente l’analyse de parcours et de CV.{" "}
-                <span className="font-medium">Chemin B</span> alimente l’orientation et l’exploration de
-                pistes. Vous éditez ici le prompt du <span className="font-medium">chemin {path}</span> :{" "}
-                {PATH_HELP[path]}
+                Chaque parcours a son propre prompt et sa propre structure de rapport. Vous éditez
+                ici celui du <span className="font-medium">parcours {path}</span> : {PATH_HELP[path]}
               </p>
             </div>
           </div>
@@ -292,7 +309,7 @@ export default function PromptsPage() {
               Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-12 mb-2" />)
             ) : visibleVersions.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">
-                Aucune version pour le chemin {path}.
+                Aucune version pour le parcours {path}.
               </p>
             ) : (
               <ul className="flex flex-col">

@@ -11,7 +11,10 @@ class PromptVersion(db.Model):
     system_prompt_text = db.Column(db.Text, nullable=False)
     author_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=False, index=True)
-    path = db.Column(db.String(1), nullable=False, default='A', server_default='A')
+    # Parcours id — '1' | '2' | '3'. See services/section_registry.py.
+    # Rows written before the v1.2 migration carried 'A'/'B'; normalize()
+    # still accepts those on read.
+    path = db.Column(db.String(1), nullable=False, default='1', server_default='1')
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     author = db.relationship("User", foreign_keys=[author_id])

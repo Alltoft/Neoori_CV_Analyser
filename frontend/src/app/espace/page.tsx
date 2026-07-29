@@ -17,10 +17,11 @@ import { copyToClipboard } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
 import type { Analysis } from "@/types"
 import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2, ArrowRight } from "lucide-react"
+import { normalizeParcours } from "@/types"
 
 function cardTitle(a: Analysis) {
   if (a.status === "draft") return "Brouillon"
-  return a.inputs?.cible_visee?.slice(0, 60) || (a.inputs?._path === "B" ? "Portrait de potentiel" : "Analyse")
+  return a.inputs?.cible_visee?.slice(0, 60) || (normalizeParcours(a.inputs?._path) === "3" ? "Portrait de potentiel" : "Analyse")
 }
 
 export default function EspacePage() {

@@ -13,6 +13,16 @@ export type Parcours = "1" | "2" | "3"
 /** Superset accepted on the wire, so legacy analyses still type-check. */
 export type AnalysisPath = Parcours | "A" | "B"
 
+/**
+ * Coerce a stored `_path` to a parcours id. Analyses written before the v1.2
+ * migration carry "A"/"B"; the backend normalises the same way on read.
+ */
+export function normalizeParcours(raw: string | undefined | null): Parcours {
+  if (raw === "A") return "1"
+  if (raw === "B") return "3"
+  return raw === "1" || raw === "2" || raw === "3" ? raw : "1"
+}
+
 export type SubProfile = "b1" | "b2" | "b3"
 
 /**

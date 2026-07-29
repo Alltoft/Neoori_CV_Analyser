@@ -15,6 +15,7 @@ from flask import Blueprint, jsonify, request
 
 from ..extensions import db
 from ..models.analysis import Analysis
+from ..services import section_registry as registry
 from ..services.unlock_service import unlock_analysis
 
 payments_bp = Blueprint("payments", __name__)
@@ -55,7 +56,7 @@ def create_checkout():
         return jsonify({"error": "analysis_id requis."}), 400
 
     analysis = Analysis.query.get_or_404(analysis_id)
-    if (analysis.inputs or {}).get("_path") == "B":
+    if registry.normalize((analysis.inputs or {}).get("_path")) == "3":
         return jsonify({"error": "Le portrait de potentiel est déjà complet."}), 400
     if analysis.unlock_method or "5" in (analysis.output or {}):
         return jsonify({"error": "Cette analyse est déjà débloquée."}), 409

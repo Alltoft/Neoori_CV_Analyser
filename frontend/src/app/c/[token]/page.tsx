@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth"
 import type { Analysis, CounselorNote } from "@/types"
 import { Printer, ArrowLeft, Check } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
+import { normalizeParcours } from "@/types"
 
 export default function CounselorPage() {
   const { token } = useParams<{ token: string }>()
@@ -54,7 +55,7 @@ export default function CounselorPage() {
   }
 
   const output = analysis?.output ?? {}
-  const path = analysis?.inputs?._path ?? "1"
+  const path = normalizeParcours(analysis?.inputs?._path)
   // The backend already filtered this response to the counselor set for this
   // parcours (audience=counselor) and shipped it in registry order.
   const counselorSections = analysis?.sections_meta ?? []
@@ -119,7 +120,7 @@ export default function CounselorPage() {
               </div>
             ) : analysis?.inputs ? (
               <div className="mb-7 grid grid-cols-1 gap-3 rounded-lg bg-secondary p-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                {(path === "B"
+                {(path === "3"
                   ? [
                       ["Sous-profil", analysis.inputs._sub_profile?.toUpperCase() ?? "—"],
                       ["Aime", (analysis.inputs.aime ?? []).join(", ").slice(0, 60) || "—"],

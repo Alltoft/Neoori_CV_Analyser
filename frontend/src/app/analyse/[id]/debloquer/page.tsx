@@ -14,6 +14,7 @@ import { CheckCircle2, Circle, ArrowLeft, ArrowRight, ShieldCheck } from "lucide
 import { api, ApiError } from "@/lib/api"
 import { SECTION_TITLES } from "@/types"
 import type { Analysis } from "@/types"
+import { normalizeParcours } from "@/types"
 
 const FREE = ["1", "2", "3"]
 const PAID = ["4", "5", "6", "7", "8", "9"]
@@ -132,8 +133,9 @@ function DebloquerContent() {
     )
   }
 
-  const path = analysis?.inputs?._path ?? "A"
-  const alreadyComplete = path === "B" || "5" in (analysis?.output ?? {})
+  const path = normalizeParcours(analysis?.inputs?._path)
+  // Parcours 3 has no paid tier; parcours 1 unlocks via unlock_method.
+  const alreadyComplete = path === "3" || analysis?.unlock_method != null
 
   // ── Nothing to unlock ──
   if (alreadyComplete) {
