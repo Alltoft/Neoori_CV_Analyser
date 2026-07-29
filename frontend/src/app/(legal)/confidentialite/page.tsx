@@ -39,6 +39,11 @@ export default function ConfidentialitePage() {
         commerciale d&apos;Anthropic, ces données ne sont pas utilisées pour entraîner ses modèles.
         Le rapport généré et la réponse brute sont conservés afin de vous restituer votre analyse.
       </p>
+      <p>
+        Aucun terme médical, aucun diagnostic et aucune mention de votre statut administratif
+        n&apos;est transmis au modèle. Lorsque vos conditions de travail sont renseignées,
+        seules les conséquences sur le travail lui sont communiquées — jamais leur cause.
+      </p>
 
       <h2>5. Destinataires et sous-traitants</h2>
       <ul>
@@ -53,10 +58,24 @@ export default function ConfidentialitePage() {
         toute personne disposant du lien : ne le transmettez qu&apos;à votre conseiller.
       </p>
 
-      <h2>6. Durées de conservation</h2>
+      <h2>6. Profil de base et conservation</h2>
       <p>
-        Vos analyses sont conservées tant que votre compte est actif. Vous pouvez supprimer chaque
-        analyse à tout moment depuis votre espace ; la suppression est immédiate et définitive.
+        Votre profil de base est conservé tant que votre compte est actif, afin que vous
+        n&apos;ayez pas à le ressaisir et qu&apos;un conseiller qui vous accompagne puisse
+        revenir sur votre dossier. Vous le supprimez à tout moment depuis votre espace ; la
+        suppression est immédiate et définitive.
+      </p>
+      <p>
+        <strong>Deux niveaux de stockage.</strong> Vos réponses ordinaires (identité, projet,
+        contraintes pratiques) sont conservées telles quelles. Vos conditions de travail et,
+        le cas échéant, votre statut de bénéficiaire de l&apos;obligation d&apos;emploi sont
+        stockés séparément et chiffrés : ils n&apos;apparaissent ni dans les journaux
+        techniques, ni dans les documents que vous téléchargez ou partagez, ni dans le rapport
+        lui-même. Supprimer votre profil supprime les deux.
+      </p>
+      <p>
+        Vos analyses sont conservées tant que votre compte est actif. Vous pouvez supprimer
+        chaque analyse individuellement depuis votre espace.
         [À COMPLÉTER : durée de conservation des comptes inactifs, ex. 2 ans.]
       </p>
 
