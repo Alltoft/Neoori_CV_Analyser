@@ -42,7 +42,7 @@ export function SiteNav() {
           <Button render={<Link href={user ? "/espace" : "/connexion"} />} size="lg" variant="ghost">
             {user ? "Mon espace" : "Se connecter"}
           </Button>
-          <Button render={<Link href="/analyse/nouveau" />} size="lg">
+          <Button render={<Link href="/analyse" />} size="lg">
             Démarrer
             <ArrowRight />
           </Button>
@@ -76,7 +76,7 @@ export function SiteNav() {
             <Button render={<Link href={user ? "/espace" : "/connexion"} />} variant="outline" size="lg" onClick={() => setOpen(false)}>
               {user ? "Mon espace" : "Se connecter"}
             </Button>
-            <Button render={<Link href="/analyse/nouveau" />} size="lg" onClick={() => setOpen(false)}>
+            <Button render={<Link href="/analyse" />} size="lg" onClick={() => setOpen(false)}>
               Démarrer une analyse
               <ArrowRight />
             </Button>

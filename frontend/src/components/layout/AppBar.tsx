@@ -29,7 +29,7 @@ export function AppBar() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <Button render={<Link href="/analyse/nouveau" />} size="lg">
+          <Button render={<Link href="/analyse" />} size="lg">
             <PlusCircle />
             <span className="hidden sm:inline">Nouvelle analyse</span>
             <span className="sm:hidden">Analyse</span>

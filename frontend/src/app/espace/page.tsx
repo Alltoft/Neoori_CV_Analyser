@@ -72,7 +72,7 @@ export default function EspacePage() {
             <h1 className="font-display text-2xl font-bold text-navy">Mon espace</h1>
             <p className="mt-1 text-sm text-muted-foreground">Vos analyses et vos brouillons.</p>
           </div>
-          <Button render={<Link href="/analyse/nouveau" />} size="lg">
+          <Button render={<Link href="/analyse" />} size="lg">
             <PlusCircle /> Nouvelle analyse
           </Button>
         </div>
@@ -86,7 +86,7 @@ export default function EspacePage() {
             <span className="grid size-12 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-6" /></span>
             <p className="font-display font-semibold text-navy">Votre première analyse</p>
             <p className="text-sm text-muted-foreground">~2 min · 8 champs</p>
-            <Button render={<Link href="/analyse/nouveau" />} size="lg" className="mt-2">
+            <Button render={<Link href="/analyse" />} size="lg" className="mt-2">
               Commencer <ArrowRight />
             </Button>
           </div>
@@ -153,7 +153,7 @@ export default function EspacePage() {
 
             {/* New analysis card */}
             <Link
-              href="/analyse/nouveau"
+              href="/analyse"
               className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-secondary transition-colors hover:border-orange/50"
             >
               <span className="grid size-10 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-5" /></span>
@@ -190,7 +190,7 @@ export default function EspacePage() {
                 {user?.credits_remaining ?? "—"} analyse{(user?.credits_remaining ?? 0) > 1 ? "s" : ""}
               </p>
             </div>
-            <Button render={<Link href="/analyse/nouveau" />} size="sm">
+            <Button render={<Link href="/analyse" />} size="sm">
               <PlusCircle /> Lancer
             </Button>
           </div>

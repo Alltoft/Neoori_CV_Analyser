@@ -98,7 +98,7 @@ const PERSONAS = [
     icon: UserRound,
     title: "Candidats",
     desc: "Vous postulez avec un parcours qui vous appartient — y compris ses contraintes, ses spécificités, ses besoins. neoori ne les efface pas. Il les intègre. Pour vous donner des recommandations qui tiennent vraiment la route, dans votre vie réelle.",
-    cta: { href: "/analyse/nouveau", label: "Lancer mon analyse" },
+    cta: { href: "/analyse", label: "Lancer mon analyse" },
   },
   {
     img: "/img/persona-conseiller.jpg",
@@ -150,7 +150,7 @@ export default function LandingPage() {
               neoori analyse votre CV face au poste que vous visez — et vous dit exactement ce qui retient l’attention, ce qui freine, et comment faire la différence.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button render={<Link href="/analyse/nouveau" />} size="xl">
+              <Button render={<Link href="/analyse" />} size="xl">
                 Lancer mon analyse
                 <ArrowRight />
               </Button>
@@ -328,7 +328,7 @@ export default function LandingPage() {
                   Vous découvrez comment votre CV est perçu face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour corriger ce qui freine.
                 </p>
                 <p className="mt-3 text-xs text-muted-foreground">Sections 1 à 3 et verdict de diagnostic inclus. Aucune carte bancaire demandée.</p>
-                <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-auto w-full">
+                <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
                   Je commence maintenant
                 </Button>
               </div>
@@ -359,7 +359,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Button render={<Link href="/analyse/nouveau" />} size="lg" className="mt-auto w-full bg-white text-orange-dark hover:bg-white/90">
+                <Button render={<Link href="/analyse" />} size="lg" className="mt-auto w-full bg-white text-orange-dark hover:bg-white/90">
                   Accéder au rapport complet
                 </Button>
               </div>
@@ -373,7 +373,7 @@ export default function LandingPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Vous êtes accompagné par un conseiller ? Il a peut-être un code qui vous ouvre l’accès au rapport complet — gratuitement. Ça vaut la peine de lui demander.
                 </p>
-                <Button render={<Link href="/analyse/nouveau" />} variant="outline" size="lg" className="mt-auto w-full">
+                <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
                   J’ai un code
                 </Button>
               </div>
@@ -436,7 +436,7 @@ export default function LandingPage() {
               Lancez votre première analyse maintenant — gratuitement, en quelques minutes. Vous repartez déjà avec quelque chose de concret.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Button render={<Link href="/analyse/nouveau" />} size="xl">
+              <Button render={<Link href="/analyse" />} size="xl">
                 Lancer mon analyse
                 <ArrowRight />
               </Button>
