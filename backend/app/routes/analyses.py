@@ -106,7 +106,17 @@ def list_analyses():
 
 @analyses_bp.get("/<analysis_id>")
 def get_analysis(analysis_id):
+    """Poll status / fetch a result.
+
+    Deliberately not @jwt_required: the anonymous flow (no account yet) has to
+    poll its own analysis, and the phase-1 rebuild is what makes accounts
+    mandatory. But an analysis that *has* an owner is readable only by that
+    owner — previously any caller could read any analysis, inputs included:
+    CV text, name, location, and the health context parcours 3 collects.
+    """
     analysis = Analysis.query.get_or_404(analysis_id)
+    if not _may_access(analysis):
+        return jsonify({"error": "Accès non autorisé."}), 403
     return jsonify({"analysis": analysis.to_dict()}), 200
 
 
@@ -115,6 +125,8 @@ def unlock_with_code(analysis_id):
     """Redeem a counselor code: free paid-tier regeneration (Cap Emploi /
     France Travail beneficiaries). Payment unlocks go through /api/payments."""
     analysis = Analysis.query.get_or_404(analysis_id)
+    if not _may_access(analysis):
+        return jsonify({"error": "Accès non autorisé."}), 403
     data = request.get_json(silent=True) or {}
 
     # Accept "ABCD1234", "abcd 1234", "ABCD-1234"… — codes are 8 alnum chars
@@ -139,10 +151,7 @@ def unlock_with_code(analysis_id):
 @analyses_bp.delete("/<analysis_id>")
 def delete_analysis(analysis_id):
     analysis = Analysis.query.get_or_404(analysis_id)
-
-    # Allow delete if anonymous analysis (no owner) or if logged-in user owns it
-    user_id = _optional_user_id()
-    if analysis.user_id is not None and analysis.user_id != user_id:
+    if not _may_access(analysis):
         return jsonify({"error": "Accès non autorisé."}), 403
 
     db.session.delete(analysis)
@@ -151,6 +160,19 @@ def delete_analysis(analysis_id):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+def _may_access(analysis: Analysis) -> bool:
+    """Owner-only once an analysis has an owner.
+
+    An ownerless (anonymous) analysis stays reachable by anyone holding its
+    id — the UUID4 *is* the capability there, and there is no account to check
+    against. Phase 1 makes accounts mandatory, at which point the ownerless
+    branch is dead code and this collapses to a plain ownership test.
+    """
+    if analysis.user_id is None:
+        return True
+    return analysis.user_id == _optional_user_id()
+
 
 def _optional_user_id() -> str | None:
     """Return current user id if a valid JWT is present, else None."""
