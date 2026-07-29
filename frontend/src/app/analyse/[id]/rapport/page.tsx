@@ -11,7 +11,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ReportSection } from "@/components/report/ReportSection"
 import { api } from "@/lib/api"
 import { copyToClipboard } from "@/lib/utils"
-import { SECTION_TITLES, PAID_SECTIONS } from "@/types"
 import type { Analysis } from "@/types"
 import { Printer, Share2, Check } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
@@ -54,16 +53,24 @@ export default function RapportPage() {
   }, [id])
 
   const output = analysis?.output ?? {}
-  const path = analysis?.inputs?._path ?? "A"
-  const isPaid = "5" in output // all 9 sections generated (Chemin A)
+  const path = analysis?.inputs?._path ?? "1"
+  const isPaid = analysis?.unlock_method != null
   const hasOutput = Object.keys(output).length > 0
 
-  const counselorSections = path === "B" ? ["1", "2", "8"] : ["1", "4", "5"]
-  const realSections = Object.keys(output).sort((a, b) => Number(a) - Number(b))
+  // Order and titles come from the backend section registry. Never sort output
+  // keys here: parcours 2 uses letter keys and parcours 3 Roman numerals, and
+  // Number("A") - Number("B") is NaN, which silently leaves insertion order.
+  const meta = analysis?.sections_meta ?? []
+  const generated = meta.filter((m) => m.key in output)
   // While loading, show a short skeleton list (no phantom locked paid sections).
-  const placeholderSections = path === "B" ? ["1", "2", "3", "8", "9"] : ["1", "2", "3", "4"]
-  const allSections = hasOutput ? realSections : placeholderSections
-  const sectionsToShow = view === "conseiller" ? counselorSections : allSections
+  const placeholder = meta.filter((m) => m.tiers.includes("free"))
+  const counselorKeys = new Set(analysis?.counselor_keys ?? [])
+  const sectionsToShow =
+    view === "conseiller"
+      ? generated.filter((m) => counselorKeys.has(m.key))
+      : hasOutput
+        ? generated
+        : placeholder
 
   const monthLabel = new Date(analysis?.created_at ?? "").toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
 
@@ -149,15 +156,16 @@ export default function RapportPage() {
             )}
 
             {/* Sections */}
-            {sectionsToShow.map((n) => {
-              const isPaidSection = path === "A" && (PAID_SECTIONS as readonly string[]).includes(n)
-              const section = output[n]
+            {sectionsToShow.map((m) => {
+              const isPaidSection = !m.tiers.includes("free")
+              const section = output[m.key]
               return (
                 <ReportSection
-                  key={n}
-                  n={n}
-                  title={section?.title ?? SECTION_TITLES[n] ?? `Section ${n}`}
+                  key={m.key}
+                  n={m.key}
+                  title={section?.title ?? m.title}
                   section={section}
+                  render={m.render}
                   paid={isPaidSection}
                   counselor={view === "conseiller"}
                   locked={isPaidSection && !isPaid}

@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ReportSection } from "@/components/report/ReportSection"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
-import { SECTION_TITLES } from "@/types"
 import type { Analysis, CounselorNote } from "@/types"
 import { Printer, ArrowLeft, Check } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
@@ -55,8 +54,10 @@ export default function CounselorPage() {
   }
 
   const output = analysis?.output ?? {}
-  const path = analysis?.inputs?._path ?? "A"
-  const counselorSections = path === "B" ? ["1", "2", "8"] : ["1", "4", "5"]
+  const path = analysis?.inputs?._path ?? "1"
+  // The backend already filtered this response to the counselor set for this
+  // parcours (audience=counselor) and shipped it in registry order.
+  const counselorSections = analysis?.sections_meta ?? []
   const name = analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"
 
   if (error) {
@@ -141,12 +142,13 @@ export default function CounselorPage() {
             ) : null}
 
             {/* Sections */}
-            {counselorSections.map((n) => (
+            {counselorSections.map((m) => (
               <ReportSection
-                key={n}
-                n={n}
-                title={output[n]?.title ?? SECTION_TITLES[n] ?? `Section ${n}`}
-                section={loading ? undefined : output[n]}
+                key={m.key}
+                n={m.key}
+                title={output[m.key]?.title ?? m.title}
+                section={loading ? undefined : output[m.key]}
+                render={m.render}
                 counselor
               />
             ))}

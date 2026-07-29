@@ -39,6 +39,7 @@ export function ReportSection({
   n,
   title,
   section,
+  render = "markdown",
   locked = false,
   paid = false,
   counselor = false,
@@ -46,18 +47,25 @@ export function ReportSection({
 }: {
   n: string
   title: string
+  /** Render mode from the backend section registry. */
+  render?: "markdown" | "tags"
   section?: SectionData
   locked?: boolean
   paid?: boolean
   counselor?: boolean
   unlockHref?: string
 }) {
+  // Keys run "1".."11", "A".."G" and "I".."VI" depending on the parcours. The
+  // free-tier verdict has no ordinal, so it gets no chip rather than "§verdict".
+  const chip = n.length <= 3 ? `§${n}` : null
   return (
     <div className={cn("print-break mb-7", locked && "opacity-60")}>
       <div className="mb-3 flex items-stretch overflow-hidden rounded-md">
-        <span className="flex w-9 shrink-0 items-center justify-center bg-orange-dark font-mono text-[11px] font-bold text-white">
-          §{n}
-        </span>
+        {chip && (
+          <span className="flex min-w-9 shrink-0 items-center justify-center bg-orange-dark px-1.5 font-mono text-[11px] font-bold text-white">
+            {chip}
+          </span>
+        )}
         <div className="flex flex-1 items-center gap-2 bg-navy px-3 py-2">
           <h2 className="font-display text-sm font-bold uppercase leading-tight tracking-wide text-white">{title}</h2>
           {paid && !counselor && <Badge variant="peach" className="ml-auto shrink-0 text-[10px]">plan payant</Badge>}
@@ -79,7 +87,7 @@ export function ReportSection({
         </div>
       ) : section ? (
         <div className="text-sm leading-relaxed text-foreground/90">
-          {n === "3" ? <TagCloud section={section} /> : <ReactMarkdown components={reportMarkdown}>{toMarkdown(section)}</ReactMarkdown>}
+          {render === "tags" ? <TagCloud section={section} /> : <ReactMarkdown components={reportMarkdown}>{toMarkdown(section)}</ReactMarkdown>}
         </div>
       ) : (
         <div className="space-y-2">

@@ -7,8 +7,26 @@ export interface User {
   created_at: string
 }
 
-export type AnalysisPath = "A" | "B"
+/** Parcours id. Legacy rows carry "A"/"B"; the backend normalises them. */
+export type Parcours = "1" | "2" | "3"
+
+/** Superset accepted on the wire, so legacy analyses still type-check. */
+export type AnalysisPath = Parcours | "A" | "B"
+
 export type SubProfile = "b1" | "b2" | "b3"
+
+/**
+ * Render instructions for one report section, supplied by the backend in
+ * registry order. The client must never sort output keys itself — parcours 2
+ * uses letter keys and parcours 3 Roman numerals, and `Number("A")` is NaN,
+ * which leaves Array.sort in insertion order without raising.
+ */
+export interface SectionMeta {
+  key: string
+  title: string
+  render: "markdown" | "tags"
+  tiers: string[]
+}
 
 export interface AnalysisInputs {
   // Chemin A
@@ -73,6 +91,12 @@ export interface Analysis {
   status: AnalysisStatus
   inputs: AnalysisInputs | null
   output: AnalysisOutput | null
+  /** Ordered render instructions. Absent on responses from an older backend. */
+  sections_meta?: SectionMeta[]
+  /** Section keys the counselor synthesis shows, for this parcours. */
+  counselor_keys?: string[]
+  /** "code" | "payment" once unlocked, null while on the free tier. */
+  unlock_method?: string | null
   share_token: string | null
   prompt_version_id: string | null
   tokens_in: number | null
@@ -98,9 +122,10 @@ export interface CounselorNote {
   updated_at: string
 }
 
-export const FREE_SECTIONS = ["1", "2", "3", "4"] as const
+// Section membership now comes from `Analysis.sections_meta` (backend
+// registry order). The constants below survive only for the parcours-1
+// pricing copy on /debloquer, which Phase 3 rebuilds around the 3 tiers.
 export const PAID_SECTIONS = ["5", "6", "7", "8", "9"] as const
-export const COUNSELOR_SECTIONS = ["1", "4", "5"] as const
 
 export const SECTION_TITLES: Record<string, string> = {
   "1": "Lecture stratégique du parcours",
@@ -114,7 +139,6 @@ export const SECTION_TITLES: Record<string, string> = {
   "9": "Proposition de CV retravaillé",
 }
 
-export const COUNSELOR_SECTIONS_B = ["1", "2", "8"] as const
 
 export const MOBILITY_OPTIONS = [
   "évolution",

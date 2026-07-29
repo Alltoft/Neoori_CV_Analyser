@@ -1,6 +1,7 @@
 from uuid import uuid4
 from datetime import datetime
 from ..extensions import db
+from ..services import section_registry as registry
 
 
 class Analysis(db.Model):
@@ -20,7 +21,9 @@ class Analysis(db.Model):
     # The 8 input fields stored as JSON
     inputs = db.Column(db.JSON, nullable=True)
 
-    # Parsed AI output — dict with keys '1' through '9', each a section object
+    # Parsed AI output — dict keyed by section key, each a section object.
+    # Keys depend on the parcours: '1'..'11' (P1), 'A'..'G' (P2), 'I'..'VI' (P3).
+    # See services/section_registry.py.
     output = db.Column(db.JSON, nullable=True)
 
     # Raw text response from Claude, preserved for traceability
@@ -42,7 +45,13 @@ class Analysis(db.Model):
 
     counselor_notes = db.relationship("CounselorNote", backref="analysis", lazy="dynamic")
 
+    @property
+    def parcours(self) -> str:
+        """Registry id for this analysis, tolerant of legacy 'A'/'B' rows."""
+        return registry.normalize((self.inputs or {}).get("_path"))
+
     def to_dict(self, audience: str = "candidate"):
+        parcours = self.parcours
         data = {
             "id": self.id,
             "status": self.status,
@@ -57,11 +66,23 @@ class Analysis(db.Model):
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
+        # Render instructions for the client: ordered, with titles and render
+        # mode. The client must never sort output keys itself — letter and
+        # Roman keys don't sort numerically or lexicographically.
+        meta = registry.sections_meta(parcours)
+        counselor = list(registry.counselor_keys(parcours))
+        if audience == "counselor":
+            # Spec rule: same analysis object, different view — no regeneration.
+            meta = [m for m in meta if m["key"] in set(counselor)]
+        data["sections_meta"] = meta
+        # Lets the candidate view render its "vue conseiller" tab without a
+        # second request, and without keeping its own copy of this rule.
+        data["counselor_keys"] = counselor
+
         if self.output:
             if audience == "counselor":
-                # Spec rule: same object, different view — sections 1, 4, 5 only
-                counselor_sections = {k: v for k, v in self.output.items() if k in ("1", "4", "5")}
-                data["output"] = counselor_sections
+                keep = set(registry.counselor_keys(parcours))
+                data["output"] = {k: v for k, v in self.output.items() if k in keep}
             else:
                 data["output"] = self.output
 

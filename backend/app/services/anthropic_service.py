@@ -9,14 +9,10 @@ from json_repair import repair_json
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.prompt_version import PromptVersion
+from . import section_registry as registry
 
 _MODEL_HAIKU  = os.getenv("MODEL_FREE", "claude-haiku-4-5-20251001")
 _MODEL_SONNET = os.getenv("MODEL_PAID", "claude-sonnet-4-6")
-
-_HAIKU_SECTION_NOTE = (
-    "\n\n[Instruction système : génère UNIQUEMENT les sections §1 à §4. "
-    "N'inclus pas les sections §5 à §9.]"
-)
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -94,8 +90,7 @@ def _format_user_message_b(inputs: dict) -> str:
 def _format_user_message(inputs: dict) -> str:
     if (inputs or {}).get("_path") == "B":
         return _format_user_message_b(inputs)
-    tier = inputs.get("_tier", "haiku")
-    base = f"""--- CV DU CANDIDAT ---
+    return f"""--- CV DU CANDIDAT ---
 {inputs.get("cv_text", "").strip()}
 
 --- CIBLE VISÉE ---
@@ -109,9 +104,6 @@ Localisation : {inputs.get("localisation", "")}
 Situation actuelle : {inputs.get("situation_actuelle", "")}
 Type de mobilité : {" + ".join(inputs["type_mobilite"]) if isinstance(inputs.get("type_mobilite"), list) else inputs.get("type_mobilite", "")}
 Notes spécifiques : {inputs.get("notes_specifiques", "") or "Aucune note spécifique."}""".strip()
-    if tier == "haiku":
-        base += _HAIKU_SECTION_NOTE
-    return base
 
 
 # ── Structured output enforcement ────────────────────────────────────────────
@@ -120,58 +112,58 @@ Notes spécifiques : {inputs.get("notes_specifiques", "") or "Aucune note spéci
 # enforced at the API layer with a JSON-schema output format, never via the
 # prompt text. See https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 
-_SECTION_TITLES_A = {
-    "1": "Lecture stratégique du parcours",
-    "2": "Forces du profil pour la cible",
-    "3": "Compétences transférables",
-    "4": "Ce qui reste à renforcer",
-    "5": "Préconisations terrain",
-    "6": "Exemple de réécriture",
-    "7": "Synthèse pour le candidat",
-    "8": "Pistes d'évolution",
-    "9": "Proposition de CV retravaillé",
+# The persisted `_tier` values are model nicknames from the two-tier era.
+# The registry speaks plan names. Phase 0.4 migrates the stored values;
+# translate at the boundary until then.
+_TIER_TO_PLAN = {
+    "haiku": registry.FREE,
+    "sonnet": registry.PAID,
+    "opus": registry.PREMIUM,
 }
 
-_SECTION_TITLES_B = {
-    "1": "Lecture des dispositions et du contexte",
-    "2": "Forces latentes",
-    "3": "Compétences mobilisables",
-    "8": "Pistes d'orientation",
-    "9": "Squelette de CV à construire",
-}
+
+def _plan_for_tier(tier: str) -> str:
+    return _TIER_TO_PLAN.get(tier, registry.FREE)
 
 
 def _section_keys(path: str, tier: str) -> list[str]:
-    if path == "B":
-        return ["1", "2", "3", "8", "9"]
-    if tier == "haiku":
-        return ["1", "2", "3", "4"]
-    return [str(n) for n in range(1, 10)]
+    return registry.section_keys(path, _plan_for_tier(tier))
 
 
 def _build_output_schema(path: str, tier: str) -> dict:
-    titles = _SECTION_TITLES_B if path == "B" else _SECTION_TITLES_A
-    keys = _section_keys(path, tier)
+    plan = _plan_for_tier(tier)
+    entries = registry.sections(path, plan)
     properties = {}
-    for k in keys:
+    for s in entries:
+        k = s["key"]
+        tags_only = s["render"] == registry.TAGS
         properties[k] = {
             "type": "object",
-            "description": f"Section {k} — {titles[k]}",
+            "description": f"Section {k} — {s['title']}",
             "properties": {
                 "title": {"type": "string"},
                 "body_markdown": {
                     "type": "string",
-                    "description": "Contenu markdown de la section. Chaîne vide si la section n'est constituée que de tags (§3).",
+                    "description": (
+                        "Chaîne vide — cette section n'est constituée que de tags."
+                        if tags_only
+                        else "Contenu markdown de la section."
+                    ),
                 },
                 "items": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Tags ou points courts. Tableau vide si non applicable.",
+                    "description": (
+                        "Les tags de la section."
+                        if tags_only
+                        else "Tags ou points courts. Tableau vide si non applicable."
+                    ),
                 },
             },
             "required": ["title", "body_markdown", "items"],
             "additionalProperties": False,
         }
+    keys = [s["key"] for s in entries]
     return {
         "type": "object",
         "properties": properties,
@@ -195,58 +187,80 @@ def _extract_json_candidate(raw: str) -> str:
     return raw
 
 
-# Matches markdown/prose section headings: "## §1 Titre", "### Section 2 : Titre",
-# "**§3 — Titre**", "1. Titre" (heading-style), etc.
-_MD_SECTION_RE = re.compile(
-    r"^(?:#{1,4}\s*|\*\*\s*)?(?:§\s*|section\s+)(\d)\b[\s:.\-—·]*(.*?)(?:\*\*)?\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
+def _md_section_re(keys: list[str]) -> re.Pattern:
+    """Heading matcher for a parcours' key set.
 
-
-def _split_markdown_sections(raw: str) -> dict | None:
-    """Fallback parser: split a prose/markdown response on §N headings.
-
-    Returns None when fewer than 2 section headings are found (not a
-    sectioned document — let the caller use the last-resort fallback).
+    Matches "## §1 Titre", "### Section A : Titre", "**§IV — Titre**".
+    The alternation is built from the actual keys rather than a generic
+    character class, so "VI" can't be read as "V" and parcours 2's letter
+    keys can't collide with parcours 3's Roman numerals. Longest-first
+    ordering is what makes that work.
     """
-    matches = list(_MD_SECTION_RE.finditer(raw))
-    # Keep only the first occurrence of each section number, in order
+    alt = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
+    return re.compile(
+        rf"^(?:#{{1,4}}\s*|\*\*\s*)?(?:§\s*|section\s+)({alt})\b[\s:.\-—·]*(.*?)(?:\*\*)?\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+
+def _split_markdown_sections(raw: str, path: str) -> dict | None:
+    """Fallback parser: split a prose/markdown response on section headings.
+
+    Returns None when fewer than 2 headings are found (not a sectioned
+    document — let the caller use the last-resort fallback).
+    """
+    known = registry.titles(path)
+    matches = list(_md_section_re(list(known)).finditer(raw))
+    # Keep only the first occurrence of each section key, in order
     seen: dict = {}
     for m in matches:
-        if m.group(1) not in seen:
-            seen[m.group(1)] = m
+        key = _canonical_key(m.group(1), known)
+        if key and key not in seen:
+            seen[key] = m
     if len(seen) < 2:
         return None
 
-    ordered = list(seen.values())
+    ordered = list(seen.items())
     result = {}
-    for i, m in enumerate(ordered):
-        num = m.group(1)
-        title = m.group(2).strip().strip("*").strip() or _SECTION_TITLES_A.get(num, f"Section {num}")
+    for i, (key, m) in enumerate(ordered):
+        title = m.group(2).strip().strip("*").strip() or known.get(key, f"Section {key}")
         start = m.end()
-        end = ordered[i + 1].start() if i + 1 < len(ordered) else len(raw)
+        end = ordered[i + 1][1].start() if i + 1 < len(ordered) else len(raw)
         body = raw[start:end].strip().strip("-").strip()
-        result[num] = {"title": title, "body_markdown": body, "items": []}
+        result[key] = {"title": title, "body_markdown": body, "items": []}
     return result
 
 
-def _parse_output(raw: str) -> dict:
+def _canonical_key(matched: str, known: dict[str, str]) -> str | None:
+    """Map a case-insensitive heading capture back to its registry key."""
+    if matched in known:
+        return matched
+    lowered = matched.lower()
+    for k in known:
+        if k.lower() == lowered:
+            return k
+    return None
+
+
+def _parse_output(raw: str, path: str = registry.DEFAULT_PARCOURS) -> dict:
+    valid = set(registry.titles(path))
     candidate = _extract_json_candidate(raw)
     # Try strict parse first; fall back to json-repair for malformed AI output
     # (unescaped newlines, unescaped quotes inside strings, trailing commas, etc.)
     for s in (candidate, repair_json(candidate)):
         try:
             result = json.loads(s)
-            if isinstance(result, dict) and any(k.isdigit() for k in result):
+            if isinstance(result, dict) and any(k in valid for k in result):
                 return result
         except (json.JSONDecodeError, ValueError):
             pass
     # Markdown response (e.g. legacy analyses, or structured output disabled):
-    # split on §N headings so each section still lands in its own slot.
-    sections = _split_markdown_sections(raw)
+    # split on section headings so each one still lands in its own slot.
+    sections = _split_markdown_sections(raw, path)
     if sections:
         return sections
-    return {"1": {"title": "Analyse", "body_markdown": raw, "items": []}}
+    first_key = registry.section_keys(path)[0]
+    return {first_key: {"title": "Analyse", "body_markdown": raw, "items": []}}
 
 
 def _run_analysis(analysis_id: str, app) -> None:
@@ -302,9 +316,9 @@ def _run_analysis(analysis_id: str, app) -> None:
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
                 # Structured outputs: guarantees the response is valid JSON
-                # matching the 9-section schema, no matter how the PM words
-                # the system prompt. Passed via extra_body so it works on any
-                # SDK version (it merges into the raw request payload).
+                # matching the parcours' section schema, no matter how the PM
+                # words the system prompt. Passed via extra_body so it works on
+                # any SDK version (it merges into the raw request payload).
                 extra_body={
                     "output_config": {
                         "format": {"type": "json_schema", "schema": schema}
@@ -342,7 +356,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             return
 
         analysis.status = "success"
-        analysis.output = _parse_output(full_response)
+        analysis.output = _parse_output(full_response, path)
         analysis.raw_output = full_response
         analysis.tokens_in = tokens_in
         analysis.tokens_out = tokens_out
