@@ -22,7 +22,7 @@ def create_app(env: str | None = None) -> Flask:
     )
 
     # Models must be imported before migrate can detect them
-    from .models import user, analysis, prompt_version, counselor_note, counselor_code  # noqa: F401
+    from .models import user, analysis, prompt_version, counselor_note, counselor_code, profile  # noqa: F401
 
     # Blueprints
     from .routes.auth import auth_bp
@@ -31,6 +31,7 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.upload import upload_bp
     from .routes.admin import admin_bp
     from .routes.counselor import counselor_bp
+    from .routes.profile import profile_bp
     from .routes.payments import payments_bp
 
     app.register_blueprint(payments_bp, url_prefix="/api/payments")
@@ -40,6 +41,7 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(upload_bp, url_prefix="/api/upload")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(counselor_bp, url_prefix="/api/c")
+    app.register_blueprint(profile_bp, url_prefix="/api/profile")
 
     @app.route("/api/health")
     def health():
