@@ -266,9 +266,24 @@ def test_oeth_is_indistinguishable_from_the_outside(client, app):
     assert scrub(res_a.get_json()) == scrub(res_b.get_json())
     assert scrub(client.get("/api/profile", headers=a).get_json()) == \
            scrub(client.get("/api/profile", headers=b).get_json())
-    # …and the conditions endpoint says nothing about it either
-    assert client.get("/api/profile/conditions", headers=a).get_json() == \
-           client.get("/api/profile/conditions", headers=b).get_json()
+
+
+def test_owner_gets_their_own_oeth_answer_back(client, app):
+    """The invariant is "no visible reaction", not "no persistence". Dropping
+    the stored answer would silently clear a status governing the person's
+    rights on their next save."""
+    a = _signup(client, "oeth-persist@test.fr")
+    client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
+    assert client.get("/api/profile/conditions", headers=a).get_json()["oeth"] is True
+
+
+def test_oeth_never_rides_on_the_ordinary_profile_payload(client, app):
+    """It travels only on the sensitive endpoint, so it cannot reach an admin
+    view, a log line, or a PDF by accident."""
+    a = _signup(client, "oeth-channel@test.fr")
+    client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
+    body = client.get("/api/profile", headers=a).get_data(as_text=True)
+    assert "oeth" not in body.lower()
 
 
 def test_the_sensitive_row_exists_either_way(client, app):

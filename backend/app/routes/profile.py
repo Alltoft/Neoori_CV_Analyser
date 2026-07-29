@@ -89,20 +89,25 @@ def get_profile():
 @profile_bp.get("/conditions")
 @jwt_required()
 def get_conditions():
-    """Bloc 5, for re-rendering the form the user already filled.
+    """The sensitive half, for re-rendering the form its owner already filled.
 
-    Deliberately a separate endpoint from GET /profile: the ordinary profile
-    payload must never carry this, so nothing can leak it by accident into a
-    log line, an admin view, or a PDF that renders the profile.
+    Deliberately a separate endpoint from GET /profile: the ordinary payload
+    must never carry this, so it cannot leak by accident into a log line, an
+    admin view, or a PDF that renders the profile.
 
-    OETH is **not** returned. The user's own answer is not needed to re-render
-    the checkbox in a way that matters, and never sending it back means no
-    response anywhere in the app differs based on it.
+    The OETH rule is "ticking it triggers nothing visible" — no new field, no
+    re-layout, no change of flow. Handing someone back their own stored answer
+    so the checkbox renders as they left it is persistence, not a reaction.
+    Dropping it would be worse than a leak: a second save would silently clear
+    a status that governs the person's rights.
     """
     profile = Profile.query.filter_by(user_id=get_jwt_identity()).first()
     if profile is None or profile.sensitive is None:
-        return jsonify({"conditions": {}}), 200
-    return jsonify({"conditions": profile.sensitive.conditions}), 200
+        return jsonify({"conditions": {}, "oeth": False}), 200
+    return jsonify({
+        "conditions": profile.sensitive.conditions,
+        "oeth": profile.sensitive.oeth,
+    }), 200
 
 
 @profile_bp.put("")
