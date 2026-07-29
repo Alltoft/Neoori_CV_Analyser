@@ -140,3 +140,34 @@ def test_webhook_unlocks_on_real_stripe_object(mock_start, client, app, monkeypa
     assert a.unlock_method == "payment"
     assert a.stripe_session_id == "cs_test_x"
     mock_start.assert_called_once()
+
+
+# ── premium tier ─────────────────────────────────────────────────────────────
+
+def test_premium_purchase_regenerates_at_the_premium_tier(app, monkeypatch):
+    """A premium buyer must get §10 and §11, not just the 9 paid sections."""
+    import app.services.unlock_service as svc
+    monkeypatch.setattr(svc, "start_analysis", lambda *a, **k: None)
+
+    a = _make_analysis()
+    ok, _ = svc.unlock_analysis(a, method="payment", stripe_session_id="cs_x", tier="premium")
+    assert ok
+    assert a.inputs["_tier"] == "premium"
+
+
+def test_counselor_code_grants_the_paid_tier(app, monkeypatch):
+    import app.services.unlock_service as svc
+    monkeypatch.setattr(svc, "start_analysis", lambda *a, **k: None)
+
+    a = _make_analysis()
+    ok, _ = svc.unlock_analysis(a, method="code")
+    assert ok
+    assert a.inputs["_tier"] == "paid"
+
+
+def test_config_exposes_both_offers(client):
+    offers = client.get("/api/payments/config").get_json()["offers"]
+    assert set(offers) == {"paid", "premium"}
+    # Premium is unpriced by the PM; the default is 2-3x the paid tier and
+    # overridable by env var without a deploy.
+    assert offers["premium"]["cents"] > offers["paid"]["cents"]

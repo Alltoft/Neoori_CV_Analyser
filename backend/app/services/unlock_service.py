@@ -8,7 +8,12 @@ from . import tiers
 from .anthropic_service import start_analysis
 
 
-def unlock_analysis(analysis: Analysis, method: str, stripe_session_id: str | None = None) -> tuple[bool, str | None]:
+def unlock_analysis(
+    analysis: Analysis,
+    method: str,
+    stripe_session_id: str | None = None,
+    tier: str | None = None,
+) -> tuple[bool, str | None]:
     """Switch an analysis to the paid tier and regenerate the full 9 sections.
 
     Idempotent: returns (False, reason) when the analysis is already unlocked
@@ -28,7 +33,10 @@ def unlock_analysis(analysis: Analysis, method: str, stripe_session_id: str | No
 
     # JSON column: reassign a new dict so SQLAlchemy sees the change
     new_inputs = dict(inputs)
-    new_inputs["_tier"] = tiers.PAID
+    # Honour what was actually bought: a premium purchase must regenerate
+    # with §10 and §11, not just the 9 paid sections. A counselor code
+    # (tier=None) grants the paid tier.
+    new_inputs["_tier"] = tiers.normalize(tier) if tier else tiers.PAID
     analysis.inputs = new_inputs
 
     analysis.status = "queued"

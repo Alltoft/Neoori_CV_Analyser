@@ -40,6 +40,7 @@ function DebloquerContent() {
   const [error, setError] = useState<string | null>(null)
 
   const [paymentsEnabled, setPaymentsEnabled] = useState<boolean | null>(null)
+  const [offers, setOffers] = useState<Record<string, { cents: number; description: string }> | null>(null)
   const [waiverAccepted, setWaiverAccepted] = useState(false)
   const [payState, setPayState] = useState<"idle" | "redirecting" | "verifying">(
     searchParams.get("session_id") ? "verifying" : "idle",
@@ -55,8 +56,8 @@ function DebloquerContent() {
   }, [id])
 
   useEffect(() => {
-    api.get<{ enabled: boolean }>("/payments/config")
-      .then((r) => setPaymentsEnabled(r.enabled))
+    api.get<{ enabled: boolean; offers: Record<string, { cents: number; description: string }> }>("/payments/config")
+      .then((r) => { setPaymentsEnabled(r.enabled); setOffers(r.offers) })
       .catch(() => setPaymentsEnabled(false))
   }, [])
 
@@ -89,7 +90,10 @@ function DebloquerContent() {
     }
   }
 
-  const startCheckout = async () => {
+  const eur = (cents?: number) =>
+    cents == null ? "—" : (cents % 100 === 0 ? `${cents / 100} €` : `${(cents / 100).toFixed(2)} €`)
+
+  const startCheckout = async (tier: "paid" | "premium" = "paid") => {
     setError(null)
     if (!waiverAccepted) {
       setError("Veuillez accepter l’exécution immédiate pour continuer (droit de rétractation).")
@@ -97,7 +101,7 @@ function DebloquerContent() {
     }
     setPayState("redirecting")
     try {
-      const r = await api.post<{ url: string }>("/payments/checkout", { analysis_id: id })
+      const r = await api.post<{ url: string }>("/payments/checkout", { analysis_id: id, tier })
       window.location.href = r.url
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
@@ -205,7 +209,7 @@ function DebloquerContent() {
             <span className="absolute right-5 top-5"><Badge variant="peach">Recommandé</Badge></span>
             <p className="eyebrow text-peach">Complet</p>
             <div className="flex items-baseline gap-2">
-              <p className="mt-2 font-display text-4xl font-extrabold">9 €</p>
+              <p className="mt-2 font-display text-4xl font-extrabold">{eur(offers?.paid?.cents)}</p>
               <span className="text-sm text-white/70">une fois · sans abonnement</span>
             </div>
             <p className="text-xs text-white/70">Livrable 9 sections + CV retravaillé + export conseiller</p>
@@ -235,20 +239,60 @@ function DebloquerContent() {
             <Button
               size="lg"
               className="h-11 w-full bg-white font-semibold text-orange-dark hover:bg-white/90"
-              onClick={startCheckout}
+              onClick={() => startCheckout("paid")}
               disabled={paymentsEnabled === false || payState === "redirecting"}
             >
               {payState === "redirecting"
                 ? "Redirection vers le paiement…"
                 : paymentsEnabled === false
                   ? "Paiement bientôt disponible"
-                  : "Débloquer pour 9 €"}
+                  : `Débloquer pour ${eur(offers?.paid?.cents)}`}
               {paymentsEnabled !== false && payState !== "redirecting" && <ArrowRight />}
             </Button>
             <p className="mt-2 text-center text-[10px] text-white/65">
               Paiement sécurisé par Stripe · gratuit pour les bénéficiaires Cap Emploi / France Travail (code conseiller)
             </p>
           </div>
+        </div>
+
+        {/* Premium — the modules that touch the stressful part of a search:
+            the interview itself, and the questions people dread being asked. */}
+        <div className="mt-6 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 shadow-soft">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <p className="eyebrow text-orange-dark">Premium</p>
+              <p className="mt-1 font-display text-lg font-bold text-navy">
+                Aller jusqu&apos;à l&apos;entretien
+              </p>
+            </div>
+            <p className="font-display text-2xl font-extrabold text-navy">
+              {eur(offers?.premium?.cents)}
+            </p>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Tout le rapport complet, plus :
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            <li className="flex items-start gap-2 text-xs text-navy-700">
+              <CheckCircle2 className="mt-px size-3.5 shrink-0 text-orange" />
+              <span>§ 10 · Préparation à l&apos;entretien — 5 questions probables avec des réponses, et le tableau de correspondance CV / offre</span>
+            </li>
+            <li className="flex items-start gap-2 text-xs text-navy-700">
+              <CheckCircle2 className="mt-px size-3.5 shrink-0 text-orange" />
+              <span>§ 11 · Questions difficiles — trous dans le CV, RQTH, négociation : quoi dire, quand, et ce que dit la loi</span>
+            </li>
+          </ul>
+          <Button
+            variant="outline"
+            size="lg"
+            className="mt-4 w-full"
+            onClick={() => startCheckout("premium")}
+            disabled={paymentsEnabled === false || payState === "redirecting" || !waiverAccepted}
+          >
+            {waiverAccepted
+              ? `Prendre le Premium — ${eur(offers?.premium?.cents)}`
+              : "Cochez la renonciation ci-dessus pour continuer"}
+          </Button>
         </div>
 
         {/* Counselor code */}

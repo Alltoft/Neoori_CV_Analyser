@@ -16,11 +16,30 @@ from flask import Blueprint, jsonify, request
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..services import section_registry as registry
+from ..services import tiers
 from ..services.unlock_service import unlock_analysis
 
 payments_bp = Blueprint("payments", __name__)
 
-PRICE_EUR_CENTS = 900
+# Premium is unpriced by the PM ("à caler sur les premiers acheteurs", with
+# 2-3x the paid tier as the working logic), so it is read from the environment
+# rather than hardcoded — setting PREMIUM_PRICE_EUR_CENTS is a config change,
+# not a deploy.
+PRICE_EUR_CENTS = int(os.getenv("PAID_PRICE_EUR_CENTS", "900"))
+PREMIUM_PRICE_EUR_CENTS = int(os.getenv("PREMIUM_PRICE_EUR_CENTS", "2400"))
+
+_OFFERS = {
+    tiers.PAID: {
+        "cents": PRICE_EUR_CENTS,
+        "name": "neoori — analyse de CV complète",
+        "description": "Déblocage des 9 sections + CV retravaillé + export conseiller",
+    },
+    tiers.PREMIUM: {
+        "cents": PREMIUM_PRICE_EUR_CENTS,
+        "name": "neoori — analyse complète + préparation à l'entretien",
+        "description": "Les 9 sections, plus la préparation à l'entretien (§10) et le module questions difficiles (§11)",
+    },
+}
 
 
 def _stripe():
@@ -41,7 +60,15 @@ def _frontend_base() -> str:
 
 @payments_bp.get("/config")
 def config():
-    return jsonify({"enabled": bool(os.getenv("STRIPE_SECRET_KEY"))}), 200
+    """Prices come from here rather than being duplicated in the frontend, so
+    a price change is one env var and no rebuild."""
+    return jsonify({
+        "enabled": bool(os.getenv("STRIPE_SECRET_KEY")),
+        "offers": {
+            tier: {"cents": o["cents"], "name": o["name"], "description": o["description"]}
+            for tier, o in _OFFERS.items()
+        },
+    }), 200
 
 
 @payments_bp.post("/checkout")
@@ -55,10 +82,17 @@ def create_checkout():
     if not analysis_id:
         return jsonify({"error": "analysis_id requis."}), 400
 
+    tier = tiers.normalize(data.get("tier") or tiers.PAID)
+    if tier not in _OFFERS:
+        return jsonify({"error": "Palier inconnu."}), 400
+    offer = _OFFERS[tier]
+
     analysis = Analysis.query.get_or_404(analysis_id)
     if registry.normalize((analysis.inputs or {}).get("_path")) == "3":
         return jsonify({"error": "Le portrait de potentiel est déjà complet."}), 400
-    if analysis.unlock_method or "5" in (analysis.output or {}):
+    # unlock_method is the sentinel; the old `"5" in output` test is meaningless
+    # for parcours 2 (§A-§G) and 3 (§I-§VI).
+    if analysis.unlock_method:
         return jsonify({"error": "Cette analyse est déjà débloquée."}), 409
     if analysis.status != "success":
         return jsonify({"error": "L'analyse doit être terminée avant le déblocage."}), 409
@@ -69,15 +103,15 @@ def create_checkout():
         line_items=[{
             "price_data": {
                 "currency": "eur",
-                "unit_amount": PRICE_EUR_CENTS,
+                "unit_amount": offer["cents"],
                 "product_data": {
-                    "name": "neoori — analyse de CV complète",
-                    "description": "Déblocage des 9 sections + CV retravaillé + export conseiller",
+                    "name": offer["name"],
+                    "description": offer["description"],
                 },
             },
             "quantity": 1,
         }],
-        metadata={"analysis_id": analysis.id},
+        metadata={"analysis_id": analysis.id, "tier": tier},
         success_url=f"{base}/analyse/{analysis.id}/debloquer?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base}/analyse/{analysis.id}/debloquer?canceled=1",
     )
@@ -107,11 +141,13 @@ def verify_session():
     if session["payment_status"] != "paid":
         return jsonify({"error": "Paiement non confirmé."}), 402
 
-    md = session["metadata"]
-    analysis_id = (md.to_dict() if md else {}).get("analysis_id")
-    analysis = Analysis.query.get_or_404(analysis_id)
+    md = (session["metadata"].to_dict() if session["metadata"] else {})
+    analysis = Analysis.query.get_or_404(md.get("analysis_id"))
 
-    ok, reason = unlock_analysis(analysis, method="payment", stripe_session_id=session["id"])
+    ok, reason = unlock_analysis(
+        analysis, method="payment", stripe_session_id=session["id"],
+        tier=md.get("tier"),
+    )
     if not ok and analysis.stripe_session_id == session.id:
         # Webhook beat us to it — report success, frontend proceeds to polling
         return jsonify({"analysis": analysis.to_dict()}), 200
@@ -141,11 +177,14 @@ def webhook():
         # Bracket access + .to_dict() — stripe v15 objects support neither
         # dict.get() nor dict(obj); .to_dict() yields a plain dict.
         if session["payment_status"] == "paid":
-            md = session["metadata"]
-            analysis_id = (md.to_dict() if md else {}).get("analysis_id")
+            md = (session["metadata"].to_dict() if session["metadata"] else {})
+            analysis_id = md.get("analysis_id")
             analysis = Analysis.query.get(analysis_id) if analysis_id else None
             if analysis:
                 # Idempotent — duplicate deliveries and verify-first both no-op
-                unlock_analysis(analysis, method="payment", stripe_session_id=session["id"])
+                unlock_analysis(
+                    analysis, method="payment", stripe_session_id=session["id"],
+                    tier=md.get("tier"),
+                )
 
     return jsonify({"received": True}), 200
