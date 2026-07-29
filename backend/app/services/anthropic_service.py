@@ -22,13 +22,6 @@ def _select_model_by_tier(tier: str) -> tuple[str, int]:
     return tiers.model_for(tier)
 
 
-_SUB_PROFILE_LABELS = {
-    "b1": "B1 — Jeune en insertion",
-    "b2": "B2 — Reprise après pause",
-    "b3": "B3 — Reprise après maladie ou handicap",
-}
-
-
 def _join(values, fallback: str) -> str:
     if isinstance(values, list) and values:
         return ", ".join(str(v).strip() for v in values if str(v).strip())
@@ -37,66 +30,154 @@ def _join(values, fallback: str) -> str:
     return fallback
 
 
-def _format_user_message_b(inputs: dict) -> str:
-    sub = (inputs.get("_sub_profile") or "b1").lower()
-    label = _SUB_PROFILE_LABELS.get(sub, _SUB_PROFILE_LABELS["b1"])
+def _text(inputs: dict, key: str, fallback: str = "Non renseigné.") -> str:
+    return (inputs.get(key) or "").strip() or fallback
 
-    parts = [
-        "--- SOUS-PROFIL ---",
-        label,
+
+def _profile_block(inputs: dict) -> list[str]:
+    """The Profil de base, shared by all three parcours.
+
+    Filled once and never re-asked (Parcours doc §1: "une information, une
+    seule fois"), so every parcours message opens with the same block.
+    """
+    lines = [
+        "--- PROFIL DE BASE ---",
+        f"Prénom : {inputs.get('prenom', '')}",
+        f"Nom : {(inputs.get('nom', '') or '').upper()}",
+        f"Tranche d'âge : {_text(inputs, 'tranche_age')}",
+        f"Localisation : {_text(inputs, 'ville') if inputs.get('ville') else _text(inputs, 'localisation')}",
+        f"Rayon de recherche : {_text(inputs, 'rayon')}",
+        f"Situation actuelle : {_text(inputs, 'situation') if inputs.get('situation') else _text(inputs, 'situation_actuelle')}",
+    ]
+    if inputs.get("reconversion_scope"):
+        lines.append(f"Changement visé : {inputs['reconversion_scope']}")
+    lines += [
+        f"Projet : {_text(inputs, 'projet')}",
+        f"Contraintes pratiques : {_text(inputs, 'contraintes_pratiques', 'Aucune contrainte déclarée.')}",
+    ]
+    return lines
+
+
+def _conditions_block(inputs: dict) -> list[str]:
+    """Bloc 5, already reduced to the three lists the report may use.
+
+    The caller passes `_conditions` pre-shaped by profile.prompt_context(), so
+    the raw answers never reach the model — only what it is allowed to say.
+    A point fort here is a demanding requirement the person tolerates, which
+    is the only kind that differentiates them.
+    """
+    ctx = inputs.get("_conditions") or {}
+    if not any(ctx.get(k) for k in ("points_forts", "possible_avec_adaptation", "a_eviter")):
+        return []
+    return [
         "",
-        "--- IDENTITÉ ---",
-        f"Prénom et nom : {inputs.get('nom', '').strip()}",
-        "",
-        "--- PRÉFÉRENCES ---",
-        f"Ce que la personne aime faire : {_join(inputs.get('aime'), 'Non renseigné.')}",
-        f"Situations où la personne se sent compétente : {_join(inputs.get('competent'), 'Non renseigné.')}",
-        f"Ce que la personne refuse dans un travail : {_join(inputs.get('refuse'), 'Aucun refus déclaré.')}",
+        "--- CONDITIONS DE TRAVAIL ---",
+        f"Points forts (exigences que peu de gens tiennent) : {_join(ctx.get('points_forts'), 'Aucun.')}",
+        f"Possible avec un aménagement : {_join(ctx.get('possible_avec_adaptation'), 'Aucun.')}",
+        f"À éviter : {_join(ctx.get('a_eviter'), 'Aucun.')}",
     ]
 
-    if sub == "b2":
-        parts += [
-            "",
-            "--- CONTEXTE SPÉCIFIQUE ---",
-            f"Activité pendant la pause : {(inputs.get('pause_activite') or '').strip() or 'Non renseigné.'}",
-            f"Contraintes pratiques : {_join(inputs.get('contraintes_pratiques'), 'Aucune contrainte déclarée.')}",
-        ]
-    elif sub == "b3":
-        parts += [
-            "",
-            "--- CONTEXTE SPÉCIFIQUE ---",
-            f"Contraintes fonctionnelles : {_join(inputs.get('contraintes_b3'), 'Aucune contrainte déclarée.')}",
-            f"Accompagnement existant : {(inputs.get('accompagnement') or '').strip() or 'Non renseigné.'}",
-        ]
 
-    if sub == "b3":
-        cv = (inputs.get("cv_b3") or "").strip()
+def _rights_block(inputs: dict) -> list[str]:
+    """Administrative level of the B3 handling (CDC §3.3).
+
+    Never a diagnosis and never a medical term — the flag only tells the model
+    which institutional schemes are open, and the report is forbidden from
+    naming the status itself.
+    """
+    if not inputs.get("_oeth"):
+        return []
+    return [
+        "",
+        "--- DISPOSITIFS MOBILISABLES ---",
+        "La personne est bénéficiaire de l'obligation d'emploi (OETH). Les dispositifs "
+        "Agefiph / FIPHFP / Cap Emploi sont mobilisables. Ne jamais mentionner ce statut "
+        "ni aucun terme médical dans le rapport : formuler uniquement en besoins et en "
+        "aménagements.",
+    ]
+
+
+def _common_tail(inputs: dict) -> list[str]:
+    return _conditions_block(inputs) + _rights_block(inputs)
+
+
+def _format_user_message_p1(inputs: dict) -> str:
+    """Parcours 1 — « J'ai une cible ». CV + target."""
+    parts = [
+        "--- CV DU CANDIDAT ---",
+        _text(inputs, "cv_text"),
+        "",
+        "--- CIBLE VISÉE ---",
+        _text(inputs, "cible_visee"),
+    ]
+    # Chemin B: the target was described rather than pasted, so the report
+    # opens with a framing note. No lookup is performed (PM: framing note only
+    # at launch — avoids the cost and the invented-data risk).
+    if inputs.get("_chemin") == "B":
         parts += [
             "",
-            "--- CV OPTIONNEL (B3 uniquement) ---",
-            cv if cv else "Non fourni.",
+            "--- CADRAGE ---",
+            "La cible a été décrite par la personne, pas fournie sous forme d'offre. "
+            "Ouvrir le rapport par une note de cadrage : « analyse fondée sur le métier "
+            "décrit ci-dessus, d'après votre description ».",
         ]
+    parts += [""] + _profile_block(inputs)
+    parts.append(f"Notes spécifiques : {_text(inputs, 'notes_specifiques', 'Aucune note spécifique.')}")
+    return "\n".join(parts + _common_tail(inputs))
 
-    return "\n".join(parts)
+
+def _format_user_message_p2(inputs: dict) -> str:
+    """Parcours 2 — « Je cherche ma direction ». A career, no target.
+
+    Three questions, not four: the non-negotiable constraints already live in
+    bloc 4 of the profile and health is covered for everyone by bloc 5, so
+    re-asking them cost an abandonment for nothing (Parcours doc §5).
+    """
+    parts = [
+        "--- CV OU EXPÉRIENCES ---",
+        _text(inputs, "cv_text"),
+        "",
+        "--- QUESTIONS DE CADRAGE ---",
+        f"Ce qui a donné le plus de satisfaction : {_text(inputs, 'satisfaction')}",
+        f"Ce que la personne ne veut plus faire : {_text(inputs, 'refus')}",
+        f"Raison principale du changement : {_text(inputs, 'raison_changement')}",
+        "",
+    ]
+    return "\n".join(parts + _profile_block(inputs) + _common_tail(inputs))
+
+
+def _format_user_message_p3(inputs: dict) -> str:
+    """Parcours 3 — « Je pars de zéro ». No CV required.
+
+    The life questionnaire is the input: informal activity — sport,
+    volunteering, caring for a relative — is valid raw material, and the
+    report's job is to reformulate it in professional language.
+    """
+    parts = [
+        "--- QUESTIONNAIRE DE VIE ---",
+        f"Ce que la personne a fait jusqu'ici : {_text(inputs, 'experiences')}",
+        f"Ce qu'elle aime faire / sait faire : {_text(inputs, 'aime_faire')}",
+        f"Ce qu'elle ne veut pas ou ne peut pas faire : {_text(inputs, 'refus')}",
+        f"Contraintes pratiques déclarées ici : {_text(inputs, 'contraintes')}",
+        f"Ce qu'est « un bon travail » pour elle : {_text(inputs, 'bon_travail')}",
+    ]
+    cv = (inputs.get("cv_text") or "").strip()
+    if cv:
+        parts += ["", "--- CV PARTIEL (facultatif) ---", cv]
+    parts.append("")
+    return "\n".join(parts + _profile_block(inputs) + _common_tail(inputs))
+
+
+_FORMATTERS = {
+    "1": _format_user_message_p1,
+    "2": _format_user_message_p2,
+    "3": _format_user_message_p3,
+}
 
 
 def _format_user_message(inputs: dict) -> str:
-    if registry.normalize((inputs or {}).get("_path")) == "3":
-        return _format_user_message_b(inputs)
-    return f"""--- CV DU CANDIDAT ---
-{inputs.get("cv_text", "").strip()}
-
---- CIBLE VISÉE ---
-{inputs.get("cible_visee", "").strip()}
-
---- PROFIL ---
-Prénom : {inputs.get("prenom", "")}
-Nom : {(inputs.get("nom", "") or "").upper()}
-Tranche d'âge : {inputs.get("tranche_age", "")}
-Localisation : {inputs.get("localisation", "")}
-Situation actuelle : {inputs.get("situation_actuelle", "")}
-Type de mobilité : {" + ".join(inputs["type_mobilite"]) if isinstance(inputs.get("type_mobilite"), list) else inputs.get("type_mobilite", "")}
-Notes spécifiques : {inputs.get("notes_specifiques", "") or "Aucune note spécifique."}""".strip()
+    parcours = registry.normalize((inputs or {}).get("_path"))
+    return _FORMATTERS[parcours](inputs or {})
 
 
 # ── Structured output enforcement ────────────────────────────────────────────
