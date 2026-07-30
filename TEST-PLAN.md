@@ -51,6 +51,10 @@ Everything else below should work end to end.
 
 **You need to be logged in.** Create an account first if needed.
 
+| # | Do | Expect |
+|---|---|---|
+| 3.0 | Log out, then open `/profil` directly | Bounced straight to `/connexion?redirect=/profil` — you should never see the form. After logging in you land back on the profile |
+
 ### 3.1 Structure
 
 | # | Do | Expect |

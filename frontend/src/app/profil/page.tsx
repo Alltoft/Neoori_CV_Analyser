@@ -16,9 +16,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SectionCard } from "@/components/ui/section-card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import type { ConditionsValue } from "@/types/conditions"
 
@@ -73,6 +75,7 @@ type Fields = z.infer<typeof schema>
 
 export default function ProfilPage() {
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
   const [conditions, setConditions] = useState<ConditionsValue>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -93,6 +96,14 @@ export default function ProfilPage() {
 
   const situation = watch("situation")
   const consent = watch("consent")
+
+  // The proxy already gates /profil on cookie *presence*, which misses an
+  // expired or invalid token. Without this, that case renders the whole form
+  // and only fails at submit — losing six blocks of answers, including bloc 5
+  // and the OETH box.
+  useEffect(() => {
+    if (!authLoading && !user) router.replace("/connexion?redirect=/profil")
+  }, [authLoading, user, router])
 
   // Load an existing profile. Bloc 5 comes from its own endpoint — it must
   // never ride on the ordinary profile payload.
@@ -151,6 +162,22 @@ export default function ProfilPage() {
 
   const err = (k: keyof Fields) =>
     errors[k] && <p className="mt-1 text-[10px] text-destructive">{errors[k]?.message as string}</p>
+
+  // Render nothing while auth resolves — a flash of empty form invites someone
+  // to start typing into something that is about to redirect.
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-secondary">
+        <AppBar />
+        <div className="mx-auto max-w-3xl px-4 py-8">
+          <Skeleton className="h-9 w-64" />
+          <div className="mt-6 space-y-5">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-secondary">
