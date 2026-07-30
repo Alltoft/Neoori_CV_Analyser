@@ -138,8 +138,14 @@ function DebloquerContent() {
   }
 
   const path = normalizeParcours(analysis?.inputs?._path)
-  // Parcours 3 has no paid tier; parcours 1 unlocks via unlock_method.
-  const alreadyComplete = path === "3" || analysis?.unlock_method != null
+  // Same rule as the report: complete means the paid sections exist, however
+  // they came to exist — otherwise this page offers to sell a report the user
+  // is already holding.
+  const paidSectionsPresent = (analysis?.sections_meta ?? []).some(
+    (m) => !m.tiers.includes("free") && m.key in (analysis?.output ?? {}),
+  )
+  const alreadyComplete =
+    path === "3" || analysis?.unlock_method != null || paidSectionsPresent
 
   // ── Nothing to unlock ──
   if (alreadyComplete) {

@@ -56,7 +56,6 @@ export default function RapportPage() {
 
   const output = analysis?.output ?? {}
   const path = normalizeParcours(analysis?.inputs?._path)
-  const isPaid = analysis?.unlock_method != null
   const hasOutput = Object.keys(output).length > 0
 
   // Order and titles come from the backend section registry. Never sort output
@@ -66,6 +65,12 @@ export default function RapportPage() {
   const generated = meta.filter((m) => m.key in output)
   // While loading, show a short skeleton list (no phantom locked paid sections).
   const placeholder = meta.filter((m) => m.tiers.includes("free"))
+  // "Paid" is a property of what was generated, not of how it was paid for:
+  // a counselor code, a Stripe payment and a forced tier all produce the same
+  // report. Deriving it from unlock_method alone rendered real content as
+  // locked whenever the tier came from anywhere else.
+  const isPaid =
+    analysis?.unlock_method != null || generated.some((m) => !m.tiers.includes("free"))
   const counselorKeys = new Set(analysis?.counselor_keys ?? [])
   const sectionsToShow =
     view === "conseiller"

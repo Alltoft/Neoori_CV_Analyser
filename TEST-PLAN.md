@@ -19,6 +19,20 @@ that doesn't match, note the URL and what you saw.
 The **forms** for parcours 2 and 3 are fully testable (validation, upload,
 navigation) — only the generation step is blocked.
 
+**Every analysis currently runs the PAID tier.** While the PM judges report
+*content*, the free tier's three sections aren't what needs reviewing, so the
+tier selection is overridden. Practical effects:
+
+- Every new report comes back with all 9 sections, no lock icons.
+- The free-tier **verdict** section and the **willingness-to-pay probe** won't
+  appear — they're free-tier only. Skip **§ 7.1–7.3** and the free-tier half of
+  **§ 4.2** for now.
+- `/debloquer` will say "Cette analyse est déjà complète" for new analyses,
+  because they are. To see the paywall and the Premium card (**§ 7.4–7.6**),
+  open an analysis created *before* today.
+
+Reverting is one env var: `FORCE_ANALYSIS_TIER=""` on Render.
+
 Everything else below should work end to end.
 
 ---

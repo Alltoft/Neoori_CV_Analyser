@@ -1,3 +1,4 @@
+import os
 import re
 
 from flask import Blueprint, current_app, request, jsonify
@@ -15,6 +16,17 @@ from ..services.unlock_service import unlock_analysis
 
 analyses_bp = Blueprint("analyses", __name__)
 
+# ── TEMPORARY: force every analysis to one tier ──────────────────────────────
+# While the PM reviews report *content*, the free tier's three sections aren't
+# what needs judging — so every analysis runs paid until they're done.
+#
+# To restore normal behaviour: change the default below to "" (or set
+# FORCE_ANALYSIS_TIER="" on Render). The paywall, the unlock flow and the
+# Premium checkout are untouched — this only decides what a *new* analysis
+# generates.
+_FORCE_TIER = tiers.normalize(os.getenv("FORCE_ANALYSIS_TIER", "paid")) \
+    if os.getenv("FORCE_ANALYSIS_TIER", "paid") else None
+
 _REQUIRED_INPUTS = [
     "cible_visee", "prenom", "nom", "tranche_age",
     "localisation", "situation_actuelle", "type_mobilite",
@@ -31,7 +43,11 @@ def create_analysis():
     path = registry.normalize(inputs.get("_path"))
     inputs["_path"] = path
 
-    if path == "3":
+    if _FORCE_TIER:
+        # TEMPORARY — see _FORCE_TIER above. Delete the default to restore
+        # normal tier selection.
+        inputs["_tier"] = _FORCE_TIER
+    elif path == "3":
         # Parcours 3 runs on the paid model for everyone — it serves the
         # populations the free tier exists to reach.
         inputs["_tier"] = tiers.PAID
