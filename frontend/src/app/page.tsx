@@ -186,7 +186,7 @@ export default function LandingPage() {
             <Eyebrow>Pour les acteurs de l’emploi</Eyebrow>
             <h1 className="mt-5 font-display text-[2rem] font-extrabold leading-[1.12] tracking-tight text-navy sm:text-5xl">
               Vous postulez. Assurez-vous que votre CV exprime{" "}
-              <span className="text-gradient-brand">la vraie valeur de votre parcours.</span>
+              <span className="text-gradient-brand">votre vrai potentiel.</span>
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-muted-foreground">
               neoori analyse votre CV face au poste que vous visez — et vous dit exactement ce qui retient l’attention, ce qui freine, et comment faire la différence.
