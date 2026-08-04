@@ -95,6 +95,9 @@ export default function DirectionPage() {
   return (
     <div className="min-h-screen bg-secondary">
       <AppBar />
+      {/* Same accent as this parcours' card on the landing — the colour is
+          how someone knows they are still in the scenario they picked. */}
+      <div className="bg-navy h-1.5 w-full" role="presentation" aria-hidden />
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
           <p className="eyebrow text-orange-dark">Parcours 2</p>

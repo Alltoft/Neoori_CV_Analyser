@@ -8,6 +8,7 @@ import { Logo } from "@/components/brand/Logo"
 import { Menu, X, ArrowRight } from "lucide-react"
 
 const LINKS = [
+  { href: "/#parcours", label: "Parcours" },
   { href: "/#module", label: "Le module" },
   { href: "/#rapport", label: "Le rapport" },
   { href: "/#pour-qui", label: "Pour qui" },

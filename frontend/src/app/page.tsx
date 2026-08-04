@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   ArrowRight, Check, Lock, ShieldCheck, ScanText, Target, PenLine, FileCheck2,
   UserRound, Building2, Users, Server, EyeOff, History, Mail,
+  Compass, Sprout,
 } from "lucide-react"
 
 /* ── The deliverable, rendered as proof (mirrors the real report chrome) ── */
@@ -90,6 +91,47 @@ const SECTIONS_FULL = [
   { n: "7", t: "Une synthèse de votre profil", free: false },
   { n: "8", t: "Des pistes d’évolution", free: false },
   { n: "9", t: "Une proposition de CV retravaillé, prête à envoyer", free: false },
+]
+
+const PARCOURS = [
+  {
+    href: "/analyse/nouveau",
+    n: "1",
+    icon: Target,
+    title: "J'ai une cible",
+    lead: "Vous visez un poste ou un secteur précis, peut-être avec une offre en main.",
+    detail: "Votre CV est comparé à cette cible, point par point.",
+    needs: "CV requis",
+    // Charter accents, one per scenario — the colour is the wayfinding, so it
+    // has to survive into the form pages too, not just live on this card.
+    ring: "ring-orange/35 hover:ring-orange",
+    bar: "bg-orange",
+    chip: "bg-peach-soft text-orange-dark",
+  },
+  {
+    href: "/analyse/direction",
+    n: "2",
+    icon: Compass,
+    title: "Je cherche ma direction",
+    lead: "Vous avez un parcours, mais pas encore de cible.",
+    detail: "On part de ce que vous avez déjà construit pour identifier des pistes.",
+    needs: "CV requis",
+    ring: "ring-navy/25 hover:ring-navy",
+    bar: "bg-navy",
+    chip: "bg-secondary text-navy",
+  },
+  {
+    href: "/analyse/depart",
+    n: "3",
+    icon: Sprout,
+    title: "Je pars de zéro",
+    lead: "Peu ou pas d'expérience formelle, ou un retour après une longue pause.",
+    detail: "Sport, bénévolat, aidance, projets personnels : tout compte.",
+    needs: "Aucun CV nécessaire",
+    ring: "ring-teal/35 hover:ring-teal",
+    bar: "bg-teal",
+    chip: "bg-teal/10 text-teal",
+  },
 ]
 
 const PERSONAS = [
@@ -185,6 +227,52 @@ export default function LandingPage() {
               <p className="eyebrow mt-1 text-muted-foreground">sections</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Choose your scenario ───────────────────── */}
+      <section id="parcours" className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
+        <Reveal className="max-w-2xl">
+          <Eyebrow>Par où commencer</Eyebrow>
+          <h2 className="mt-3 font-display text-3xl font-bold text-navy sm:text-4xl">
+            Trois situations, trois lectures
+          </h2>
+          <p className="mt-3 text-muted-foreground">
+            Choisissez celle qui vous ressemble le plus. Chacune pose ses propres questions
+            et produit son propre rapport.
+          </p>
+        </Reveal>
+
+        <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-3">
+          {PARCOURS.map((p, i) => (
+            <Reveal key={p.n} delayMs={i * 90}>
+              <Link
+                href={p.href}
+                className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft ring-1 transition-all hover:shadow-card focus-visible:outline-none focus-visible:ring-2 ${p.ring}`}
+              >
+                <span className={`block h-1.5 ${p.bar}`} />
+                <div className="flex flex-1 flex-col p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <span className={`grid size-9 shrink-0 place-items-center rounded-lg ${p.chip}`}>
+                      <p.icon className="size-4" aria-hidden />
+                    </span>
+                    <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                      Parcours {p.n}
+                    </span>
+                  </div>
+                  <h3 className="font-display text-lg font-bold leading-tight text-navy">{p.title}</h3>
+                  <p className="mt-2 text-sm text-navy-700">{p.lead}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{p.detail}</p>
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-5">
+                    <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                      {p.needs}
+                    </span>
+                    <ArrowRight className="size-4 text-orange transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </div>
+                </div>
+              </Link>
+            </Reveal>
+          ))}
         </div>
       </section>
 

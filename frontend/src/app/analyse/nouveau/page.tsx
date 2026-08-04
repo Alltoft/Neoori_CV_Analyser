@@ -211,6 +211,9 @@ function NouvelleAnalyseForm() {
   return (
     <div className="min-h-screen bg-background">
       <AppBar />
+      {/* Same accent as this parcours' card on the landing — the colour is
+          how someone knows they are still in the scenario they picked. */}
+      <div className="bg-orange h-1.5 w-full" role="presentation" aria-hidden />
       <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="font-display text-2xl font-bold text-navy">Nouvelle analyse</h1>
