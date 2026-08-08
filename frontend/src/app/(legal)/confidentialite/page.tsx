@@ -47,9 +47,7 @@ export default function ConfidentialitePage() {
 
       <h2>5. Destinataires et sous-traitants</h2>
       <ul>
-        <li>Vercel (hébergement frontend, États-Unis — clauses contractuelles types)</li>
-        <li>Render (hébergement backend, États-Unis — clauses contractuelles types)</li>
-        <li>PingCAP / TiDB Cloud (base de données, AWS région UE)</li>
+        <li>Hostinger (hébergement de l&apos;application et de la base de données, Union européenne)</li>
         <li>Anthropic (génération IA, États-Unis — clauses contractuelles types)</li>
         <li>Stripe (paiement)</li>
       </ul>

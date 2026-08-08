@@ -1,0 +1,88 @@
+# Production stack for the VPS. Images are built by CI and pulled from GHCR —
+# no source code and no builds on the server. All secrets come from an
+# untracked .env beside this file (template: .env.example).
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# TLS phases (see DOCKER.md): NGINX_MODE=http first (plain 80, ACME ready),
+# issue the certificate, then NGINX_MODE=https and re-up nginx.
+name: neoori
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: neoori
+      MYSQL_USER: neoori
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+    # No ports: — MySQL stays on the internal network only. Publishing a port
+    # here would bypass ufw (Docker writes its own iptables rules).
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/alltoft/neoori-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: mysql+pymysql://neoori:${MYSQL_PASSWORD}@db:3306/neoori?charset=utf8mb4
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:5000/api/health')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/alltoft/neoori-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  nginx:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-_}
+    volumes:
+      # default.conf.template is envsubst'd over the image's default.conf.
+      - ./nginx/templates-${NGINX_MODE:-http}:/etc/nginx/templates:ro
+      - certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Renew loop; initial issuance is a one-off `compose run` (see DOCKER.md).
+    entrypoint: sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+
+volumes:
+  db_data:
+  certs:
+  certbot_www:

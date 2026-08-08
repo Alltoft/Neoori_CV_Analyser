@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+tests/
+.pytest_cache/
+pytest.ini
+requirements-dev.txt
+docker-compose.yml
+railway.toml
+Procfile
+.DS_Store

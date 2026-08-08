@@ -19,9 +19,10 @@ export default function MentionsLegalesPage() {
 
       <h2>Hébergement</h2>
       <p>
-        Frontend : Vercel Inc., 440 N Barranca Ave #4133, Covina, CA 91723, États-Unis — vercel.com<br />
-        Backend : Render Services Inc., 525 Brannan St Suite 300, San Francisco, CA 94107, États-Unis — render.com<br />
-        Base de données : PingCAP (TiDB Cloud), hébergée sur AWS (région UE — Francfort)
+        Application et base de données : Hostinger International Ltd., 61 Lordou Vironos Street,
+        6023 Larnaca, Chypre — hostinger.fr<br />
+        Serveur privé virtuel situé dans l&apos;Union européenne — data center de
+        Francfort-sur-le-Main, Allemagne
       </p>
 
       <h2>Propriété intellectuelle</h2>

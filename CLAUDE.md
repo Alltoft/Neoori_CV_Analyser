@@ -12,7 +12,7 @@ French-language CV analysis tool. Candidate uploads CV + 8 context fields → AI
 - **Next.js 15** (App Router, TypeScript)
 - **Tailwind CSS** + design tokens (see below)
 - **shadcn/ui** for base components
-- **Prisma** + **MySQL** (Aiven for prod / Railway for dev)
+- **Flask-SQLAlchemy** + **MySQL 8.4** (Docker container on the VPS)
 - **NextAuth.js v5** — roles: `candidate | counselor | admin`
 - **Anthropic SDK** — model `claude-sonnet-4-20250514`, max_tokens ≥ 4000
 - **React Hook Form + Zod** for form validation
@@ -112,33 +112,38 @@ user: <concatenation of 8 fields per format in prompt v1.3>
 No: boussole, copilote, miroir, révélation, épanouissement, alignement, excellence, talent unique, vous vous démarquez
 Yes: factual, sober, professional, direct
 
-## Live deployment (test environment)
+## Live deployment (VPS)
 
-All work is developed locally and tested live on the internet. Every push deploys automatically — no manual deploy step needed.
+Everything runs as Docker containers on one Hostinger VPS (KVM 2, Ubuntu 24.04, IP `186.240.157.26`). Full runbook: `DOCKER.md`.
 
-| Service  | URL | Host | Auto-deploy branch |
-|---|---|---|---|
-| Frontend | https://frontend-seven-fawn-59.vercel.app | Vercel | `initial` (set as production branch in Vercel dashboard) |
-| Backend  | https://neoori-cv-analyser.onrender.com | Render | `initial` |
-| Database | TiDB Cloud — project `neoori` | TiDB Cloud | — |
+| Container | Role | Image |
+|---|---|---|
+| nginx | TLS + routing — the only published ports (80/443) | `nginx:1.29-alpine` |
+| frontend | Next.js standalone server (:3000) | `ghcr.io/alltoft/neoori-frontend` |
+| backend | Flask / gunicorn gthread (:5000) | `ghcr.io/alltoft/neoori-backend` |
+| db | MySQL 8.4, internal network only | `mysql:8.4` |
 
 ### Architecture
-Browser → Vercel (Next.js proxy `/api/*`) → Render (Flask/gunicorn) → TiDB Cloud
+Browser → nginx (`/` → Next.js, `/api/*` → Flask) → MySQL (internal network)
 
-The Next.js rewrite in `frontend/next.config.ts` proxies all `/api/*` requests to Render. The browser never calls Render directly — all requests are same-origin from the browser's perspective. JWT cookies are `SameSite=Lax` because of this proxy.
+nginx serves both apps from one origin, so everything stays same-origin from the browser's perspective. JWT cookies are `SameSite=Lax` because of this.
 
 ### Deploy workflow
 ```
-# local change → live on both services
+# local change → live on the VPS
 git add .
 git commit -m "..."
-git push        # triggers Vercel (frontend) + Render (backend) redeploys simultaneously
+git push        # GitHub Actions: build images → push GHCR → sync config + pull/up on the VPS
 ```
+Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d`
+
+Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 
 ### Known gotchas
-- `BACKEND_URL` on Vercel must be `https://neoori-cv-analyser.onrender.com` (HTTPS, no trailing slash) — baked into Next.js build at compile time, so env changes require a redeploy
-- `FRONTEND_URL` on Render must be `https://frontend-seven-fawn-59.vercel.app` (with `https://`) — used by Flask-CORS; missing scheme breaks CORS header matching
-- Flask `strict_slashes=False` is set globally — required because Next.js proxy strips trailing slashes before forwarding, and Flask's default 308 redirect to an absolute Render URL leaks through the proxy to the browser
+- `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Login only works in the https phase — JWT cookies are `Secure`-only in production.
+- Flask `strict_slashes=False` stays global — the proxies strip trailing slashes before forwarding.
+- Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
+- The legacy Vercel/Render/TiDB test env keeps serving its last deploy until cutover — data migration steps in `DOCKER.md`.
 
 ## Out of scope
 - Portrait module

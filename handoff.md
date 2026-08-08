@@ -27,9 +27,9 @@ Scope: new prompt in DB, new form route, new analysis flow, partial rapport view
 | Prompt storage | DB table `prompt_versions`, edited via `/admin/prompts` UI, never in code | `backend/app/models/prompt_version.py` |
 
 Live URLs:
-- Frontend: `https://frontend-seven-fawn-59.vercel.app` (auto-deploy on push to `initial` branch)
-- Backend: `https://neoori-cv-analyser.onrender.com` (auto-deploy on push to `initial` branch)
-- Browser → Vercel rewrites `/api/*` → Render. JWT cookies are `SameSite=Lax`.
+- Dev (docker): `http://localhost:8080` — nginx routes `/` → Next.js, `/api/*` → Flask
+- Prod: Hostinger VPS `186.240.157.26`, four containers via `docker-compose.prod.yml` (runbook: `DOCKER.md`)
+- Browser → nginx → both apps, same-origin. JWT cookies are `SameSite=Lax`.
 
 **Read these before editing:**
 - `CLAUDE.md` at repo root — project rules, the 8 form fields for Chemin A, the 9 analysis sections, design tokens, copy rules ("no boussole, copilote, miroir…"), French-only UI rule
@@ -427,13 +427,13 @@ Accompagnement existant : {accompagnement}
 
 ## 8. Gotchas
 
-1. **Render free tier still has a ~100s HTTP cap.** The current architecture (background daemon thread + frontend polling) survives this. **Do not introduce any new synchronous long call.** The Sonnet generation for B is shorter than A (5 sections), so this should not be a concern.
+1. **Long HTTP calls are still forbidden.** The background-daemon-thread + frontend-polling architecture predates the VPS (Render's ~100s cap) but stays — **do not introduce any new synchronous long call**; nginx/gunicorn timeouts are generous, not infinite.
 
-2. **Next.js proxy strips trailing slashes.** Flask is configured with `strict_slashes=False` globally — do not undo this. New routes added to `analyses.py` inherit the setting.
+2. **Proxies strip trailing slashes.** Flask is configured with `strict_slashes=False` globally — do not undo this. New routes added to `analyses.py` inherit the setting.
 
-3. **Cookies are `SameSite=Lax`** because the browser sees same-origin (Vercel proxies to Render). If you add any cross-origin call, this breaks.
+3. **Cookies are `SameSite=Lax`** because the browser sees same-origin (nginx serves both apps from one origin). If you add any cross-origin call, this breaks.
 
-4. **`BACKEND_URL` is baked into the Next.js build at compile time.** Env-only changes on Vercel require a redeploy.
+4. **Frontend `NEXT_PUBLIC_*` values are baked at image build time** (CI build-args). Changing them means rebuilding the image, not editing VPS env.
 
 5. **PDFs in the form (B3 optional CV)** must use the existing `/api/upload/cv` endpoint (extracts text via PyPDF2 server-side). Do **not** send base64 PDFs to Anthropic from the browser like the PM proto does — the API key would have to be exposed. Stay server-side.
 
@@ -483,14 +483,14 @@ Standard workflow (CLAUDE.md already documents this):
 ```bash
 git add .
 git commit -m "feat: add Chemin B (portrait de potentiel) for B1/B2/B3 sub-profiles"
-git push   # triggers Vercel + Render redeploy
+git push   # GitHub Actions builds images → GHCR → VPS pulls + restarts (see DOCKER.md)
 ```
 
 Then **one of**:
-- Render dashboard → Shell → `python seed_prompt_v10_b.py`
+- On the VPS: `docker compose -f docker-compose.prod.yml exec backend python seed_prompt_v10_b.py`
 - `/admin/prompts` UI → paste prompt text → activate (path = B if migration applied)
 
-Verify on live by visiting `https://frontend-seven-fawn-59.vercel.app/`.
+Verify on the deployed host (VPS IP, or the domain once DNS exists).
 
 ---
 

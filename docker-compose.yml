@@ -1,0 +1,80 @@
+# Local development stack: MySQL + Flask (hot reload) + Next.js (hot reload)
+# behind nginx on http://localhost:8080 (port 80 is taken by the TaifOr dev
+# stack on this machine). Source is bind-mounted; images only need a rebuild
+# when requirements.txt / package-lock.json change.
+#
+#   docker compose up -d
+#   open http://localhost:8080     (nginx: / -> frontend, /api -> backend)
+#
+# Direct access (matches the old non-docker ports): frontend :3001, backend :5001.
+name: neoori
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: neoori_dev
+      MYSQL_DATABASE: neoori
+      MYSQL_USER: neoori
+      MYSQL_PASSWORD: neoori_dev
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306" # loopback only — GUI clients / mysql CLI
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -pneoori_dev --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: mysql+pymysql://neoori:neoori_dev@db:3306/neoori?charset=utf8mb4
+      FRONTEND_URL: http://localhost:8080,http://localhost:3001
+    volumes:
+      - ./backend:/app
+    ports:
+      - "127.0.0.1:5001:5001" # loopback only — direct curl / API tools
+    depends_on:
+      db:
+        condition: service_healthy
+    # Dev server with reload; prod uses the image CMD (entrypoint.sh -> gunicorn).
+    command: sh -c "flask db upgrade && flask run --debug --host=0.0.0.0 --port=5001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      # next.config.ts rewrite target when hitting :3001 directly (nginx routes
+      # /api itself, so this only matters for direct-port access).
+      BACKEND_URL: http://backend:5001
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "127.0.0.1:3001:3001" # loopback only — direct Next.js access
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:1.29-alpine
+    volumes:
+      - ./nginx/dev.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  db_data:
+    # Reuse the volume created by the old backend/docker-compose.yml so
+    # existing local dev data (accounts, analyses, seeded prompts) carries over.
+    name: backend_neoori_mysql_data

@@ -1,6 +1,6 @@
 # Manual test plan — CDC v1.2 / Parcours build
 
-Test environment: https://frontend-seven-fawn-59.vercel.app
+Test environment: http://localhost:8080 (docker dev) — VPS domain after cutover (see DOCKER.md)
 
 Work through in order. Each row is: what to do → what should happen. Anything
 that doesn't match, note the URL and what you saw.

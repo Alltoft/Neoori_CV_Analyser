@@ -24,7 +24,9 @@ const jetbrains = JetBrains_Mono({
   display: "swap",
 })
 
-const SITE_URL = "https://frontend-seven-fawn-59.vercel.app"
+// Baked at image build time via the NEXT_PUBLIC_SITE_URL build-arg (CI repo
+// variable SITE_URL); falls back to the local docker dev origin.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:8080"
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
