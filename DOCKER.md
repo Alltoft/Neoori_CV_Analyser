@@ -104,8 +104,16 @@ The GitHub repo **variable** `SITE_URL=https://neoori.tech` is set; it bakes
 into the frontend image as `NEXT_PUBLIC_SITE_URL` (metadata/OG URLs), so it
 only takes effect on the next image build.
 
-The `certbot` container renews automatically every 12 h; nginx picks up renewed
-certs on reload (`docker compose -f docker-compose.prod.yml exec nginx nginx -s reload` if needed).
+The `certbot` container renews automatically every 12 h, but renewing does not
+reach nginx — it holds the old certificate in memory until reloaded. A deploy
+restarts nginx and hides this; a quiet month after a renewal would not. So a
+second cron job reloads nginx nightly (installed 23/08):
+
+```
+0 4 * * * cd /srv/neoori && docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload >> /var/log/neoori-nginx-reload.log 2>&1
+```
+
+A reload is graceful — in-flight requests finish on the old workers.
 
 ## Data migration (TiDB Cloud → VPS MySQL, at cutover)
 
