@@ -75,24 +75,34 @@ GitHub repo → Settings → Secrets → Actions:
 
 Rollback to any commit: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` on the VPS.
 
-## TLS (once a domain exists)
+## TLS
+
+**Done 23/08** — `neoori.tech` + `www.neoori.tech`, cert expires 21/11/2026.
+The site is live at https://neoori.tech; www 301s to the apex; plain http 301s
+to https. Steps kept for a re-issue or a second domain:
 
 ```bash
 # 1. DNS A record -> 186.240.157.26; set DOMAIN=... in /srv/neoori/.env (keep NGINX_MODE=http)
 docker compose -f docker-compose.prod.yml up -d nginx
 
-# 2. Issue the certificate over the ACME webroot nginx already serves
-docker compose -f docker-compose.prod.yml run --rm certbot certonly \
-  --webroot -w /var/www/certbot -d "$DOMAIN" --email you@example.com --agree-tos --no-eff-email
+# 2. Issue the certificate over the ACME webroot nginx already serves.
+#    --entrypoint certbot is REQUIRED: the service's entrypoint is the renew
+#    loop, so without the override `certonly` is swallowed as a positional arg
+#    and the container hangs forever instead of issuing anything.
+#    Add --dry-run first — Let's Encrypt rate-limits failures.
+docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot certonly \
+  --webroot -w /var/www/certbot -d neoori.tech -d www.neoori.tech \
+  --email nneoori@proton.me --agree-tos --no-eff-email
 
-# 3. Switch nginx to the TLS template
-sed -i 's/^NGINX_MODE=.*/NGINX_MODE=https/' .env
-docker compose -f docker-compose.prod.yml up -d nginx
+# 3. Switch nginx to the TLS template (and point FRONTEND_URL at the domain —
+#    it drives the backend CORS allow-list and Stripe return URLs)
+sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=https://neoori.tech|; s/^NGINX_MODE=.*/NGINX_MODE=https/' .env
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-Also set the GitHub repo **variable** `SITE_URL=https://<domain>` (Settings →
-Secrets and variables → Actions → Variables) and re-run the deploy workflow —
-it's baked into the frontend image as `NEXT_PUBLIC_SITE_URL` (metadata/OG URLs).
+The GitHub repo **variable** `SITE_URL=https://neoori.tech` is set; it bakes
+into the frontend image as `NEXT_PUBLIC_SITE_URL` (metadata/OG URLs), so it
+only takes effect on the next image build.
 
 The `certbot` container renews automatically every 12 h; nginx picks up renewed
 certs on reload (`docker compose -f docker-compose.prod.yml exec nginx nginx -s reload` if needed).

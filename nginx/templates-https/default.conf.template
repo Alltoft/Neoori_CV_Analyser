@@ -3,7 +3,7 @@
 
 server {
     listen 80;
-    server_name ${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -12,6 +12,22 @@ server {
     location / {
         return 301 https://$host$request_uri;
     }
+}
+
+# www exists only to hand visitors to the apex. The certificate covers both
+# names, so this redirect is reached over TLS rather than warned about.
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name www.${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    return 301 https://${DOMAIN}$request_uri;
 }
 
 server {

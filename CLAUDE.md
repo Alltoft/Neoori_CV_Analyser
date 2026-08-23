@@ -114,7 +114,7 @@ Yes: factual, sober, professional, direct
 
 ## Live deployment (VPS)
 
-Everything runs as Docker containers on one Hostinger VPS (KVM 2, Ubuntu 24.04, IP `186.240.157.26`). Full runbook: `DOCKER.md`.
+Live at **https://neoori.tech** (www redirects to the apex). Everything runs as Docker containers on one Hostinger VPS (KVM 2, Ubuntu 24.04, IP `186.240.157.26`). Full runbook: `DOCKER.md`.
 
 | Container | Role | Image |
 |---|---|---|
@@ -140,7 +140,7 @@ Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.pr
 Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 
 ### Known gotchas
-- `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Login only works in the https phase — JWT cookies are `Secure`-only in production.
+- `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Now `https` — login only works in that phase, JWT cookies are `Secure`-only in production.
 - Flask `strict_slashes=False` stays global — the proxies strip trailing slashes before forwarding.
 - Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
 - The legacy Vercel/Render/TiDB test env keeps serving its last deploy until cutover — data migration steps in `DOCKER.md`.
