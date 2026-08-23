@@ -109,22 +109,36 @@ ssh neoori 'cd /srv/neoori && docker compose -f docker-compose.prod.yml exec -T 
 
 The alembic version table travels with the dump, so `flask db upgrade` stays consistent.
 
-## Backups (set up BEFORE real users)
+## Backups
 
-`/usr/local/bin/neoori-backup.sh` on the VPS:
+Script lives in the repo: `scripts/neoori-backup.sh`. Installed on the VPS
+(23/08) at `/usr/local/bin/neoori-backup.sh`, cron `0 3 * * *`, log
+`/var/log/neoori-backup.log`. Dumps to `/backups/neoori-<date>.sql.gz`,
+keeps 7 days.
+
+Re-install after editing the script:
 
 ```bash
-#!/bin/sh
-set -e
-F=/backups/neoori-$(date +%F).sql.gz
-mkdir -p /backups
-cd /srv/neoori
-docker compose -f docker-compose.prod.yml exec -T db sh -c \
-  'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction neoori' | gzip > "$F"
-rclone copy "$F" r2:neoori-backups/   # or Backblaze B2 — off-box is the point
-rclone delete r2:neoori-backups/ --min-age 30d
-find /backups -mtime +7 -delete
+scp scripts/neoori-backup.sh neoori:/usr/local/bin/neoori-backup.sh
+ssh neoori 'chmod +x /usr/local/bin/neoori-backup.sh && /usr/local/bin/neoori-backup.sh'
 ```
 
-`chmod +x` it, then `crontab -e`: `0 3 * * * /usr/local/bin/neoori-backup.sh`.
-Run one **restore test** before launch — an untested backup is not a backup.
+**Still local-only** — a disk failure takes the backups with the database.
+Set an off-box target before real users: install rclone, configure an R2/B2
+remote, then add `RCLONE_REMOTE=r2:neoori-backups` to the cron line. The script
+warns on stderr (and the log) every night until this is done.
+
+The dump deliberately omits `--databases`, so it carries no `USE` statement and
+can be restored into a scratch database. Restore test (run before launch and
+after any schema change — an untested backup is not a backup):
+
+```bash
+ssh neoori
+cd /srv/neoori && C="docker compose -f docker-compose.prod.yml exec -T db"
+$C sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "create database neoori_restore_test"'
+gzip -dc /backups/neoori-<date>.sql.gz | $C sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" neoori_restore_test'
+# compare table count + spot-check rows against neoori, then:
+$C sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "drop database neoori_restore_test"'
+```
+
+Last verified 23/08: 9/9 tables restored, `prompt_versions` = v1.7.
