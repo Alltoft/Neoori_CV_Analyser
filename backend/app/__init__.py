@@ -1,7 +1,39 @@
 import os
+from datetime import datetime, timedelta
+
 from flask import Flask
 from .config import config
 from .extensions import db, migrate, jwt, bcrypt, cors
+
+# How long a row may sit in 'running' before a restart is allowed to call it
+# orphaned. Must stay above the longest plausible generation (paid tier at
+# 8000 tokens runs a couple of minutes) — see reap_stale_running().
+STALE_RUN_CUTOFF_MINUTES = int(os.getenv("STALE_RUN_CUTOFF_MINUTES", "15"))
+
+
+def reap_stale_running(cutoff_minutes: int | None = None) -> int:
+    """Reset analyses orphaned mid-stream by a previous process. Returns the count.
+
+    Requires an app context. Only rows older than the cutoff are touched:
+    create_app() runs in *every* process that opens this database — each
+    gunicorn worker, `flask db upgrade` on deploy, every seed or admin
+    script — so resetting all 'running' rows reaches analyses that are
+    still streaming. The candidate's page then shows « L'analyse n'a pas
+    abouti » and stops polling, while the background thread finishes and
+    writes 'success' to a row nobody is watching any more.
+    """
+    from .models.analysis import Analysis
+
+    cutoff = datetime.utcnow() - timedelta(
+        minutes=STALE_RUN_CUTOFF_MINUTES if cutoff_minutes is None else cutoff_minutes
+    )
+    stale = (
+        Analysis.query
+        .filter(Analysis.status == "running", Analysis.created_at < cutoff)
+        .update({"status": "error"}, synchronize_session=False)
+    )
+    db.session.commit()
+    return stale
 
 
 def create_app(env: str | None = None) -> Flask:
@@ -80,9 +112,7 @@ def create_app(env: str | None = None) -> Flask:
     # Reset analyses that were mid-stream when the server last shut down
     with app.app_context():
         try:
-            from .models.analysis import Analysis
-            stale = Analysis.query.filter_by(status="running").update({"status": "error"})
-            db.session.commit()
+            stale = reap_stale_running()
             if stale:
                 app.logger.info(f"Startup: reset {stale} stale running analysis/analyses to error.")
         except Exception:
