@@ -1,5 +1,5 @@
 """
-Upgrade prompt to v1.7 (Chemin A).
+Upgrade prompt to v1.7 (parcours 1, ex-Chemin A).
 
 v1.7 changes vs v1.3:
 - Adds RÈGLE MARCHÉ (no rarity / market-tension claims without sources)
@@ -20,6 +20,10 @@ from app.extensions import db
 from app.models.prompt_version import PromptVersion
 
 VERSION_LABEL = "v1.7"
+# Parcours 1 (« J'ai une cible ») — the ex-"Chemin A" prompt. CDC v1.2
+# replaced the A/B codes with parcours ids and the analysis lookup filters
+# on this column, so a seed writing "A" produces a prompt no run can find.
+PATH = "1"
 
 SYSTEM_PROMPT_V1_7 = """Tu es l'agent neoori d'analyse de CV. Tu produis une analyse structurée en 9 sections selon les règles strictes ci-dessous, retournée UNIQUEMENT comme un bloc JSON valide encadré de ```json ... ```.
 
@@ -145,19 +149,19 @@ with app.app_context():
         if existing.is_active:
             print(f"{VERSION_LABEL} already active (id={existing.id}). Nothing to do.")
         else:
-            # Only deactivate path-A prompts — path B has its own active prompt
-            PromptVersion.query.filter_by(is_active=True, path="A").update({"is_active": False})
+            # Only deactivate this parcours' prompts — the others have their own
+            PromptVersion.query.filter_by(is_active=True, path=PATH).update({"is_active": False})
             existing.is_active = True
             db.session.commit()
             print(f"{VERSION_LABEL} re-activated (id={existing.id}).")
     else:
-        # Only deactivate path-A prompts — path B has its own active prompt
-        PromptVersion.query.filter_by(is_active=True, path="A").update({"is_active": False})
+        # Only deactivate this parcours' prompts — the others have their own
+        PromptVersion.query.filter_by(is_active=True, path=PATH).update({"is_active": False})
         pv = PromptVersion(
             version_label=VERSION_LABEL,
             system_prompt_text=SYSTEM_PROMPT_V1_7.strip(),
             is_active=True,
-            path="A",
+            path=PATH,
         )
         db.session.add(pv)
         db.session.commit()

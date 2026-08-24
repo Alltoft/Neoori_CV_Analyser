@@ -1,4 +1,4 @@
-"""Seed prompt v1.0-B (Chemin B — portrait de potentiel).
+"""Seed prompt v1.0-B (parcours 3, ex-Chemin B — portrait de potentiel).
 
 Idempotent: re-running does not duplicate.
 
@@ -9,7 +9,9 @@ from app.extensions import db
 from app.models.prompt_version import PromptVersion
 
 VERSION_LABEL = "v1.0-B"
-PATH = "B"
+# Parcours 3 (« Je pars de zéro ») — the ex-"Chemin B" prompt, renamed by
+# the CDC v1.2 migration (A -> 1, B -> 3).
+PATH = "3"
 
 SYSTEM_PROMPT_V1_0_B = """Tu es l'agent neoori d'orientation. Tu produis un portrait de potentiel structuré pour une personne sans parcours professionnel établi ou en reprise, retourné UNIQUEMENT comme un bloc JSON valide encadré de ```json ... ```.
 
