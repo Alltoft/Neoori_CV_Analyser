@@ -14,6 +14,7 @@ from app.services import section_registry as registry
 SEEDS = {
     "seed_prompt_v17.py": "1",     # ex-path A, « J'ai une cible »
     "seed_prompt_v10_b.py": "3",   # ex-path B, « Je pars de zéro »
+    "seed_prompt_v10_p2.py": "2",  # authored after the migration, no legacy code
 }
 
 _LITERAL = re.compile(r"""(?:path\s*=|^PATH\s*=)\s*["'](\w)["']""", re.MULTILINE)
