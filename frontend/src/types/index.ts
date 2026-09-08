@@ -61,6 +61,9 @@ export interface AnalysisInputs {
   // Discriminators (echoed from backend)
   _path?: AnalysisPath
   _sub_profile?: SubProfile
+  /** Parcours 1 only: "A" the employer's job ad, "B" the person's own
+   *  description of a target. Absent on rows written before the split. */
+  _chemin?: "A" | "B"
   /** Plan the analysis was generated on. "haiku"/"sonnet" on rows written
    *  before the plan-name migration — see backend services/tiers.py. */
   _tier?: "free" | "paid" | "premium" | "haiku" | "sonnet"

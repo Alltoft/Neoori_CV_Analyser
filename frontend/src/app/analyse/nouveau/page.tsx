@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { useAuth } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -22,11 +22,51 @@ import { UploadCloud, FileText, ArrowRight, Check, ShieldCheck } from "lucide-re
 // situation and constraints live in the Profil de base and are folded in
 // server-side by _merge_profile — "une information, une seule fois"
 // (Parcours doc §1).
-const schema = z.object({
-  cv_text: z.string().min(200, "CV trop court (200 caractères minimum)."),
-  cible_visee: z.string().min(50, "Cible trop courte (50 caractères minimum)."),
-})
+
+// Parcours 1 has two chemins (Parcours doc §4), and they are not the same
+// question as "uploaded or typed" — the doc's chemin A is literally "coller
+// l'offre d'emploi exacte", so a pasted ad is still chemin A. What separates
+// them is whether the text IS the employer's ad or the person's own
+// description of a target, and only they can say which.
+const CHEMINS = [
+  {
+    value: "A" as const,
+    label: "J'ai l'offre",
+    hint: "Le rapport compare votre CV à l'offre, exigence par exigence.",
+  },
+  {
+    value: "B" as const,
+    label: "Je décris ma cible",
+    hint: "Le rapport s'ouvre en disant qu'il part de votre description.",
+  },
+]
+
+// Mirrors CIBLE_MIN in backend/app/routes/analyses.py.
+const CIBLE_MIN = { A: 50, B: 20 } as const
+
+const schema = z
+  .object({
+    cv_text: z.string().min(200, "CV trop court (200 caractères minimum)."),
+    chemin: z.enum(["A", "B"]),
+    cible_visee: z.string(),
+  })
+  .superRefine((v, ctx) => {
+    const min = CIBLE_MIN[v.chemin]
+    if (v.cible_visee.trim().length < min) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["cible_visee"],
+        message: `Cible trop courte (${min} caractères minimum).`,
+      })
+    }
+  })
 type Fields = z.infer<typeof schema>
+
+/** Form shape → stored inputs. `_chemin` follows the `_path` / `_tier`
+ *  discriminator convention rather than the form's own field name. */
+function toInputs({ chemin, ...rest }: Fields) {
+  return { ...rest, _chemin: chemin }
+}
 
 export default function NouvelleAnalysePage() {
   return (
@@ -56,9 +96,12 @@ function NouvelleAnalyseForm() {
   // unlocks the full report afterwards via /debloquer. This closes the free-premium hole.
   const canPremium = !!user && (user.plan === "paid" || (user.credits_remaining ?? 0) > 0)
 
-  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<Fields>({
+  const { register, handleSubmit, control, setValue, watch, reset, formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
+    defaultValues: { chemin: "A" },
   })
+
+  const chemin = watch("chemin")
 
   // Resume a saved draft (?draft=<id>)
   useEffect(() => {
@@ -72,6 +115,7 @@ function NouvelleAnalyseForm() {
         reset({
           cv_text: i.cv_text ?? "",
           cible_visee: i.cible_visee ?? "",
+          chemin: i._chemin === "B" ? "B" : "A",
         })
       })
       .catch(() => { /* draft gone — start blank */ })
@@ -101,6 +145,8 @@ function NouvelleAnalyseForm() {
     try {
       const res = await api.upload<{ projet_text: string }>("/upload/projet", fd)
       setValue("cible_visee", res.projet_text, { shouldValidate: true })
+      // A deposited document is the employer's, not a description of a target.
+      setValue("chemin", "A", { shouldValidate: true })
       setProjectUploadedFilename(file.name)
       setProjectUploadState("done")
     } catch {
@@ -125,7 +171,7 @@ function NouvelleAnalyseForm() {
     setSubmitting(true)
     const tier = canPremium ? "sonnet" : "haiku"
     try {
-      const res = await api.post<{ analysis: Analysis }>("/analyses/", { inputs: data, tier })
+      const res = await api.post<{ analysis: Analysis }>("/analyses/", { inputs: toInputs(data), tier })
       if (draftId) api.delete(`/analyses/${draftId}`).catch(() => {})
       router.push(`/analyse/en-cours/${res.analysis.id}`)
     } catch (e) {
@@ -140,7 +186,7 @@ function NouvelleAnalyseForm() {
     try {
       const res = await api.post<{ analysis: Analysis }>(
         "/analyses/draft",
-        { inputs: watch(), draft_id: draftId ?? undefined },
+        { inputs: toInputs(watch()), draft_id: draftId ?? undefined },
         { skipRedirect: true },
       )
       setDraftId(res.analysis.id)
@@ -223,11 +269,47 @@ function NouvelleAnalyseForm() {
           </SectionCard>
 
           <SectionCard n={2} title="Votre projet" hint="Offre d’emploi, fiche métier ou programme de formation.">
+            <Controller
+              name="chemin"
+              control={control}
+              render={({ field }) => (
+                <div role="radiogroup" aria-label="Type de cible" className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {CHEMINS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={field.value === c.value}
+                      onClick={() => field.onChange(c.value)}
+                      className={cn(
+                        "rounded-xl border px-3 py-2.5 text-left transition-colors",
+                        field.value === c.value
+                          ? "border-navy bg-navy text-white"
+                          : "border-border bg-background text-navy hover:border-orange/50",
+                      )}
+                    >
+                      <span className="block text-xs font-semibold">{c.label}</span>
+                      <span className={cn("mt-0.5 block text-[10px] leading-snug", field.value === c.value ? "text-white/75" : "text-muted-foreground")}>
+                        {c.hint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.2fr_1fr]">
               {dropZone("projet")}
               <div className="flex flex-col gap-1.5">
-                <span className="text-center text-[10px] text-muted-foreground">— ou décrire librement —</span>
-                <Textarea {...register("cible_visee")} placeholder="Intitulé du poste, description, programme de formation…" className="min-h-[104px] flex-1 resize-none bg-background text-sm" />
+                <span className="text-center text-[10px] text-muted-foreground">
+                  {chemin === "B" ? "— ou décrire librement —" : "— ou coller le texte de l’offre —"}
+                </span>
+                <Textarea
+                  {...register("cible_visee")}
+                  placeholder={chemin === "B"
+                    ? "Le poste ou le secteur que vous visez…"
+                    : "Collez ici le texte de l’offre d’emploi…"}
+                  className="min-h-[104px] flex-1 resize-none bg-background text-sm"
+                />
               </div>
             </div>
             {errors.cible_visee && <p className="mt-2 text-xs text-destructive">{errors.cible_visee.message}</p>}

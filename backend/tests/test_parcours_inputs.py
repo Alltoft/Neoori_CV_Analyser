@@ -1,4 +1,6 @@
 """Per-parcours message formatting and validation."""
+import json
+
 import pytest
 
 from app.routes.analyses import VALIDATORS
@@ -175,3 +177,77 @@ def test_p1_still_carries_notes_from_a_pre_migration_draft():
         "notes_specifiques": "disponible à partir de septembre",
     })
     assert "Notes spécifiques : disponible à partir de septembre" in msg
+
+
+# ── chemin A / B (Parcours doc §4) ───────────────────────────────────────────
+
+def test_chemin_b_lets_a_short_target_through():
+    """The doc puts the floor for a described target at 20 characters."""
+    errors = VALIDATORS["1"]({
+        "cv_text": "c" * 300, "_chemin": "B", "cible_visee": "Chauffeur livreur PL",
+    })
+    assert errors == []
+
+
+def test_chemin_a_still_wants_a_real_offer():
+    """20 characters of job ad is a paste that went wrong."""
+    errors = VALIDATORS["1"]({
+        "cv_text": "c" * 300, "_chemin": "A", "cible_visee": "Chauffeur livreur PL",
+    })
+    assert errors == ["Cible visée trop courte (minimum 50 caractères)."]
+
+
+def test_an_analysis_without_a_chemin_is_treated_as_an_offer():
+    """Rows written before the split behaved as chemin A — no framing note,
+    and the 50-character floor."""
+    errors = VALIDATORS["1"]({"cv_text": "c" * 300, "cible_visee": "trop court"})
+    assert errors == ["Cible visée trop courte (minimum 50 caractères)."]
+
+
+def test_normalize_chemin_defaults_to_the_offer():
+    from app.routes.analyses import _normalize_chemin
+
+    assert _normalize_chemin("b") == "B"
+    assert _normalize_chemin("A") == "A"
+    assert _normalize_chemin(None) == "A"
+    assert _normalize_chemin("nonsense") == "A"
+
+
+def test_create_persists_the_chemin_so_the_framing_note_can_fire(app, client):
+    """The whole point of the wiring.
+
+    `_chemin` was read by _format_user_message_p1 and set by nobody, so the
+    chemin B framing note was unreachable code. This is the end-to-end path:
+    the form sends it, create stores it, and the message built from those
+    stored inputs carries the note.
+    """
+    from unittest.mock import patch
+
+    with patch("app.routes.analyses.start_analysis"):
+        res = client.post("/api/analyses/", json={"inputs": {
+            "_path": "1", "_chemin": "B",
+            "cv_text": "c" * 300, "cible_visee": "Chauffeur livreur PL",
+        }})
+    assert res.status_code == 201, res.data
+
+    stored = json.loads(res.data)["analysis"]["inputs"]
+    assert stored["_chemin"] == "B"
+    assert "note de cadrage" in _format_user_message(stored)
+
+
+def test_create_leaves_parcours_2_and_3_without_a_chemin(app, client):
+    """Only parcours 1 has chemins; the key elsewhere would be noise in the
+    stored inputs and in every prompt built from them."""
+    from unittest.mock import patch
+
+    with patch("app.routes.analyses.start_analysis"):
+        res = client.post("/api/analyses/", json={"inputs": {
+            "_path": "3",
+            "experiences": "bénévolat au club de foot pendant six ans",
+            "aime_faire": "organiser, réparer des choses",
+            "refus": "le travail de nuit",
+            "contraintes": "pas de permis",
+            "bon_travail": "une équipe, dehors",
+        }})
+    assert res.status_code == 201, res.data
+    assert "_chemin" not in json.loads(res.data)["analysis"]["inputs"]

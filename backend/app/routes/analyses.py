@@ -27,6 +27,30 @@ analyses_bp = Blueprint("analyses", __name__)
 _FORCE_TIER = tiers.normalize(os.getenv("FORCE_ANALYSIS_TIER", "paid")) \
     if os.getenv("FORCE_ANALYSIS_TIER", "paid") else None
 
+# Parcours 1 splits in two (Parcours doc §4). Chemin A is an actual job ad,
+# pasted or uploaded — the report compares the CV against it point by point.
+# Chemin B is the person's own description of a target, which the report has to
+# announce as such: no sector lookup runs at launch (PM ruling), so nothing in
+# it is sourced and the opening note says so.
+CHEMIN_OFFRE = "A"
+CHEMIN_DESCRIPTION = "B"
+
+# The doc puts the floor for a described target at 20 characters. A job ad that
+# short is a paste that went wrong, so chemin A keeps the original 50.
+CIBLE_MIN = {CHEMIN_OFFRE: 50, CHEMIN_DESCRIPTION: 20}
+
+
+def _normalize_chemin(value) -> str:
+    """Coerce to a chemin, defaulting to the offer.
+
+    Analyses written before the chemin was carried have no value, and their
+    behaviour was chemin A — direct analysis, no framing note.
+    """
+    if str(value or "").strip().upper() == CHEMIN_DESCRIPTION:
+        return CHEMIN_DESCRIPTION
+    return CHEMIN_OFFRE
+
+
 @analyses_bp.post("/")
 def create_analysis():
     user_id = _optional_user_id()
@@ -36,6 +60,10 @@ def create_analysis():
     # back to parcours 1 for anything unrecognised.
     path = registry.normalize(inputs.get("_path"))
     inputs["_path"] = path
+    # Only parcours 1 has chemins; carrying the key elsewhere would be noise in
+    # the stored inputs and in every prompt built from them.
+    if path == "1":
+        inputs["_chemin"] = _normalize_chemin(inputs.get("_chemin"))
 
     if _FORCE_TIER:
         # TEMPORARY — see _FORCE_TIER above. Delete the default to restore
@@ -266,9 +294,10 @@ def _validate_inputs(inputs: dict) -> list[str]:
     if len(has_cv) < 200:
         errors.append("CV trop court (minimum 200 caractères).")
 
+    minimum = CIBLE_MIN[_normalize_chemin(inputs.get("_chemin"))]
     cible = (inputs.get("cible_visee") or "").strip()
-    if len(cible) < 50:
-        errors.append("Cible visée trop courte (minimum 50 caractères).")
+    if len(cible) < minimum:
+        errors.append(f"Cible visée trop courte (minimum {minimum} caractères).")
 
     return errors
 
