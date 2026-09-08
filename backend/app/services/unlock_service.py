@@ -40,6 +40,9 @@ def unlock_analysis(
     analysis.inputs = new_inputs
 
     analysis.status = "queued"
+    # Same row, second generation: the waiting screen reads `progress`, and a
+    # stale 100 from the free run would show a full bar for two minutes.
+    analysis.progress = 0
     analysis.unlock_method = method
     analysis.unlocked_at = datetime.utcnow()
     if stripe_session_id:

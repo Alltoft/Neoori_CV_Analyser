@@ -10,27 +10,48 @@ import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import type { Analysis } from "@/types"
 
-const STEPS: { label: string; t: number }[] = [
-  { label: "Lecture du CV",          t: 0     },
-  { label: "Analyse du profil",      t: 12000 },
-  { label: "Rédaction du rapport",   t: 24000 },
-  { label: "Finalisation",           t: 36000 },
+// Steps are keyed on the percentage the backend reports, not on a stopwatch:
+// `at` is the progress value at which the step becomes the active one.
+const STEPS: { label: string; at: number }[] = [
+  { label: "Lecture du CV",          at: 0  },
+  { label: "Analyse du profil",      at: 4  },
+  { label: "Rédaction du rapport",   at: 12 },
+  { label: "Finalisation",           at: 90 },
 ]
-const ESTIMATED_TOTAL = 48000
+
+// Fallback only — used when the backend sends no `progress` (older image).
+// Asymptotic on purpose: the old screen filled to 95 % in 48 s and then sat
+// there, and a real run takes 84 s on the free tier and 119 s on the paid one.
+const ESTIMATED_TOTAL = 60000
+const FALLBACK_CEILING = 95
+
 const POLL_INTERVAL_MS = 2000
 const POLL_BACKOFF_MS  = 4000   // on network blip
 const POLL_MAX_MS      = 10 * 60 * 1000   // give up after 10 min total
+
+const EASE_INTERVAL_MS = 120    // bar catches up to the reported value
+
+// What to promise on the eyebrow, per plan. Measured end-to-end on parcours 1.
+const DURATION_HINT: Record<string, string> = {
+  free: "~1 min 30", haiku: "~1 min 30",
+  paid: "~2 min",    sonnet: "~2 min",
+  premium: "~3 min",
+}
 
 type StepState = "done" | "active" | "wait"
 
 export default function EnCoursPage() {
   const { id } = useParams<{ id: string }>()
   const router  = useRouter()
-  const [activeStep, setActiveStep] = useState(0)
-  const [progress,   setProgress]   = useState(0)
+  const [progress,   setProgress]   = useState(0)   // what the bar renders
   const [done,       setDone]        = useState(false)
   const [error,      setError]       = useState<string | null>(null)
-  const startRef = useRef(Date.now())
+  const [hint,       setHint]        = useState<string | null>(null)
+  const [elapsed,    setElapsed]     = useState(0)
+  const startRef  = useRef(Date.now())
+  // Last value reported by the backend. The bar eases towards it rather than
+  // jumping, so a 2 s poll interval still reads as continuous movement.
+  const targetRef = useRef(0)
 
   useEffect(() => {
     let alive = true
@@ -39,6 +60,11 @@ export default function EnCoursPage() {
     const schedule = (ms: number, fn: () => void) => {
       timer = setTimeout(fn, ms)
     }
+
+    // Backends without the `progress` column: an asymptotic curve on elapsed
+    // time. It slows down instead of hitting a ceiling and stopping dead.
+    const fallbackPct = () =>
+      FALLBACK_CEILING * (1 - Math.exp(-(Date.now() - startRef.current) / ESTIMATED_TOTAL))
 
     const poll = async () => {
       if (!alive) return
@@ -49,9 +75,12 @@ export default function EnCoursPage() {
       try {
         const res = await api.get<{ analysis: Analysis }>(`/analyses/${id}`)
         if (!alive) return
-        const status = res.analysis.status
+        const { status, progress: reported, inputs } = res.analysis
+        setHint(DURATION_HINT[inputs?._tier ?? ""] ?? null)
+
         if (status === "success") {
           setDone(true)
+          targetRef.current = 100
           setProgress(100)
           schedule(800, () => router.push(`/analyse/${id}/rapport`))
           return
@@ -65,6 +94,8 @@ export default function EnCoursPage() {
           return
         }
         // queued | running → keep polling
+        const pct = typeof reported === "number" ? reported : fallbackPct()
+        targetRef.current = Math.max(targetRef.current, pct)
         schedule(POLL_INTERVAL_MS, poll)
       } catch {
         if (!alive) return
@@ -74,15 +105,14 @@ export default function EnCoursPage() {
     }
     poll()
 
-    // Progress animation keyed on elapsed time
     const tick = setInterval(() => {
-      const elapsed = Date.now() - startRef.current
-      const pct = Math.min((elapsed / ESTIMATED_TOTAL) * 100, 95)
-      setProgress(pct)
-
-      const next = STEPS.findLastIndex(s => elapsed >= s.t)
-      setActiveStep(Math.max(0, next))
-    }, 200)
+      setElapsed(Date.now() - startRef.current)
+      setProgress(prev => {
+        const target = targetRef.current
+        if (prev >= target) return prev
+        return Math.min(target, prev + Math.max(0.25, (target - prev) * 0.1))
+      })
+    }, EASE_INTERVAL_MS)
 
     return () => {
       alive = false
@@ -90,6 +120,8 @@ export default function EnCoursPage() {
       clearInterval(tick)
     }
   }, [id, router])
+
+  const activeStep = Math.max(0, STEPS.findLastIndex(s => progress >= s.at))
 
   const stepState = (i: number): StepState => {
     if (i < activeStep) return "done"
@@ -107,7 +139,9 @@ export default function EnCoursPage() {
         <div className="mb-8 text-center">
           <p className="eyebrow mb-4 inline-flex items-center gap-2 text-orange-dark">
             <InfinityMark animate={!error} className="h-[1.2em]" />
-            {error ? "Analyse interrompue" : "Analyse en cours · ~45 s"}
+            {error
+              ? "Analyse interrompue"
+              : `Analyse en cours${hint ? ` · ${hint}` : ""}`}
           </p>
           <h1 className="font-display text-3xl font-bold tracking-tight text-navy">
             {error ? "L’analyse n’a pas abouti" : "Analyse en cours"}
@@ -165,7 +199,7 @@ export default function EnCoursPage() {
                     </span>
                     {state === "active" && (
                       <span className="font-mono text-[11px] tabular-nums text-orange-dark">
-                        {((Date.now() - startRef.current) / 1000).toFixed(1)} s
+                        {(elapsed / 1000).toFixed(1)} s
                       </span>
                     )}
                   </li>

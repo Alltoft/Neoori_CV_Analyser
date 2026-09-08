@@ -32,6 +32,11 @@ class Analysis(db.Model):
     tokens_in = db.Column(db.Integer, nullable=True)
     tokens_out = db.Column(db.Integer, nullable=True)
 
+    # How far the generation has got, 0-99 while running and 100 once the row
+    # is 'success'. Written from the stream itself (see anthropic_service) so
+    # the waiting screen reports the run instead of animating a clock.
+    progress = db.Column(db.SmallInteger, nullable=False, default=0, server_default="0")
+
     # Public token for counselor share link: /c/<share_token>
     share_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
 
@@ -58,6 +63,7 @@ class Analysis(db.Model):
             "inputs": self.inputs,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
+            "progress": 100 if self.status == "success" else (self.progress or 0),
             "share_token": self.share_token,
             "prompt_version_id": self.prompt_version_id,
             "unlock_method": self.unlock_method,

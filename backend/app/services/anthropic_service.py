@@ -2,6 +2,7 @@ import json
 import re
 import os
 import threading
+import time
 from datetime import datetime
 import anthropic
 from json_repair import repair_json
@@ -323,6 +324,103 @@ def _parse_output(raw: str, path: str = registry.DEFAULT_PARCOURS) -> dict:
     return {first_key: {"title": "Analyse", "body_markdown": raw, "items": []}}
 
 
+# ── Live progress ────────────────────────────────────────────────────────────
+# The waiting screen used to animate a clock: it filled to 95 % in 48 s and then
+# sat there until the row flipped to 'success'. A parcours 1 run measured 84 s
+# on the free tier (4 sections) and 119 s on the paid one (9 sections) — so the
+# paid tier, which the PM's review runs on, froze at 95 % for more than a
+# minute and read as a hang. The percentage is now taken from the stream: each
+# top-level `"key": {` is a section starting, which is a fact about the run and
+# not a guess about its duration.
+
+# French JSON output measures ~3.2-3.8 characters per output token. Only used
+# before the first section key appears (markdown response, no structured
+# output), where characters against the budget is the sole signal available.
+_CHARS_PER_TOKEN = 3.6
+
+# One row update per streamed chunk would be hundreds of writes per analysis.
+_PROGRESS_INTERVAL_S = 2.0
+
+
+def _section_open_re(keys: list[str]) -> re.Pattern:
+    """Matches a top-level section object opening in the streamed JSON.
+
+    The negative lookbehind drops `\\"4\\": {` written *inside* a body string —
+    escaped there, plain here — so prose quoting a section can't advance the
+    bar. Longest-first, like _md_section_re, so "VI" is never read as "V".
+    """
+    alt = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
+    return re.compile(rf'(?<!\\)"({alt})"\s*:\s*\{{')
+
+
+def _stream_progress(acc: str, pattern: re.Pattern, total: int, budget_chars: int) -> int:
+    """Percent complete for what has been streamed so far, 0-99.
+
+    Sections already opened are finished except the last one, which is scaled
+    by its length so far against the average of those already written — the
+    stream calibrates itself, no per-parcours constant to keep in sync. Never
+    returns 100: that is the row reaching 'success', never an estimate.
+    """
+    opens = [m.start() for m in pattern.finditer(acc)]
+    if not opens:
+        return min(int(100 * len(acc) / budget_chars), 90) if budget_chars else 0
+
+    done = len(opens) - 1
+    average = (opens[-1] - opens[0]) / done if done else budget_chars / max(total, 1)
+    inner = min((len(acc) - opens[-1]) / average, 0.99) if average > 0 else 0.0
+    return min(int(100 * (done + inner) / total), 99)
+
+
+def _publish_progress(analysis_id: str, pct: int) -> None:
+    """Write the percentage to the row the frontend polls, then hand the
+    connection straight back — the stream it reports on runs for minutes, and
+    holding a pooled connection across it is what leaves rows stuck 'running'
+    (see _run_analysis)."""
+    try:
+        Analysis.query.filter_by(id=analysis_id).update({"progress": pct})
+        db.session.commit()
+    finally:
+        db.session.remove()
+
+
+class ProgressReporter:
+    """Turns the accumulating stream into published percentages.
+
+    Throttled (one write per interval), monotonic (the structured-output retry
+    restarts the stream from zero and must not run the bar backwards) and
+    silent on failure (progress is decoration; it must never take down the
+    analysis it is reporting on).
+    """
+
+    def __init__(self, analysis_id, keys, budget_chars,
+                 writer=None, clock=time.monotonic, min_interval=None):
+        self._analysis_id = analysis_id
+        self._pattern = _section_open_re(list(keys))
+        self._total = len(keys)
+        self._budget_chars = budget_chars
+        # Resolved here rather than as default arguments: a default binds the
+        # function object at class-definition time, which no test can replace.
+        self._writer = writer or _publish_progress
+        self._clock = clock
+        self._min_interval = _PROGRESS_INTERVAL_S if min_interval is None else min_interval
+        self._published = 0
+        self._last_write = None
+
+    def update(self, acc: str) -> None:
+        now = self._clock()
+        if self._last_write is not None and now - self._last_write < self._min_interval:
+            return
+        self._last_write = now
+        pct = _stream_progress(acc, self._pattern, self._total, self._budget_chars)
+        if pct <= self._published:
+            return
+        self._published = pct
+        try:
+            self._writer(self._analysis_id, pct)
+        except Exception:
+            pass
+
+
 def _run_analysis(analysis_id: str, app) -> None:
     """Run a single analysis to completion. Writes status + output to DB.
 
@@ -370,6 +468,13 @@ def _run_analysis(analysis_id: str, app) -> None:
         full_response = ""
         tokens_in = tokens_out = None
         error_exc = None
+        # Publishes what the stream has actually produced, so the waiting
+        # screen keeps moving through a 2-minute paid generation.
+        reporter = ProgressReporter(
+            analysis_id,
+            keys=_section_keys(path, tier),
+            budget_chars=int(max_tokens * _CHARS_PER_TOKEN),
+        )
         try:
             client = _get_client()
             request_kwargs = dict(
@@ -393,6 +498,7 @@ def _run_analysis(analysis_id: str, app) -> None:
                 with client.messages.stream(**kwargs) as stream:
                     for text in stream.text_stream:
                         acc += text
+                        reporter.update(acc)
                     final = stream.get_final_message()
                 return acc, final.usage.input_tokens, final.usage.output_tokens
 
@@ -418,6 +524,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             return
 
         analysis.status = "success"
+        analysis.progress = 100
         analysis.output = _parse_output(full_response, path)
         analysis.raw_output = full_response
         analysis.tokens_in = tokens_in

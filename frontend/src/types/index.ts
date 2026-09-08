@@ -61,7 +61,9 @@ export interface AnalysisInputs {
   // Discriminators (echoed from backend)
   _path?: AnalysisPath
   _sub_profile?: SubProfile
-  _tier?: "haiku" | "sonnet"
+  /** Plan the analysis was generated on. "haiku"/"sonnet" on rows written
+   *  before the plan-name migration — see backend services/tiers.py. */
+  _tier?: "free" | "paid" | "premium" | "haiku" | "sonnet"
 }
 
 export interface AnalysisInputsB {
@@ -111,6 +113,10 @@ export interface Analysis {
   prompt_version_id: string | null
   tokens_in: number | null
   tokens_out: number | null
+  /** 0-99 while the generation streams, 100 once it succeeds. Read off the
+   *  stream itself, so the waiting screen reports the run rather than a clock.
+   *  Absent on responses from an older backend. */
+  progress?: number
   created_at: string
   completed_at: string | null
 }
