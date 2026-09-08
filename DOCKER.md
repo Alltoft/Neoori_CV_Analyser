@@ -15,7 +15,8 @@ open http://localhost:8080    # nginx: / -> Next.js, /api -> Flask
 - Port 80 is left to the TaifOr dev stack; neoori dev uses **8080**.
 - Direct ports (loopback only): frontend `:3001`, backend `:5001`, MySQL `:3306`.
 - Dev MySQL reuses the old `backend_neoori_mysql_data` volume — existing local
-  data carries over. Fresh machine? Seed: `docker compose exec backend python seed_prompt_v17.py`.
+  data carries over. Fresh machine? Seed the prompts (see below), prefixed with
+  `docker compose exec backend`.
 - Hot reload works through bind mounts. After changing `requirements.txt` or
   `package-lock.json`: `docker compose build backend|frontend && docker compose up -d`.
 
@@ -51,7 +52,10 @@ docker login ghcr.io -u alltoft
 cd /srv/neoori
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml exec backend python seed_prompt_v17.py
+# one prompt per parcours; v1.0-P2 lands inactive, the PM activates it in /admin/prompts
+for s in seed_prompt_v18.py seed_prompt_v11_p3.py seed_prompt_v10_p2.py; do
+  docker compose -f docker-compose.prod.yml exec backend python $s
+done
 curl -s http://localhost/api/health        # {"status":"ok"}
 ```
 
@@ -159,4 +163,4 @@ gzip -dc /backups/neoori-<date>.sql.gz | $C sh -c 'exec mysql -uroot -p"$MYSQL_R
 $C sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "drop database neoori_restore_test"'
 ```
 
-Last verified 23/08: 9/9 tables restored, `prompt_versions` = v1.7.
+Last verified 23/08: 9/9 tables restored, `prompt_versions` = v1.7 (now v1.8).
