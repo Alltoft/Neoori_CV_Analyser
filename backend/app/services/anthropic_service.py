@@ -123,7 +123,13 @@ def _format_user_message_p1(inputs: dict) -> str:
             "décrit ci-dessus, d'après votre description ».",
         ]
     parts += [""] + _profile_block(inputs)
-    parts.append(f"Notes spécifiques : {_text(inputs, 'notes_specifiques', 'Aucune note spécifique.')}")
+    # Only drafts saved before the profile migration still carry this. The
+    # field asked for "RQTH, aidant, primo-arrivant" in free text, which is
+    # exactly what bloc 4 (constraints, effect-not-cause) and bloc 5 (encrypted)
+    # were built to collect safely, so the form no longer offers it.
+    notes = (inputs.get("notes_specifiques") or "").strip()
+    if notes:
+        parts.append(f"Notes spécifiques : {notes}")
     return "\n".join(parts + _common_tail(inputs))
 
 

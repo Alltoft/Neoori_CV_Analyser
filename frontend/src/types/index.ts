@@ -156,20 +156,6 @@ export const SECTION_TITLES: Record<string, string> = {
 }
 
 
-export const MOBILITY_OPTIONS = [
-  "évolution",
-  "reconversion proche",
-  "reconversion forte",
-  "première insertion",
-  "retour à l'emploi",
-] as const
-
-export const AGE_BRACKETS = ["< 25", "25–34", "35–44", "45–54", "55+"] as const
-
-export const SITUATION_OPTIONS = [
-  "1ère insertion pro",
-  "en poste",
-  "en recherche",
-  "en formation",
-  "en pause",
-] as const
+// MOBILITY_OPTIONS / AGE_BRACKETS / SITUATION_OPTIONS lived here for the
+// parcours 1 form. That form no longer asks — the Profil de base owns those
+// fields, with its own option lists mirroring backend models/profile.py.

@@ -3,35 +3,28 @@
 import { useState, useCallback, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { useForm, Controller } from "react-hook-form"
+import { useForm } from "react-hook-form"
 import { useAuth } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { AppBar } from "@/components/layout/AppBar"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import { SectionCard } from "@/components/ui/section-card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { AGE_BRACKETS, SITUATION_OPTIONS, MOBILITY_OPTIONS } from "@/types"
 import type { Analysis } from "@/types"
 import { UploadCloud, FileText, ArrowRight, Check, ShieldCheck } from "lucide-react"
 
+// Parcours 1 asks for two things: a CV and a target. Identity, age, location,
+// situation and constraints live in the Profil de base and are folded in
+// server-side by _merge_profile — "une information, une seule fois"
+// (Parcours doc §1).
 const schema = z.object({
   cv_text: z.string().min(200, "CV trop court (200 caractères minimum)."),
   cible_visee: z.string().min(50, "Cible trop courte (50 caractères minimum)."),
-  prenom: z.string().min(1, "Prénom requis."),
-  nom: z.string().min(1, "Nom requis."),
-  tranche_age: z.string().min(1, "Tranche d’âge requise."),
-  localisation: z.string().min(1, "Localisation requise."),
-  situation_actuelle: z.string().min(1, "Situation requise."),
-  type_mobilite: z.array(z.string()).min(1, "Type de mobilité requis."),
-  notes_specifiques: z.string(),
 })
 type Fields = z.infer<typeof schema>
 
@@ -63,9 +56,8 @@ function NouvelleAnalyseForm() {
   // unlocks the full report afterwards via /debloquer. This closes the free-premium hole.
   const canPremium = !!user && (user.plan === "paid" || (user.credits_remaining ?? 0) > 0)
 
-  const { register, handleSubmit, control, setValue, watch, reset, formState: { errors } } = useForm<Fields>({
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
-    defaultValues: { notes_specifiques: "", tranche_age: "", situation_actuelle: "", type_mobilite: [] },
   })
 
   // Resume a saved draft (?draft=<id>)
@@ -75,16 +67,11 @@ function NouvelleAnalyseForm() {
       .then(({ analysis }) => {
         if (analysis.status !== "draft" || !analysis.inputs) return
         const i = analysis.inputs
+        // Drafts saved before the profile migration carry the old fields;
+        // they are simply not restored, and the profile supplies them instead.
         reset({
           cv_text: i.cv_text ?? "",
           cible_visee: i.cible_visee ?? "",
-          prenom: i.prenom ?? "",
-          nom: i.nom ?? "",
-          tranche_age: i.tranche_age ?? "",
-          localisation: i.localisation ?? "",
-          situation_actuelle: i.situation_actuelle ?? "",
-          type_mobilite: Array.isArray(i.type_mobilite) ? i.type_mobilite : i.type_mobilite ? [i.type_mobilite] : [],
-          notes_specifiques: i.notes_specifiques ?? "",
         })
       })
       .catch(() => { /* draft gone — start blank */ })
@@ -219,7 +206,7 @@ function NouvelleAnalyseForm() {
           <h1 className="font-display text-2xl font-bold text-navy">Nouvelle analyse</h1>
           <Badge variant="outline" className="font-mono text-xs">~2 min</Badge>
         </div>
-        <p className="mb-8 text-sm text-muted-foreground">Tous les champs sont nécessaires pour déclencher l’analyse.</p>
+        <p className="mb-8 text-sm text-muted-foreground">Votre CV et la cible que vous visez. Le reste vient de votre profil.</p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {submitError && <Alert variant="destructive"><AlertDescription>{submitError}</AlertDescription></Alert>}
@@ -246,84 +233,11 @@ function NouvelleAnalyseForm() {
             {errors.cible_visee && <p className="mt-2 text-xs text-destructive">{errors.cible_visee.message}</p>}
           </SectionCard>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SectionCard n={3} title="Votre profil">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="prenom">Prénom</Label>
-                  <Input id="prenom" {...register("prenom")} placeholder="Marion" className="h-9" />
-                  {errors.prenom && <p className="text-[10px] text-destructive">{errors.prenom.message}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="nom">Nom</Label>
-                  <Input id="nom" {...register("nom", { onChange: (e) => { e.target.value = e.target.value.toUpperCase() } })} placeholder="DUPONT" className="h-9 uppercase" />
-                  {errors.nom && <p className="text-[10px] text-destructive">{errors.nom.message}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Tranche d’âge</Label>
-                  <Controller name="tranche_age" control={control} render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                      <SelectContent>{AGE_BRACKETS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
-                    </Select>
-                  )} />
-                  {errors.tranche_age && <p className="text-[10px] text-destructive">{errors.tranche_age.message}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="localisation">Localisation</Label>
-                  <Input id="localisation" {...register("localisation")} placeholder="Paris" className="h-9" />
-                  {errors.localisation && <p className="text-[10px] text-destructive">{errors.localisation.message}</p>}
-                </div>
-                <div className="col-span-2 space-y-1.5">
-                  <Label>Situation actuelle</Label>
-                  <Controller name="situation_actuelle" control={control} render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                      <SelectContent>{SITUATION_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                    </Select>
-                  )} />
-                  {errors.situation_actuelle && <p className="text-[10px] text-destructive">{errors.situation_actuelle.message}</p>}
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard n={4} title="Vos préférences">
-              <Controller name="type_mobilite" control={control} render={({ field }) => {
-                const selected: string[] = Array.isArray(field.value) ? field.value : []
-                const toggle = (opt: string) => field.onChange(selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt])
-                return (
-                  <div>
-                    <Label className="mb-1.5 block">Type de mobilité <span className="font-normal text-muted-foreground">· plusieurs choix possibles</span></Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {MOBILITY_OPTIONS.map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => toggle(opt)}
-                          aria-pressed={selected.includes(opt)}
-                          aria-label={`Type de mobilité : ${opt}`}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                            selected.includes(opt)
-                              ? "border-navy bg-navy text-white"
-                              : "border-border bg-background text-navy hover:border-orange/50",
-                          )}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )
-              }} />
-              {errors.type_mobilite && <p className="mt-1 text-[10px] text-destructive">{errors.type_mobilite.message}</p>}
-
-              <div className="mt-4 space-y-1.5">
-                <Label htmlFor="notes">Notes spécifiques</Label>
-                <Textarea id="notes" {...register("notes_specifiques")} placeholder="RQTH, aidant, primo-arrivant, contraintes…" className="min-h-[72px] resize-none bg-secondary text-sm" />
-              </div>
-            </SectionCard>
-          </div>
+          <p className="rounded-2xl bg-card p-4 text-xs text-muted-foreground ring-1 ring-foreground/10">
+            Le reste de l’analyse s’appuie sur votre{" "}
+            <Link href="/profil" className="link-underline text-navy">Profil de base</Link>{" "}
+            — prénom, localisation, situation, contraintes. Le compléter rend le rapport nettement plus précis.
+          </p>
 
           {/* Footer */}
           <div className="flex flex-col gap-4 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">

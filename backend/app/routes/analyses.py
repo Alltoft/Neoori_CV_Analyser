@@ -27,12 +27,6 @@ analyses_bp = Blueprint("analyses", __name__)
 _FORCE_TIER = tiers.normalize(os.getenv("FORCE_ANALYSIS_TIER", "paid")) \
     if os.getenv("FORCE_ANALYSIS_TIER", "paid") else None
 
-_REQUIRED_INPUTS = [
-    "cible_visee", "prenom", "nom", "tranche_age",
-    "localisation", "situation_actuelle", "type_mobilite",
-]
-
-
 @analyses_bp.post("/")
 def create_analysis():
     user_id = _optional_user_id()
@@ -257,6 +251,15 @@ def _optional_user_id() -> str | None:
 
 
 def _validate_inputs(inputs: dict) -> list[str]:
+    """Parcours 1 — a CV and a target, and nothing else.
+
+    Identity, age, location, situation and mobility used to be required here.
+    They are fields of the Profil de base, folded in by _merge_profile, and
+    `type_mobilite` no longer exists at all — the CDC v1.2 profile merged it
+    into `situation`. Requiring them meant a form that asked twice and a
+    validator that could reject an analysis over a field the data model had
+    already deleted.
+    """
     errors = []
 
     has_cv = (inputs.get("cv_text") or "").strip()
@@ -266,14 +269,6 @@ def _validate_inputs(inputs: dict) -> list[str]:
     cible = (inputs.get("cible_visee") or "").strip()
     if len(cible) < 50:
         errors.append("Cible visée trop courte (minimum 50 caractères).")
-
-    for field in _REQUIRED_INPUTS:
-        val = inputs.get(field)
-        if field == "type_mobilite":
-            if not (isinstance(val, list) and any((v or "").strip() for v in val)):
-                errors.append(f"Champ manquant : {field}.")
-        elif not (val or "").strip():
-            errors.append(f"Champ manquant : {field}.")
 
     return errors
 

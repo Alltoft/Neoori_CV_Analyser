@@ -143,3 +143,35 @@ def test_p3_thresholds_are_lower_than_p2():
     }) == []
     assert VALIDATORS["2"]({"cv_text": "x" * 200, "satisfaction": short,
                             "refus": short, "raison_changement": short}) != []
+
+
+def test_p1_needs_only_a_cv_and_a_target():
+    """The Profil de base supplies the rest.
+
+    Identity, age, location, situation and `type_mobilite` used to be required
+    here, so an analysis could be rejected over fields the person had already
+    filled once — and over `type_mobilite`, which the CDC v1.2 profile merged
+    into `situation` and no longer exists anywhere.
+    """
+    errors = VALIDATORS["1"]({"cv_text": "c" * 300, "cible_visee": "t" * 60})
+    assert errors == []
+
+
+def test_p1_still_requires_the_cv_and_the_target():
+    errors = VALIDATORS["1"]({"cv_text": "trop court", "cible_visee": "trop courte"})
+    assert len(errors) == 2
+
+
+def test_p1_omits_the_notes_line_when_there_is_none():
+    """The field is gone from the form; a run without one must not send an
+    empty placeholder the model would try to interpret."""
+    msg = _format_user_message({"_path": "1", "cv_text": "x", "cible_visee": "y"})
+    assert "Notes spécifiques" not in msg
+
+
+def test_p1_still_carries_notes_from_a_pre_migration_draft():
+    msg = _format_user_message({
+        "_path": "1", "cv_text": "x", "cible_visee": "y",
+        "notes_specifiques": "disponible à partir de septembre",
+    })
+    assert "Notes spécifiques : disponible à partir de septembre" in msg
