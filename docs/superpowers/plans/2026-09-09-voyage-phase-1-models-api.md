@@ -47,7 +47,7 @@ print(sorted(scoring.synthesize({'answers': {}, 'billets': {}})))
 ```
 
 Expected: `cahier-2026-09 53 ('0', '1', '2', '3', '4', '5')`, then
-`['completeness', 'riasec', 's0', 's2', 's3', 's4', 's5', 'scoring_version']`, then `145 passed`.
+`['completeness', 'riasec', 's0', 's2', 's3', 's4', 's5', 'scoring_version']`, then `232 passed`.
 
 If the first command raises `ModuleNotFoundError: No module named 'app.services.voyage'`, **stop**: phase 0 has not landed, and every task from Task 3 on will fail on import.
 
@@ -284,7 +284,7 @@ The contract's acceptance test for every migration is "round-trips up and down o
 The MySQL branch is untouched — production has been past this revision for months, so the guard only ever runs on a database being built from scratch, which today can only be a rehearsal.
 
 **Files:**
-- Modify: `backend/migrations/versions/fd6e96d0d77c_nullable_user_id_on_analyses.py:18-33` (both `upgrade()` and `downgrade()`)
+- Modify: `backend/migrations/versions/fd6e96d0d77c_nullable_user_id_on_analyses.py:19-36` (both `upgrade()` and `downgrade()`)
 
 **Interfaces:**
 - Consumes: `alembic.op.get_bind()`, `op.batch_alter_table`.
@@ -363,7 +363,7 @@ export DATABASE_URL="sqlite:////tmp/voyage-mig.db" FLASK_APP=run.py
 ./venv/bin/pytest -q | tail -1
 unset DATABASE_URL
 ```
-Expected: `12`, then `12`, then `145 passed` (the suite uses SQLite in-memory from `db.create_all()`, so it is unaffected — this step only proves nothing regressed).
+Expected: `12`, then `12`, then `232 passed` (the suite uses SQLite in-memory from `db.create_all()`, so it is unaffected — this step only proves nothing regressed).
 
 - [ ] **Step 5: Commit**
 
@@ -1243,7 +1243,7 @@ then two `Running downgrade` lines (`d0e1f2a3b4c5 -> c9d0e1f2a3b4`, `c9d0e1f2a3b
 - [ ] **Step 4: Confirm the suite is still green**
 
 Run: `cd /Users/imran/Downloads/design_handoff_cv_analyzer/backend && ./venv/bin/pytest -q | tail -1`
-Expected: `174 passed` (145 baseline + 9 from Task 1 + 20 from Task 3).
+Expected: `261 passed` (232 baseline + 9 from Task 1 + 20 from Task 3).
 
 - [ ] **Step 5: Commit**
 
@@ -2544,8 +2544,10 @@ def test_a_valid_code_unlocks_the_later_sessions(client, auth):
     res = client.post("/api/voyage/unlock", json={"code": code.code}, headers=auth)
     assert res.status_code == 200
     assert res.get_json()["voyage"]["has_code"] is True
-    # The id itself never travels — only the boolean.
-    assert "counselor_code_id" not in res.get_json()["voyage"]
+    # Assert the FK the handler is supposed to write, not the absence of a key
+    # to_dict() can never emit: test_to_dict_carries_exactly_twelve_keys already
+    # pins the payload shape, so an absence check here passes on a broken handler.
+    assert Voyage.query.one().counselor_code_id == code.id
     _db.session.refresh(code)
     assert code.uses_count == 1
 
@@ -3255,6 +3257,9 @@ def test_an_admin_can_be_demoted_once_another_one_exists(client, admin_headers, 
     res = client.put(f"/api/admin/users/{first.id}/role",
                      json={"role": "counselor"}, headers=admin_headers)
     assert res.status_code == 200
+    # Status alone would pass on a handler that returns 200 without committing.
+    assert res.get_json()["user"]["role"] == "counselor"
+    assert _db.session.get(User, first.id).role == "counselor"
 
 
 def test_the_role_endpoint_is_admin_only(client, app):
@@ -3405,7 +3410,7 @@ Phase 1 ships on its own: the API is complete and testable, the schema is migrat
 - [ ] **Step 1: Run the full backend suite**
 
 Run: `cd /Users/imran/Downloads/design_handoff_cv_analyzer/backend && ./venv/bin/pytest -q | tail -1`
-Expected: `243 passed` — the 145 that passed before this phase, plus 14 in the new `test_prompt_slots.py`, 3 added to `test_analysis_model.py`, 8 added to `test_admin.py` and 73 in the new `test_voyage_routes.py`. Any `F` or `E` is a blocker: this branch deploys on push.
+Expected: `330 passed` — the 232 that passed before this phase, plus 14 in the new `test_prompt_slots.py`, 3 added to `test_analysis_model.py`, 8 added to `test_admin.py` and 73 in the new `test_voyage_routes.py`. Any `F` or `E` is a blocker: this branch deploys on push.
 
 - [ ] **Step 2: Rehearse the whole migration chain, up and down**
 

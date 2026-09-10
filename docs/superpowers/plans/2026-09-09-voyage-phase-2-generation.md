@@ -70,6 +70,13 @@ Decomposition note: everything AI-call-shaped lives in one module (`generation.p
 
 ## Task 1: Prompt slot registry
 
+> **Phase-1 overlap — read before starting.** Phase 1 Task 1 already creates
+> `backend/app/services/prompt_slots.py`, and phase 1 Task 7 already rewrites
+> `backend/app/routes/prompts.py:1-24` to validate against it. If phase 1 has landed,
+> Tasks 1 and 2 here are **verification, not creation**: read the shipped file, confirm
+> it holds the five slot ids and `normalize()`, confirm the route validates against it,
+> and add only what is genuinely missing. Do not re-create the file.
+
 **Files:**
 - Create: `backend/app/services/prompt_slots.py`
 - Test: `backend/tests/test_prompt_slots.py`
@@ -284,6 +291,13 @@ Claude-Session: https://claude.ai/code/session_015fDz83zwALmXr4REGPGH8P"
 ---
 
 ## Task 2: `/api/prompts` accepts the two slots
+
+> **Phase-1 overlap — read before starting.** Phase 1 Task 1 already creates
+> `backend/app/services/prompt_slots.py`, and phase 1 Task 7 already rewrites
+> `backend/app/routes/prompts.py:1-24` to validate against it. If phase 1 has landed,
+> Tasks 1 and 2 here are **verification, not creation**: read the shipped file, confirm
+> it holds the five slot ids and `normalize()`, confirm the route validates against it,
+> and add only what is genuinely missing. Do not re-create the file.
 
 **Files:**
 - Modify: `backend/app/routes/prompts.py:1-24`
