@@ -20,6 +20,27 @@ def _sqlite_enforce_foreign_keys(dbapi_connection, connection_record):
         cursor.close()
 
 
+@pytest.fixture(autouse=True)
+def _no_live_anthropic_key(monkeypatch):
+    """Make a forgotten mock fail loudly instead of billing the real account.
+
+    create_app() calls load_dotenv(), so a developer's real ANTHROPIC_API_KEY is
+    on os.environ for the whole run. Test isolation then rests on every test
+    remembering to patch the client -- and _get_client() reads the key at call
+    time, so the one that forgets makes a real, paid API call and the suite
+    still passes. Blanking the key turns that into an error at the boundary.
+
+    The SDK still *constructs* a client from an empty key -- it only rejects at
+    request time -- so this does not fail at the boundary. What it guarantees is
+    the thing that matters: an unpatched call gets a 401 instead of a billed
+    completion. Verified, not assumed.
+
+    Autouse and unconditional: a test that genuinely wants a key must set one
+    itself, which is a visible act rather than an inherited accident.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+
+
 @pytest.fixture
 def app():
     application = create_app("testing")
