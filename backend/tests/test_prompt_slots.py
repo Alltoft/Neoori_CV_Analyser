@@ -68,3 +68,29 @@ def test_choices_are_selector_ready():
         {"value": "voyage_micro", "label": "Voyage · phrase (S0)"},
         {"value": "voyage_portrait", "label": "Voyage · portrait"},
     ]
+
+
+# ── the column that holds a slot ─────────────────────────────────────────────
+
+def test_the_path_column_is_wide_enough_for_a_slot():
+    """'voyage_portrait' is 15 characters. On MySQL a String(1) column would
+    have refused it (or truncated it, which is worse: the generation lookup
+    filters on this column and would silently find nothing)."""
+    from app.models.prompt_version import PromptVersion
+    assert PromptVersion.__table__.c.path.type.length == 16
+
+
+def test_a_voyage_slot_survives_a_round_trip_through_the_column(app):
+    from app.extensions import db
+    from app.models.prompt_version import PromptVersion
+    prompt = PromptVersion(
+        version_label="v1.0-VM",
+        system_prompt_text="…",
+        path=prompt_slots.VOYAGE_PORTRAIT,
+        is_active=True,
+    )
+    db.session.add(prompt)
+    db.session.commit()
+    found = PromptVersion.query.filter_by(is_active=True, path="voyage_portrait").first()
+    assert found is not None
+    assert found.to_dict(include_text=False)["path"] == "voyage_portrait"
