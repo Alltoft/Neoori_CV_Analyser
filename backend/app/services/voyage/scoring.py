@@ -180,3 +180,48 @@ def score_riasec(responses: dict) -> dict | None:
     ]
 
     return {"scores": scores, "maxima": maxima, "normalized": normalized, "top3": top3}
+
+
+# ── Session 2 — needs (SDT) and values (Schwartz) ────────────────────────────
+
+def _dominant(counts: dict, order) -> list[str]:
+    """Every key holding the maximum, in `order`. A list, not a winner.
+
+    The manual names no tie-break, and a counselor reads this aloud: picking one
+    of two equals by dict order would put a value in someone's mouth.
+    """
+    if not counts:
+        return []
+    top = max(counts.values())
+    if top == 0:
+        return []
+    return [key for key in order if counts.get(key, 0) == top]
+
+
+def score_s2(responses: dict) -> dict | None:
+    """The manual's Session 2 synthesis box, counted over S2-1..S2-7 only."""
+    if not session_complete(responses, "2"):
+        return None
+
+    sdt = {need: 0 for need in bank.SDT}
+    schwartz = {value: 0 for value in bank.SCHWARTZ}
+    for item_id in bank.item_ids("2"):
+        option = chosen_option(responses, item_id)
+        if option.get("sdt"):
+            sdt[option["sdt"]] += 1
+        for value in option.get("schwartz") or []:
+            schwartz[value] += 1
+
+    probe = chosen_option(responses, "S2-7")
+    return {
+        "sdt": sdt,
+        "sdt_dominant": _dominant(sdt, bank.SDT),
+        "schwartz": schwartz,
+        "schwartz_dominant": _dominant(schwartz, bank.SCHWARTZ),
+        "ambivalences": {
+            "item_id": "S2-7",
+            "letter": probe["letter"],
+            "label": probe["label"],
+            "plain": probe["plain"],
+        },
+    }

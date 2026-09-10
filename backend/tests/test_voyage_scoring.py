@@ -197,3 +197,48 @@ def test_score_riasec_ranks_on_normalized_not_raw_where_they_disagree():
     assert result["scores"]["C"] == 6
     assert result["normalized"]["C"] > result["normalized"]["R"]
     assert [e["letter"] for e in result["top3"]] == ["C", "R", "I"]
+
+
+# ── Session 2 — needs (SDT) and values (Schwartz) ────────────────────────────
+
+def test_score_s2_is_none_until_session_2_is_complete():
+    assert scoring.score_s2({"answers": {"S2-1": "A"}, "billets": {}}) is None
+
+
+def test_score_s2_counts_only_session_2():
+    """S3-4 D carries a schwartz tag. It must not reach this tally."""
+    result = scoring.score_s2(_answers(**{"S3-4": "D"}))
+    without = scoring.score_s2(_answers(**{"S3-4": "A"}))
+    assert result["schwartz"] == without["schwartz"]
+
+
+def test_score_s2_reports_every_key_including_zeros():
+    result = scoring.score_s2(_answers())
+    assert set(result["sdt"]) == set(bank.SDT)
+    assert set(result["schwartz"]) == set(bank.SCHWARTZ)
+    assert all(isinstance(v, int) for v in result["schwartz"].values())
+
+
+def test_score_s2_dominant_is_a_list_of_all_tied_maxima():
+    """Concrete values, not a recomputation of _dominant's own logic.
+
+    Under the all-A fixture, schwartz has a genuine two-way tie at 2
+    (reussite and bienveillance), which is what pins the rule that ties are
+    reported in full, in SCHWARTZ order, rather than broken arbitrarily.
+    """
+    result = scoring.score_s2(_answers())
+    assert result["sdt"] == {"autonomie": 1, "appartenance": 0, "competence": 0}
+    assert result["sdt_dominant"] == ["autonomie"]
+    assert result["schwartz"]["reussite"] == 2
+    assert result["schwartz"]["bienveillance"] == 2
+    assert result["schwartz_dominant"] == ["reussite", "bienveillance"]
+
+
+def test_score_s2_ambivalences_is_the_s2_7_choice():
+    result = scoring.score_s2(_answers(**{"S2-7": "F"}))
+    assert result["ambivalences"] == {
+        "item_id": "S2-7",
+        "letter": "F",
+        "label": "Liberté / Indépendance",
+        "plain": "tu veux que ta vie t'appartienne",
+    }
