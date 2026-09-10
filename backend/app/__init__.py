@@ -166,11 +166,17 @@ def create_app(env: str | None = None) -> Flask:
 
     # Reset analyses and voyages that were mid-generation when the server last
     # shut down
+    # One try each, deliberately: sharing one meant a failure in the analyses
+    # sweep skipped the voyage sweep for that whole boot, and a stranded voyage
+    # has no error state for the person to see -- the hub just polls it for ever.
     with app.app_context():
         try:
             stale = reap_stale_running()
             if stale:
                 app.logger.info(f"Startup: reset {stale} stale running analysis/analyses to error.")
+        except Exception:
+            pass  # DB not yet migrated on first boot
+        try:
             stranded = reap_stale_generating()
             if stranded:
                 app.logger.info(f"Startup: reset {stranded} stale generating voyage(s) to error.")

@@ -203,3 +203,19 @@ def test_the_cutoff_is_overridable_for_a_caller_that_knows_better(app):
 
     assert reap_stale_generating(cutoff_minutes=0) == 1
     assert _fresh(recent).micro_status == "error"
+
+
+def test_a_failing_analyses_sweep_does_not_skip_the_voyage_sweep():
+    """The two sweeps had one try between them, so an error in the analyses
+    sweep silently skipped the voyage sweep for that whole boot.
+
+    That asymmetry matters: a stale analysis shows the candidate « L'analyse
+    n'a pas abouti », while a stranded voyage has no error state at all — the
+    hub just polls it for ever. They get one try each.
+    """
+    with patch.object(app_module, "reap_stale_running",
+                      side_effect=RuntimeError("no such table: analyses")), \
+            patch.object(app_module, "reap_stale_generating", return_value=0) as reaper:
+        assert create_app("testing") is not None
+
+    reaper.assert_called_once_with()
