@@ -895,3 +895,156 @@ def test_the_response_carries_no_scoring_or_framework_vocabulary(client, auth):
         "completeness", "resultant", "tension", "score",
     ):
         assert forbidden not in flat
+
+
+# ── POST /api/voyage/unlock ──────────────────────────────────────────────────
+
+def _code(active=True, label="Cap Emploi test"):
+    from app.models.counselor_code import CounselorCode
+    code = CounselorCode(label=label, is_active=active)
+    _db.session.add(code)
+    _db.session.commit()
+    return code
+
+
+def test_a_valid_code_unlocks_the_later_sessions(client, auth):
+    _open_voyage(client, auth)
+    code = _code()
+    res = client.post("/api/voyage/unlock", json={"code": code.code}, headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["voyage"]["has_code"] is True
+    # Assert the FK the handler is supposed to write, not the absence of a key
+    # to_dict() can never emit: test_to_dict_carries_exactly_twelve_keys already
+    # pins the payload shape, so an absence check here passes on a broken handler.
+    assert Voyage.query.one().counselor_code_id == code.id
+    _db.session.refresh(code)
+    assert code.uses_count == 1
+
+
+def test_the_code_is_normalised_like_an_analysis_unlock(client, auth):
+    _open_voyage(client, auth)
+    code = _code()
+    spaced = f" {code.code[:4].lower()}-{code.code[4:]} "
+    assert client.post("/api/voyage/unlock", json={"code": spaced},
+                       headers=auth).status_code == 200
+
+
+def test_an_empty_or_unknown_or_disabled_code_is_refused(client, auth):
+    _open_voyage(client, auth)
+    res = client.post("/api/voyage/unlock", json={"code": "  "}, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Code requis."
+
+    res = client.post("/api/voyage/unlock", json={"code": "NOPE1234"}, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Code invalide ou désactivé."
+
+    disabled = _code(active=False, label="désactivé")
+    res = client.post("/api/voyage/unlock", json={"code": disabled.code}, headers=auth)
+    assert res.status_code == 400
+    assert Voyage.query.one().has_code is False
+
+
+def test_unlocking_twice_does_not_burn_a_second_use(client, auth):
+    _open_voyage(client, auth)
+    first, second = _code(), _code(label="deuxième")
+    client.post("/api/voyage/unlock", json={"code": first.code}, headers=auth)
+    res = client.post("/api/voyage/unlock", json={"code": second.code}, headers=auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Ce voyage est déjà débloqué."
+    _db.session.refresh(second)
+    assert second.uses_count == 0
+
+
+def test_unlocking_without_a_voyage_is_a_404(client, auth):
+    code = _code()
+    res = client.post("/api/voyage/unlock", json={"code": code.code}, headers=auth)
+    assert res.status_code == 404
+
+
+def test_unlock_rejects_a_json_array_body(client, auth):
+    """Same probe as test_a_non_object_body_is_a_400_not_a_500 on /responses:
+    request.get_json(silent=True) or {} lets a JSON array through as truthy,
+    and the next .get("code") call then raises AttributeError -> an
+    unhandled 500. Coerced to {}, this must fall through to the ordinary
+    "code missing" 400, never a 500."""
+    _open_voyage(client, auth)
+    res = client.post("/api/voyage/unlock", json=[1, 2, 3], headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Code requis."
+
+
+def test_unlock_rejects_a_non_string_code_field(client, auth):
+    """A "code" field that parsed as JSON but is not a string (here a list)
+    must not reach str.strip() and crash the request into a 500."""
+    _open_voyage(client, auth)
+    res = client.post("/api/voyage/unlock", json={"code": ["A", "B"]}, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Code requis."
+
+
+def test_unlock_needs_an_account(client):
+    assert client.post("/api/voyage/unlock", json={"code": "ABCD1234"}).status_code == 401
+
+
+# ── GET /api/voyage/portrait ─────────────────────────────────────────────────
+
+def test_the_portrait_waits_for_a_counselor(client, auth, candidate):
+    """Decision 9: the human step the paper protocol protects — restitution —
+    stays human. A draft is not a portrait."""
+    voyage = _voyage(candidate, status=STATUS_TERMINE, portrait_status="draft",
+                     share_token="tok-draft")
+    voyage.portrait = {"sections": {k: f"texte {k}" for k in PORTRAIT_KEYS},
+                       "flags": [], "edited": False}
+    _db.session.commit()
+
+    res = client.get("/api/voyage/portrait", headers=auth)
+    assert res.status_code == 409
+    body = res.get_json()
+    assert body["error"] == "Votre portrait est en attente de validation."
+    assert body["status"] == "draft"
+    assert "texte accroche" not in str(body)
+
+
+def test_a_validated_portrait_is_served_with_its_six_sections(client, auth, candidate):
+    voyage = _voyage(candidate, status=STATUS_TERMINE, portrait_status="validated",
+                     share_token="tok-ok", portrait_validated_at=datetime(2026, 9, 12, 10, 4))
+    voyage.portrait = {"sections": {k: f"texte {k}" for k in PORTRAIT_KEYS},
+                       "snapshot": {"s0": {"axes": {}}}, "flags": ["vocabulaire"],
+                       "edited": True}
+    _db.session.commit()
+
+    res = client.get("/api/voyage/portrait", headers=auth)
+    assert res.status_code == 200
+    portrait = res.get_json()["portrait"]
+    assert set(portrait) == {"sections", "validated_at"}
+    assert set(portrait["sections"]) == set(PORTRAIT_KEYS)
+    assert portrait["validated_at"] == "2026-09-12T10:04:00"
+    # The counselor's working material stays on the counselor's side.
+    assert "snapshot" not in str(portrait)
+    assert "vocabulaire" not in str(portrait)
+
+
+def test_the_portrait_without_a_voyage_is_a_404(client, auth):
+    assert client.get("/api/voyage/portrait", headers=auth).status_code == 404
+
+
+def test_portrait_needs_an_account(client):
+    assert client.get("/api/voyage/portrait").status_code == 401
+
+
+def test_the_portrait_is_only_ever_the_callers_own(client, auth, candidate):
+    """No candidate endpoint takes an id from the client. Two candidates each
+    have a validated portrait; each caller must see only their own six
+    sections, never the neighbour's."""
+    voyage_a = _voyage(candidate, status=STATUS_TERMINE, portrait_status="validated",
+                       share_token="tok-a")
+    voyage_a.portrait = {"sections": {k: "texte A" for k in PORTRAIT_KEYS}}
+    neighbour_user = _user("voisin-portrait@test.fr")
+    voyage_b = _voyage(neighbour_user, status=STATUS_TERMINE, portrait_status="validated",
+                       share_token="tok-b")
+    voyage_b.portrait = {"sections": {k: "texte B" for k in PORTRAIT_KEYS}}
+    _db.session.commit()
+
+    res = client.get("/api/voyage/portrait", headers=auth)
+    assert res.get_json()["portrait"]["sections"]["accroche"] == "texte A"

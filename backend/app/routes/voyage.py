@@ -15,12 +15,14 @@ models.voyage.session_lock: S0 needs the voyage to exist, S1-S5 need a
 counselor code and a Profil de base with prénom + tranche d'âge, and every
 session needs the one before it.
 """
+import re
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
+from ..models.counselor_code import CounselorCode
 from ..models.profile import Profile
 from ..models.voyage import (
     CONSENT_VERSION,
@@ -300,3 +302,75 @@ def complete_session(n):
         _spawn_portrait(voyage.id)
 
     return jsonify({"voyage": voyage.to_dict()}), 200
+
+
+@voyage_bp.post("/unlock")
+@jwt_required()
+def unlock_voyage():
+    """Redeem a counselor code: it opens S1-S5.
+
+    Free access for Cap Emploi / Mission Locale / France Travail beneficiaries,
+    the same mechanism that unlocks a paid analysis. If the voyage is ever
+    sold, the gate moves to this one function.
+
+    The « already unlocked » check runs first so a second redemption cannot
+    burn a use off a second code.
+    """
+    voyage = _current()
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+    if voyage.counselor_code_id:
+        return jsonify({"error": "Ce voyage est déjà débloqué."}), 409
+
+    # request.get_json(silent=True) or {} lets a JSON array or a bare string
+    # survive as truthy, and the next .get() call then raises AttributeError
+    # -> an unhandled 500 (the defect put_responses above was fixed for).
+    # Coerce any non-dict body to {} instead, so it falls through to the
+    # ordinary "code missing" 400 below.
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+
+    # Same guard for the field itself: a non-string "code" (an int, a list, a
+    # dict) must not reach .strip() and raise AttributeError either.
+    raw_code = data.get("code")
+    raw_code = raw_code if isinstance(raw_code, str) else ""
+    # Accept "ABCD1234", "abcd 1234", "ABCD-1234"… — same normalisation as
+    # analyses.unlock_with_code, because it is the same code on the same card.
+    code_str = re.sub(r"[^A-Za-z0-9]", "", raw_code.strip()).upper()
+    if not code_str:
+        return jsonify({"error": "Code requis."}), 400
+
+    code = CounselorCode.query.filter_by(code=code_str).first()
+    if not code or not code.is_active:
+        return jsonify({"error": "Code invalide ou désactivé."}), 400
+
+    voyage.counselor_code_id = code.id
+    code.uses_count += 1
+    db.session.commit()
+    return jsonify({"voyage": voyage.to_dict()}), 200
+
+
+@voyage_bp.get("/portrait")
+@jwt_required()
+def get_portrait():
+    """The six sections — only once a counselor has validated them.
+
+    Before that the person sees « en attente de validation » and keeps S0's
+    phrase. The draft, the synthesis snapshot and the leak flags are the
+    counselor's working material and never cross to this side.
+    """
+    voyage = _current()
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+    if voyage.portrait_status != "validated":
+        return jsonify({
+            "error": "Votre portrait est en attente de validation.",
+            "status": voyage.portrait_status,
+        }), 409
+    return jsonify({"portrait": {
+        "sections": voyage.portrait_sections,
+        "validated_at": (
+            voyage.portrait_validated_at.isoformat()
+            if voyage.portrait_validated_at else None
+        ),
+    }}), 200
