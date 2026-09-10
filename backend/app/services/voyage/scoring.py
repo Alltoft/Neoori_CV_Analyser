@@ -271,3 +271,42 @@ def score_s3(responses: dict) -> dict | None:
         "style_dominant": _dominant(style, bank.STYLES),
         "intro_extra": INTRO_EXTRA[bucket],
     }
+
+
+# ── Session 4 — the environment ──────────────────────────────────────────────
+
+def score_s4(responses: dict) -> dict | None:
+    """Six labels, by scene position. No arithmetic — S4 is a preference, not a
+    score, and averaging preferences would say nothing."""
+    if not session_complete(responses, "4"):
+        return None
+    return {
+        slot: chosen_option(responses, item_id)["env"]
+        for slot, item_id in zip(bank.S4_SLOTS, bank.item_ids("4"))
+    }
+
+
+# ── Session 5 — risk and meaning ─────────────────────────────────────────────
+
+def score_s5(responses: dict) -> dict | None:
+    """Risk appetite and the meaning signals.
+
+    S5-1/2/3 all speak to risk and the manual names no way to combine them, so
+    the three labels stay side by side rather than collapsing into one score the
+    paper sheet never produced.
+    """
+    if not session_complete(responses, "5"):
+        return None
+
+    def tag(item_id: str, key: str) -> str:
+        return chosen_option(responses, item_id)[key]
+
+    return {
+        "risque": tag("S5-1", "risk"),
+        "rapport_echec": tag("S5-2", "risk"),
+        "rapport_flou": tag("S5-3", "risk"),
+        "valeur_centrale": tag("S5-4", "sens"),
+        "trace": tag("S5-5", "sens"),
+        "sacrifice": tag("S5-6", "sens"),
+        "vivant": tag("S5-7", "sens"),
+    }

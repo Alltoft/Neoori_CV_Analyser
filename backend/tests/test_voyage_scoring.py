@@ -318,3 +318,42 @@ def test_dominant_reports_nothing_when_every_count_is_zero():
     result = scoring.score_s2(_answers(**{"S2-6": "B"}))
     assert result["sdt"] == {"autonomie": 0, "appartenance": 0, "competence": 0}
     assert result["sdt_dominant"] == []
+
+
+# ── Session 4 — the environment ──────────────────────────────────────────────
+
+def test_score_s4_maps_scene_position_to_slot():
+    assert scoring.score_s4({"answers": {"S4-1": "A"}, "billets": {}}) is None
+    result = scoring.score_s4(_answers(**{"S4-1": "D", "S4-5": "B"}))
+    assert list(result) == list(bank.S4_SLOTS)
+    assert result["espace"] == "en mouvement, sur le terrain"
+    assert result["irritant"] == "les interruptions constantes"
+    assert all(isinstance(v, str) and v for v in result.values())
+
+
+def test_score_s5_keys_and_registers():
+    assert scoring.score_s5({"answers": {"S5-1": "A"}, "billets": {}}) is None
+    result = scoring.score_s5(_answers(**{
+        "S5-1": "C", "S5-2": "C", "S5-3": "D",
+        "S5-4": "A", "S5-5": "B", "S5-6": "C", "S5-7": "A",
+    }))
+    assert result == {
+        "risque": "Calculé",
+        "rapport_echec": "elle analyse et recommence",
+        "rapport_flou": "elle crée son propre cadre",
+        "valeur_centrale": "l'injustice",
+        "trace": "une trace dans les gens",
+        "sacrifice": "le temps",
+        "vivant": "elle crée",
+    }
+
+
+def test_score_s5_risque_is_one_of_the_four_levels():
+    """Pinned per letter, not merely asserted to be a member of RISK_LEVELS —
+    membership alone would pass an implementation that returned the same
+    level for every answer, or scrambled the mapping."""
+    expected = {"A": "Fort", "B": "Modéré", "C": "Calculé", "D": "Faible"}
+    for letter, level in expected.items():
+        result = scoring.score_s5(_answers(**{"S5-1": letter}))
+        assert result["risque"] == level, f"S5-1={letter}"
+        assert result["risque"] in bank.RISK_LEVELS
