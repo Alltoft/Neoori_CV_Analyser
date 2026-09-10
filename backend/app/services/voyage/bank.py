@@ -998,7 +998,212 @@ _SESSION_3 = {
 }
 
 
-SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2, _SESSION_3]
+_SESSION_4 = {
+    "n": "4",
+    "title": "Le cadre qui te permet de te révéler",
+    "subtitle": "Pas le métier — l'environnement · 6 situations",
+    "intro": [
+        "On arrive à la session qui change tout.",
+        "Pas le métier. Pas le secteur. Pas la fiche de poste. Le cadre.",
+        "Certains s'épanouissent dans le bruit et le mouvement. "
+        "D'autres ont besoin de silence et de profondeur. "
+        "Ni mieux, ni moins bien. Juste différent.",
+        "Et pourtant, être dans un cadre qui ne te correspond pas, "
+        "c'est l'une des causes les plus silencieuses d'épuisement professionnel.",
+    ],
+    "outro": [],
+    "duration": "15 min",
+    "kind": KIND_SCENES,
+    "items": [
+        {
+            "id": "S4-1",
+            "title": "L'espace idéal",
+            "subtitle": "Le bureau de tes rêves",
+            "narrative": ["Si tu pouvais choisir ton espace de travail idéal,"],
+            "question": "Lequel de ces espaces t'attire instinctivement ?",
+            "options": [
+                {"letter": "A", "label": "Bureau fermé calme",
+                 "text": "Un bureau fermé, calme, à toi. Lumière naturelle. "
+                         "Tu peux fermer la porte.",
+                 "plain": "un bureau fermé et calme, où tu peux fermer la porte",
+                 "env": "bureau fermé et calme"},
+                {"letter": "B", "label": "Open space vivant",
+                 "text": "Un open space vivant, au milieu des autres. "
+                         "L'énergie collective te porte.",
+                 "plain": "un open space vivant, l'énergie collective te porte",
+                 "env": "open space vivant"},
+                {"letter": "C", "label": "Espace flexible",
+                 "text": "Un espace flexible — bureau le matin, café, télétravail. "
+                         "La variété te stimule.",
+                 "plain": "un espace flexible, la variété te stimule",
+                 "env": "espace flexible"},
+                {"letter": "D", "label": "En mouvement / terrain",
+                 "text": "Un espace en mouvement — chantier, terrain, déplacements. "
+                         "Ton bureau, c'est le monde.",
+                 "plain": "en mouvement, ton bureau c'est le monde",
+                 "env": "en mouvement, sur le terrain"},
+            ],
+        },
+        {
+            "id": "S4-2",
+            "title": "La journée parfaite",
+            "subtitle": "Le rythme idéal",
+            "narrative": ["Si tu pouvais organiser ta journée exactement comme tu le veux,"],
+            "question": "Lequel de ces portraits de journée te fait dire « oui, c'est ça » ?",
+            "options": [
+                {"letter": "A", "label": "Tôt, calme, focus",
+                 "text": "Démarrer tôt, dans le calme. Deux heures de concentration. "
+                         "Puis réunions, échanges. Rentrer tôt.",
+                 "plain": "démarrer tôt dans le calme, puis les échanges",
+                 "env": "démarrage tôt, au calme"},
+                {"letter": "B", "label": "Démarrer doucement",
+                 "text": "Démarrer doucement. Pas à 100% avant 10h. "
+                         "Pic d'énergie en fin de matinée ou l'après-midi.",
+                 "plain": "démarrer doucement, ton pic d'énergie vient plus tard",
+                 "env": "démarrage progressif"},
+                {"letter": "C", "label": "Cycles courts intenses",
+                 "text": "Des cycles courts et intenses : 90 minutes, vraie pause, "
+                         "90 minutes. Alterner les tâches.",
+                 "plain": "des cycles courts et intenses avec de vraies pauses",
+                 "env": "cycles courts et intenses"},
+                {"letter": "D", "label": "Sans horaire fixe",
+                 "text": "Sans horaire fixe — tu travailles quand ça vient. "
+                         "Tu gères ton énergie, pas ton temps.",
+                 "plain": "sans horaire fixe, tu gères ton énergie plutôt que ton temps",
+                 "env": "sans horaire fixe"},
+            ],
+        },
+        {
+            "id": "S4-3",
+            "title": "L'équipe parfaite",
+            "subtitle": "Configurations relationnelles",
+            "narrative": ["Dans quel type d'équipe tu te sens le mieux ?"],
+            "question": "Laquelle te correspond le mieux, toi ?",
+            "options": [
+                {"letter": "A", "label": "Petite équipe soudée",
+                 "text": "Une petite équipe soudée — 4 à 6 personnes. "
+                         "Tu te connais, tu te fais confiance.",
+                 "plain": "une petite équipe soudée où on se connaît",
+                 "env": "petite équipe soudée"},
+                {"letter": "B", "label": "Seul(e) + référents",
+                 "text": "Seul(e) avec un ou deux référents. Autonomie, "
+                         "mais points réguliers avec quelqu'un de solide.",
+                 "plain": "autonome, avec un ou deux référents solides",
+                 "env": "autonomie avec un référent"},
+                {"letter": "C", "label": "Grande équipe diverse",
+                 "text": "Une grande équipe diverse. Beaucoup de profils, "
+                         "d'interactions, de points de vue.",
+                 "plain": "une grande équipe, beaucoup de profils et d'interactions",
+                 "env": "grande équipe diverse"},
+                {"letter": "D", "label": "Clarté des rôles",
+                 "text": "Peu importe la taille — ce qui compte, c'est la clarté des rôles. "
+                         "Qui fait quoi.",
+                 "plain": "peu importe la taille, ce sont les rôles clairs qui comptent",
+                 "env": "des rôles clairs"},
+            ],
+        },
+        {
+            "id": "S4-4",
+            "title": "Le manager qu'on n'oublie pas",
+            "subtitle": "Ce qui t'a permis de te révéler",
+            "narrative": [
+                "Pense à un adulte (prof, animateur, parent, entraîneur...) "
+                "avec qui tu as vraiment pu être toi-même et donner le meilleur.",
+            ],
+            "question": "Qu'est-ce qui faisait que ça marchait ?",
+            "options": [
+                {"letter": "A", "label": "Confiance — essai/erreur",
+                 "text": "Il/elle te faisait confiance. Te laissait essayer, rater, recommencer. "
+                         "Sans surveillance.",
+                 "plain": "on te laissait essayer, rater et recommencer",
+                 "env": "confiance et droit à l'essai"},
+                {"letter": "B", "label": "Exigeant",
+                 "text": "Il/elle t'exigeait. Attendait plus que tu ne te croyais capable.",
+                 "plain": "on attendait de toi plus que tu ne t'en croyais capable",
+                 "env": "exigence et défi"},
+                {"letter": "C", "label": "Voyait la personne",
+                 "text": "Il/elle te voyait. Pas juste ta production — toi. Ce que tu traversais.",
+                 "plain": "on te voyait toi, pas seulement ce que tu produisais",
+                 "env": "attention à la personne"},
+                {"letter": "D", "label": "Vision claire / cap",
+                 "text": "Il/elle savait où aller. Vision claire, décisions difficiles. "
+                         "Tu pouvais faire confiance au cap.",
+                 "plain": "on savait où aller et tu pouvais faire confiance au cap",
+                 "env": "un cap clair"},
+            ],
+        },
+        {
+            "id": "S4-5",
+            "title": "La réunion de trop",
+            "subtitle": "Ce qui épuise vs ce qui recharge",
+            "narrative": [
+                "Parmi ces situations, laquelle te pèse le plus ?",
+                "Celle qui, à la fin de la journée, te laisse vraiment vidé(e) ?",
+            ],
+            "question": "Laquelle te pèse le plus ?",
+            "options": [
+                {"letter": "A", "label": "Réunions longues/bruyantes",
+                 "text": "Les réunions longues avec trop de monde, trop de bruit. "
+                         "Tu ressors épuisé(e).",
+                 "plain": "les réunions longues et bruyantes t'épuisent",
+                 "env": "les réunions longues et bruyantes"},
+                {"letter": "B", "label": "Interruptions constantes",
+                 "text": "Être constamment interrompu(e). Les notifications, "
+                         "les « t'as 5 minutes ? ».",
+                 "plain": "être constamment interrompu",
+                 "env": "les interruptions constantes"},
+                {"letter": "C", "label": "Relations tendues/floues",
+                 "text": "Les relations tendues ou floues. "
+                         "Sentir une tension non dite dans l'équipe.",
+                 "plain": "les tensions non dites dans l'équipe",
+                 "env": "les tensions non dites"},
+                {"letter": "D", "label": "Absence de sens",
+                 "text": "L'absence de sens visible. Des tâches dont tu ne vois pas la finalité.",
+                 "plain": "des tâches dont tu ne vois pas la finalité",
+                 "env": "les tâches sans finalité"},
+            ],
+        },
+        {
+            "id": "S4-6",
+            "title": "Le vendredi soir",
+            "subtitle": "Bilan énergétique de la semaine",
+            "narrative": ["C'est vendredi soir. La semaine se termine."],
+            "question": "Comment tu fermes la semaine ?",
+            "options": [
+                {"letter": "A", "label": "Contente des cases cochées",
+                 "text": "Content(e) de ce que tu as produit. Des choses abouties, terminées. "
+                         "Tu peux cocher des cases.",
+                 "plain": "content d'avoir des choses terminées",
+                 "env": "des choses terminées"},
+                {"letter": "B", "label": "Fatigué(e) mais rechargé(e)",
+                 "text": "Fatigué(e) mais rechargé(e). De bonnes interactions, "
+                         "des apprentissages. La fatigue est bonne.",
+                 "plain": "fatigué mais rechargé par les échanges",
+                 "env": "fatigue mais recharge"},
+                {"letter": "C", "label": "Besoin de calme",
+                 "text": "Besoin de calme et de solitude. Les échanges de la semaine "
+                         "demandent un grand silence.",
+                 "plain": "besoin de calme après les échanges de la semaine",
+                 "env": "besoin de calme"},
+                {"letter": "D", "label": "Sentiment d'inachèvement",
+                 "text": "Avec un sentiment d'inachèvement. "
+                         "Tu vois déjà ce qu'il reste à faire.",
+                 "plain": "tu vois déjà ce qu'il reste à faire",
+                 "env": "sentiment d'inachèvement"},
+            ],
+        },
+    ],
+    "billet": [
+        {"key": "environnement", "label": "Je me révèle dans un environnement :"},
+        {"key": "vide", "label": "Ce qui me vide, c'est :"},
+        {"key": "cadre_relationnel",
+         "label": "Le cadre relationnel dans lequel je donne le meilleur :"},
+        {"key": "rythme", "label": "Mon rythme naturel ressemble à :"},
+    ],
+}
+
+
+SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2, _SESSION_3, _SESSION_4]
 
 
 def riasec_maxima() -> dict[str, int]:

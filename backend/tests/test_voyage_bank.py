@@ -267,3 +267,26 @@ def test_session_3_styles_are_assigned_where_the_manual_names_one():
     assert bank.option("S3-6", "B")["style"] == "consultatif"
     assert bank.option("S3-6", "C")["style"] == "adaptatif"
     assert "style" not in bank.option("S3-4", "D")
+
+
+def test_session_4_header():
+    s4 = _session("4")
+    assert s4["title"] == "Le cadre qui te permet de te révéler"
+    assert s4["subtitle"] == "Pas le métier — l'environnement · 6 situations"
+    assert s4["duration"] == "15 min"
+    assert [i["id"] for i in s4["items"]] == [f"S4-{k}" for k in range(1, 7)]
+    assert [b["key"] for b in s4["billet"]] == [
+        "environnement", "vide", "cadre_relationnel", "rythme",
+    ]
+
+
+def test_session_4_every_option_carries_env():
+    """score_s4 reads `env` by scene position — a missing one is a KeyError
+    at synthesis time, long after the bank was edited."""
+    for scene in _session("4")["items"]:
+        for option in scene["options"]:
+            env = option.get("env")
+            assert env, f"{scene['id']}{option['letter']}"
+            assert env == env.lower(), env
+            assert not env.endswith("."), env
+            assert 1 <= len(env.split()) <= 5, env
