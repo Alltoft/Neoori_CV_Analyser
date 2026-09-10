@@ -131,10 +131,20 @@ def test_top3_picks_the_pole_the_sign_points_to():
     assert len(result["top3"]) <= 3
 
 
-def test_top3_excludes_zero_and_breaks_ties_by_axis_id():
+def test_top3_is_ordered_by_magnitude():
+    """The ordering assertion this name actually promises.
+
+    The axis-id tie-break is pinned in test_top3_picks_the_pole_the_sign_points_to
+    (top3[0]["axis"] == "A4"), not here.
+
+    score_s0 filters resultant == 0 out of `ranked` before taking [:3], but that
+    filter is unreachable through top3: every axis resultant has the parity of
+    its item count, and A1 (1 item), A2 (3) and A6 (5) are odd, so at least
+    three axes are always non-zero and a zero-resultant axis can never reach
+    ranked[:3]. Kept anyway as cheap insurance for if the PM ever adds
+    session-0 items and changes an axis's parity.
+    """
     result = scoring.score_s0(_answers())
-    for entry in result["top3"]:
-        assert entry["resultant"] != 0
     magnitudes = [abs(e["resultant"]) for e in result["top3"]]
     assert magnitudes == sorted(magnitudes, reverse=True)
 
@@ -183,6 +193,18 @@ def test_score_riasec_ties_break_on_letter_order():
         n_second = result["normalized"][second]
         if n_first == n_second:
             assert bank.RIASEC_LETTERS.index(first) < bank.RIASEC_LETTERS.index(second)
+
+
+def test_score_riasec_breaks_a_real_tie_by_letter_order():
+    """A genuine tie, not a hypothetical one.
+
+    S1-5 B gives R 4/12 and C 3/9 — both 0.333. RIASEC_LETTERS order puts R
+    before C; alphabetical order would put C first, so this is the assertion
+    that makes the documented tie-break load-bearing rather than decorative.
+    """
+    result = scoring.score_riasec(_answers(**{"S1-5": "B"}))
+    assert result["normalized"]["R"] == result["normalized"]["C"] == 0.333
+    assert [e["letter"] for e in result["top3"]] == ["I", "R", "C"]
 
 
 def test_score_riasec_ranks_on_normalized_not_raw_where_they_disagree():

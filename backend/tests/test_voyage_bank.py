@@ -6,6 +6,8 @@ up, and the portrait would simply be about a different person. These tests are
 the transcription's proof.
 """
 import json
+import re
+import unicodedata
 
 from app.services.voyage import bank
 
@@ -325,6 +327,22 @@ def test_s5_sens_registers():
         assert option["sens"].startswith("elle "), option["letter"]
 
 
+SESSION_KEYS = {
+    "n", "title", "subtitle", "intro", "outro", "duration", "kind", "items", "billet",
+}
+
+
+def test_session_level_keys_are_pinned():
+    """Item and option dicts are asserted key-for-key; session dicts weren't.
+
+    A future session-level key carrying interpretation (a framework label, a
+    counselor-only note) would otherwise pass through public() unstripped,
+    since public()'s _strip only removes keys named in PUBLIC_STRIP.
+    """
+    for session in bank.SESSIONS:
+        assert set(session) == SESSION_KEYS, session["n"]
+
+
 def test_bank_totals():
     assert len(bank.SESSIONS) == 6
     assert [s["n"] for s in bank.SESSIONS] == list(bank.SESSION_IDS)
@@ -365,6 +383,63 @@ def test_public_is_a_deep_copy():
     payload = bank.public()
     payload["sessions"][0]["items"][0]["text"] = "MUTATED"
     assert bank.SESSIONS[0]["items"][0]["text"] != "MUTATED"
+
+
+# ── The leak check, at the data level ────────────────────────────────────────
+# scoring.prompt_context()'s "no numbers, no framework word" tests in
+# test_voyage_scoring.py only exercise the two fixtures they happen to build.
+# This walks every bank string prompt_context() *can* emit — every answer
+# combination reaches one of these — so a bad edit fails here even when no
+# existing fixture's answers happen to select it. Concrete regression this
+# catches: a PM edits S4-2 option C's env from "cycles courts" to "cycles de
+# 90 minutes" — its own option text already says 90 minutes — and every
+# person answering S4-2=C would ship a digit into an analysis prompt, with
+# the fixture-based tests staying green.
+
+BANNED_BANK_ROOTS = (
+    "nevrotisme", "neuroticisme", "big five", "riasec", "schwartz", "sdt", "dunn",
+    "kahneman", "dweck", "frankl", "logotherapie", "conscienciosite", "agreabilite",
+    "extraversion", "introversion", "score", "trait", "axe",
+)
+
+
+def _fold(text):
+    stripped = unicodedata.normalize("NFD", text.lower())
+    return "".join(c for c in stripped if unicodedata.category(c) != "Mn")
+
+
+def _prompt_reachable_bank_strings():
+    """Every bank string scoring.prompt_context() can emit, per its docstring:
+    AXES[*].plain_neg/plain_pos/tension, RIASEC_UNIVERS, SDT need names, the
+    env values of the four S4 items it reads (S4-1/2/3/5 — not S4-4 "manager"
+    or S4-6 "vendredi", which prompt_context never touches), and the sens
+    values of S5-4 and S5-7 (not S5-5/S5-6, which prompt_context never reads).
+
+    autonomie / appartenance / competence (bank.SDT) are plain-French need
+    names, not framework vocabulary — the spec's own example block contains
+    « Besoin dominant : autonomie » — so they are walked like every other
+    string here but must not be treated as a banned root.
+    """
+    strings = []
+    for axis in bank.AXES.values():
+        strings.extend([axis["plain_neg"], axis["plain_pos"], axis["tension"]])
+    strings.extend(bank.RIASEC_UNIVERS.values())
+    strings.extend(bank.SDT)
+    for item_id in ("S4-1", "S4-2", "S4-3", "S4-5"):
+        strings.extend(option["env"] for option in bank.item(item_id)["options"])
+    for item_id in ("S5-4", "S5-7"):
+        strings.extend(option["sens"] for option in bank.item(item_id)["options"])
+    return strings
+
+
+def test_prompt_reachable_bank_strings_carry_no_digit_or_framework_word():
+    strings = _prompt_reachable_bank_strings()
+    assert len(strings) == 67, "the walk's coverage shrank or grew — update it deliberately"
+    for text in strings:
+        assert not re.search(r"[0-9]", text), text
+        folded = _fold(text)
+        for word in BANNED_BANK_ROOTS:
+            assert not re.search(rf"\b{re.escape(word)}\b", folded), f"{word}: {text}"
 
 
 def test_lookups():

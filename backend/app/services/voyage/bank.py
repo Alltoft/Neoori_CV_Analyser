@@ -1530,12 +1530,20 @@ def axis_items(axis_id: str) -> list[tuple[str, int]]:
 # rest are here so the newer lookups stay together.
 
 def sessions() -> list[dict]:
-    """All six sessions, in play order."""
+    """All six sessions, in play order.
+
+    A live reference into SESSIONS, not a copy — do not mutate it. Use
+    public() if you need a safe copy.
+    """
     return SESSIONS
 
 
 def session(n: str) -> dict:
-    """One session. Raises KeyError on an unknown id."""
+    """One session. Raises KeyError on an unknown id.
+
+    A live reference into SESSIONS, not a copy — do not mutate it. Use
+    public() if you need a safe copy.
+    """
     for entry in SESSIONS:
         if entry["n"] == n:
             return entry
@@ -1543,6 +1551,8 @@ def session(n: str) -> dict:
 
 
 def items(n: str) -> list[dict]:
+    """A live reference into SESSIONS, not a copy — do not mutate it. Use
+    public() if you need a safe copy."""
     return session(n)["items"]
 
 
@@ -1557,7 +1567,11 @@ def all_item_ids() -> list[str]:
 
 def option(item_id: str, letter: str) -> dict | None:
     """One option of a scene, or None — including when the item is a checklist
-    item, which has no options at all."""
+    item, which has no options at all.
+
+    A live reference into SESSIONS, not a copy — do not mutate it. Use
+    public() if you need a safe copy.
+    """
     entry = item(item_id)
     if entry is None:
         return None

@@ -39,6 +39,11 @@ INTRO_EXTRA = {
     "low": "plutôt tourné(e) vers l'intérieur",
 }
 
+# Maps _level()'s three buckets onto INTRO_EXTRA's registers, so score_s3 reads
+# the extraversion bucket off `levels` instead of re-deriving it against
+# BIG5_HIGH/BIG5_LOW — _level() stays the one place those thresholds are applied.
+_LEVEL_TO_REGISTER = {LEVEL_HIGH: "high", LEVEL_MID: "mid", LEVEL_LOW: "low"}
+
 
 # ── Completeness ─────────────────────────────────────────────────────────────
 
@@ -70,7 +75,11 @@ def completeness(responses: dict) -> dict[str, bool]:
 
 
 def chosen_option(responses: dict, item_id: str) -> dict | None:
-    """The option dict the person picked, or None if unanswered or not a scene."""
+    """The option dict the person picked, or None if unanswered or not a scene.
+
+    A live reference into the bank, not a copy — do not mutate it. Use
+    bank.public() if you need a safe copy.
+    """
     value = _answers(responses).get(item_id)
     if not isinstance(value, str):
         return None
@@ -90,7 +99,7 @@ def score_s0(responses: dict) -> dict | None:
 
     given = _answers(responses)
     axes = {}
-    for axis_id, meta in bank.AXES.items():
+    for axis_id in bank.AXES:
         loadings = bank.axis_items(axis_id)
         oui = sum(1 for item_id, _ in loadings if given[item_id] is True)
         non = len(loadings) - oui
@@ -256,20 +265,14 @@ def score_s3(responses: dict) -> dict | None:
         if option.get("style"):
             style[option["style"]] += 1
 
-    extraversion = big5["extraversion"]
-    if extraversion >= BIG5_HIGH:
-        bucket = "high"
-    elif extraversion <= BIG5_LOW:
-        bucket = "low"
-    else:
-        bucket = "mid"
+    levels = {trait: _level(net) for trait, net in big5.items()}
 
     return {
         "big5": big5,
-        "levels": {trait: _level(net) for trait, net in big5.items()},
+        "levels": levels,
         "style": style,
         "style_dominant": _dominant(style, bank.STYLES),
-        "intro_extra": INTRO_EXTRA[bucket],
+        "intro_extra": INTRO_EXTRA[_LEVEL_TO_REGISTER[levels["extraversion"]]],
     }
 
 
@@ -343,7 +346,9 @@ def _line(label: str, value) -> str | None:
     the prompt invites the model to fill the blank.
     """
     if isinstance(value, (list, tuple)):
-        value = ", ".join(v for v in value if v)
+        # Same fail-soft rule as the scalar path below: a non-string element
+        # is dropped rather than raising TypeError on join().
+        value = ", ".join(v for v in value if isinstance(v, str) and v)
     text = (value or "").strip() if isinstance(value, str) else ""
     return f"{label} : {text}" if text else None
 
