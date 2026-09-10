@@ -183,3 +183,17 @@ def test_score_riasec_ties_break_on_letter_order():
         n_second = result["normalized"][second]
         if n_first == n_second:
             assert bank.RIASEC_LETTERS.index(first) < bank.RIASEC_LETTERS.index(second)
+
+
+def test_score_riasec_ranks_on_normalized_not_raw_where_they_disagree():
+    """Answering S1-6 H gives R and C the SAME raw score against different
+    ceilings — R out of 12, C out of 9. Ranked raw, R comes first on the
+    letter-order tie-break; ranked normalised, C must come first, because
+    6/9 beats 6/12. This is the case the whole normalisation exists for,
+    and it is the only thing separating a correct implementation from one
+    that sorts on the raw score."""
+    result = scoring.score_riasec(_answers(**{"S1-6": "H"}))
+    assert result["scores"]["R"] == 6
+    assert result["scores"]["C"] == 6
+    assert result["normalized"]["C"] > result["normalized"]["R"]
+    assert [e["letter"] for e in result["top3"]] == ["C", "R", "I"]
