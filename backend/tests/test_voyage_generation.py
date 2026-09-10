@@ -218,3 +218,51 @@ def test_the_token_budgets_are_the_two_the_spec_pins_not_the_tier_defaults():
     assert gen.PORTRAIT_MAX_TOKENS == 3000
     assert gen.MICRO_WORDS == (15, 25)
     assert gen.PORTRAIT_MAX_TOKENS != tiers.model_for(tiers.PAID)[1]
+
+
+# ── leak_check ───────────────────────────────────────────────────────────────
+
+def test_a_clean_portrait_leaks_nothing():
+    assert gen.leak_check(CLEAN_SECTIONS) == []
+
+
+def test_the_word_portrait_does_not_trip_the_trait_pattern():
+    """Word boundaries are the whole reason « trait » is safe to ban."""
+    assert gen.leak_check({
+        "accroche": "Ce portrait te ressemble.",
+        "qui_tu_es": "Tu traites les choses une par une.",
+    }) == []
+
+
+def test_framework_words_come_back_lowercased_and_sorted():
+    hit = gen.leak_check({"qui_tu_es": "Ton RIASEC est net.",
+                          "vibrer": "Un Score élevé en Big Five."})
+    assert hit == ["big five", "riasec", "score"]
+
+
+def test_accents_are_folded_so_one_entry_catches_both_spellings():
+    assert gen.leak_check({"a": "névrotisme"}) == ["névrotisme"]
+    assert gen.leak_check({"a": "nevrotisme"}) == ["névrotisme"]
+    assert gen.leak_check({"a": "CONSCIENCIOSITE"}) == ["conscienciosité"]
+
+
+def test_the_leak_vocabulary_is_the_one_the_contract_lists():
+    """Pinned literally: the loop below tests the matcher, this tests the list.
+    A typo here is a word that reaches a candidate, so it may not be derived
+    from the thing it is checking."""
+    assert gen.LEAK_PATTERNS == (
+        "névrotisme", "neuroticisme", "big five", "riasec", "schwartz", "sdt",
+        "dunn", "kahneman", "dweck", "frankl", "logothérapie", "conscienciosité",
+        "agréabilité", "extraversion", "introversion", "score", "trait",
+    )
+
+
+def test_every_pattern_is_detected_on_its_own():
+    for pattern in gen.LEAK_PATTERNS:
+        assert gen.leak_check({"x": f"Une phrase avec {pattern} dedans."}) == [pattern]
+
+
+def test_empty_and_missing_sections_are_tolerated():
+    assert gen.leak_check({}) == []
+    assert gen.leak_check(None) == []
+    assert gen.leak_check({"accroche": None, "vibrer": ""}) == []
