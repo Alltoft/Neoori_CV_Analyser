@@ -28,8 +28,28 @@ def upsert_notes(share_token):
     counselor_id = get_jwt_identity()
     analysis = Analysis.query.filter_by(share_token=share_token).first_or_404()
 
-    data = request.get_json(silent=True) or {}
-    body = data.get("body", "")
+    # A non-dict body (a JSON array, a bare string/number) must not crash
+    # .get("body") into a 500 -- but it also must not be silently coerced to
+    # "", which would wipe an existing note under a malformed request and
+    # report it as a 200 success. Refuse it outright instead (mirrors
+    # voyage.upsert_voyage_note).
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Note invalide."}), 400
+
+    # "" is a deliberate, explicit clear -- but only when the key is actually
+    # present. data.get("body", "") made an absent "body" key indistinguishable
+    # from an explicit "", so a malformed {} or a {"autre": "x"} silently
+    # wiped the note under a 200. Require the key outright.
+    if "body" not in data:
+        return jsonify({"error": "Note invalide."}), 400
+
+    # A "body" field present but not a string (an int, a list, a dict) is
+    # refused the same way -- accepting it would either crash the Text
+    # column or, if coerced, destroy the stored note under bad input.
+    body = data.get("body")
+    if not isinstance(body, str):
+        return jsonify({"error": "Note invalide."}), 400
 
     note = CounselorNote.query.filter_by(
         analysis_id=analysis.id,
