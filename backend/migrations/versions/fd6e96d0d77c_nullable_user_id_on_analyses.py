@@ -18,6 +18,13 @@ depends_on = None
 
 def upgrade():
     conn = op.get_bind()
+    if conn.dialect.name != "mysql":
+        # SQLite has neither INFORMATION_SCHEMA nor ALTER COLUMN; batch mode
+        # rebuilds the table instead. Reached only when the chain is replayed
+        # from scratch — i.e. a local migration rehearsal, never production.
+        with op.batch_alter_table("analyses") as batch_op:
+            batch_op.alter_column("user_id", existing_type=sa.String(length=36), nullable=True)
+        return
     result = conn.execute(sa.text(
         "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE"
         " WHERE TABLE_NAME='analyses' AND TABLE_SCHEMA=DATABASE()"
@@ -31,6 +38,10 @@ def upgrade():
 
 
 def downgrade():
+    if op.get_bind().dialect.name != "mysql":
+        with op.batch_alter_table("analyses") as batch_op:
+            batch_op.alter_column("user_id", existing_type=sa.String(length=36), nullable=False)
+        return
     op.execute("ALTER TABLE analyses DROP FOREIGN KEY fk_analyses_user_id")
     op.execute("ALTER TABLE analyses MODIFY COLUMN user_id VARCHAR(36) NOT NULL")
     op.execute("ALTER TABLE analyses ADD CONSTRAINT fk_analyses_user_id FOREIGN KEY (user_id) REFERENCES users(id)")
