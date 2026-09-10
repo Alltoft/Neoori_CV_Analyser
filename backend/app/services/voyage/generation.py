@@ -341,3 +341,155 @@ def _portrait_user_message(synthesis: dict, responses: dict, profile_fields: dic
         if lines:
             blocks.append([header] + lines)
     return "\n\n".join("\n".join(block) for block in blocks)
+
+
+# ── the streamed call ────────────────────────────────────────────────────────
+
+
+def _stream_text(model: str, system_prompt: str, messages: list,
+                 max_tokens: int, schema: dict | None) -> tuple[str, int, int]:
+    """One streamed call. Returns (text, tokens_in, tokens_out).
+
+    Streaming keeps the upstream HTTP request alive for long generations; no SSE
+    reaches the client, which polls GET /api/voyage instead. Structured output
+    goes through extra_body so it works on any SDK version, and a
+    BadRequestError degrades to a plain call — the same fallback
+    anthropic_service._run_analysis uses when the API surface refuses
+    output_config.
+    """
+    client = _get_client()
+    kwargs = dict(
+        model=model,
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=list(messages),
+    )
+    if schema is not None:
+        kwargs["extra_body"] = {
+            "output_config": {"format": {"type": "json_schema", "schema": schema}}
+        }
+
+    def _run(call_kwargs):
+        acc = ""
+        with client.messages.stream(**call_kwargs) as stream:
+            for chunk in stream.text_stream:
+                acc += chunk
+            final = stream.get_final_message()
+        return acc, final.usage.input_tokens, final.usage.output_tokens
+
+    try:
+        return _run(kwargs)
+    except anthropic.BadRequestError:
+        kwargs.pop("extra_body", None)
+        return _run(kwargs)
+
+
+def _one_sentence(raw: str) -> str:
+    """Normalise the model's answer to a single line.
+
+    The prompt asks for one sentence and nothing else; this only removes the
+    wrapping it sometimes adds anyway (quotes, a leading dash, a trailing
+    newline). It never truncates: a phrase that came back too long is the PM's
+    signal to edit the prompt, not something to silently cut.
+    """
+    text = " ".join(str(raw or "").split())
+    return text.strip("«»\"“” ").lstrip("-–—").strip()
+
+
+def _profile_fields(user_id: str) -> dict:
+    """The four Profil de base fields, lifted off the ORM before the stream."""
+    profile = Profile.query.filter_by(user_id=user_id).first()
+    return {
+        "prenom": profile.prenom if profile else None,
+        "tranche_age": profile.tranche_age if profile else None,
+        "situation": profile.situation if profile else None,
+        "projet": profile.projet if profile else None,
+    }
+
+
+# ── the S0 phrase ────────────────────────────────────────────────────────────
+
+
+def _fail_micro(voyage: Voyage, message: str) -> None:
+    """Record the failure inside the ciphertext; only the status is plaintext."""
+    voyage.micro = {**(voyage.micro or {}), "error": str(message)[:ERROR_MAX_CHARS]}
+    voyage.micro_status = "error"
+    db.session.commit()
+
+
+def _run_micro(voyage_id: str, app) -> None:
+    """Write the session-0 phrase onto the voyage row.
+
+    Runs inside a background daemon thread spawned by
+    POST /api/voyage/sessions/0/complete. No progress reporter: the hub polls
+    GET /api/voyage every 2 s while micro_status == "generating", and the free
+    model answers in a few seconds.
+    """
+    with app.app_context():
+        voyage = db.session.get(Voyage, voyage_id)
+        if not voyage:
+            return
+
+        prompt = PromptVersion.query.filter_by(is_active=True, path=MICRO_SLOT).first()
+        if not prompt:
+            _fail_micro(voyage, f"Aucun prompt actif pour le slot {MICRO_SLOT}.")
+            return
+
+        # Everything the call needs, captured as plain values BEFORE the
+        # connection is released.
+        try:
+            system_prompt = prompt.system_prompt_text
+            prompt_version_id = prompt.id
+            user_message = _micro_user_message(
+                voyage.synthesis(), _profile_fields(voyage.user_id).get("prenom"))
+            model, _ = tiers.model_for(tiers.FREE)
+        except Exception as exc:            # noqa: BLE001 — recorded on the row
+            # The route already set micro_status = "generating" and committed, so a
+            # build that raises here would strand the row there for ever: this thread
+            # is the only thing that will ever move it.
+            _fail_micro(voyage, str(exc))
+            return
+
+        # prompt_version_id is written now rather than only in the success
+        # payload, so a run that fails still names the prompt that produced the
+        # failure (B2G traceability). _fail_micro merges onto this dict.
+        voyage.micro = {**(voyage.micro or {}), "prompt_version_id": prompt_version_id}
+        voyage.micro_status = "generating"
+        db.session.commit()
+
+        # Release the pooled connection for the duration of the call: holding
+        # one across the stream lets the DB drop it as idle, and the final
+        # commit then fails with "Lost connection" on a row stuck 'generating'.
+        db.session.remove()
+
+        try:
+            raw, tokens_in, tokens_out = _stream_text(
+                model, system_prompt,
+                [{"role": "user", "content": user_message}],
+                MICRO_MAX_TOKENS, None)
+        except Exception as exc:            # noqa: BLE001 — recorded on the row
+            voyage = db.session.get(Voyage, voyage_id)
+            if voyage is not None:
+                _fail_micro(voyage, str(exc))
+            return
+
+        # Fresh, pre-pinged connection to write the result.
+        voyage = db.session.get(Voyage, voyage_id)
+        if voyage is None:
+            return
+        voyage.micro = {
+            "phrase": _one_sentence(raw),
+            "prompt_version_id": prompt_version_id,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "error": None,
+        }
+        voyage.micro_status = "success"
+        voyage.tokens_in = (voyage.tokens_in or 0) + (tokens_in or 0)
+        voyage.tokens_out = (voyage.tokens_out or 0) + (tokens_out or 0)
+        db.session.commit()
+
+
+def start_micro(voyage_id: str, app) -> None:
+    """Spawn a daemon thread that writes the session-0 phrase. Returns at once."""
+    threading.Thread(target=_run_micro, args=(voyage_id, app), daemon=True).start()

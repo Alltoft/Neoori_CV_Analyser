@@ -554,3 +554,217 @@ def test_a_real_synthesis_feeds_both_builders_without_a_gap(app):
     assert not re.search(r"\d", _own_words(_block(portrait, gen.HEADER_CHOISI)))
     assert not re.search(
         r"\d", _block(portrait, gen.HEADER_SYNTHESE).replace(gen.WEIGHT_NOTE, ""))
+
+
+# ── mocked Anthropic client ──────────────────────────────────────────────────
+
+def _stream_of(text: str, usage=(300, 900)):
+    """One `client.messages.stream(...)` result: a context manager exposing
+    `.text_stream` and `.get_final_message()`. Same shape as the stand-in in
+    tests/test_stream_progress.py."""
+    stream = MagicMock()
+    stream.__enter__.return_value = stream
+    stream.text_stream = iter([text])
+    stream.get_final_message.return_value = MagicMock(
+        usage=MagicMock(input_tokens=usage[0], output_tokens=usage[1]))
+    return stream
+
+
+def _client(*answers, usage=(300, 900)):
+    """An Anthropic stand-in. A str answer is streamed; an Exception is raised."""
+    client = MagicMock()
+    client.messages.stream.side_effect = [
+        a if isinstance(a, BaseException) else _stream_of(a, usage) for a in answers
+    ]
+    return client
+
+
+def _bad_request():
+    return anthropic.BadRequestError(
+        "output_config is not supported",
+        response=httpx.Response(
+            400, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")),
+        body=None,
+    )
+
+
+def _voyage(responses, prenom="Marie", **columns):
+    """A user with a profile and one voyage carrying `responses`."""
+    user = User(email=f"v{uuid4().hex[:8]}@test.com", password_hash="x",
+                role="candidate", plan="free")
+    db.session.add(user)
+    db.session.commit()
+    db.session.add(Profile(user_id=user.id, prenom=prenom,
+                           tranche_age="25_34", situation="en_recherche",
+                           projet="reprendre un travail au contact des gens"))
+    row = Voyage(user_id=user.id, consent_at=datetime.utcnow(), age_attested=True,
+                 **columns)
+    row.responses = responses
+    db.session.add(row)
+    db.session.commit()
+    return row
+
+
+def _seed(slot, text="Consigne système."):
+    db.session.add(PromptVersion(version_label=f"v0-{slot}", system_prompt_text=text,
+                                 is_active=True, path=slot))
+    db.session.commit()
+
+
+def _reload(voyage_id):
+    """The row as it stands after the runner committed from its own context."""
+    db.session.expire_all()
+    return db.session.get(Voyage, voyage_id)
+
+
+# ── _run_micro ───────────────────────────────────────────────────────────────
+
+def test_the_micro_run_writes_the_phrase_and_flips_the_status(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro", "Tu écris une phrase.")
+    voyage_id = voyage.id
+
+    client = _client("  « Tu cherches des endroits où ce que tu fabriques compte. »  ",
+                     usage=(120, 40))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "success"
+    assert row.micro_phrase == "Tu cherches des endroits où ce que tu fabriques compte."
+    assert row.micro["tokens_in"] == 120
+    assert row.micro["tokens_out"] == 40
+    assert row.micro["error"] is None
+    assert row.tokens_in == 120
+    assert row.tokens_out == 40
+
+
+def test_the_micro_run_records_the_prompt_version_it_used(app):
+    """B2G traceability: every generated text names the prompt that wrote it."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+    expected = PromptVersion.query.filter_by(path="voyage_micro").first().id
+
+    with patch.object(gen, "_get_client", return_value=_client("Une phrase.")):
+        gen._run_micro(voyage_id, app)
+
+    assert _reload(voyage_id).micro["prompt_version_id"] == expected
+
+
+def test_the_micro_run_uses_the_free_tier_model_and_a_two_hundred_token_budget(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro", "Consigne micro.")
+    voyage_id = voyage.id
+
+    client = _client("Une phrase.")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    kwargs = client.messages.stream.call_args.kwargs
+    assert kwargs["model"] == tiers.model_for(tiers.FREE)[0]
+    assert kwargs["max_tokens"] == gen.MICRO_MAX_TOKENS
+    assert kwargs["system"] == "Consigne micro."
+    # Plain text, no schema: the phrase is one sentence, not an object.
+    assert "extra_body" not in kwargs
+    assert kwargs["messages"] == [
+        {"role": "user", "content": gen._micro_user_message(
+            scoring.synthesize(_s0_only_responses()), "Marie")}]
+
+
+def test_a_missing_slot_prompt_puts_the_micro_in_error(app):
+    """Without a seeded prompt the feature errors on first use — which is the
+    whole reason both seed scripts land ACTIVE."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    voyage_id = voyage.id
+
+    gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro["error"] == "Aucun prompt actif pour le slot voyage_micro."
+    assert row.micro_phrase is None
+
+
+def test_an_api_failure_is_recorded_on_the_row_not_raised(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = MagicMock()
+    client.messages.stream.side_effect = RuntimeError("connection reset by peer")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert "connection reset by peer" in row.micro["error"]
+
+
+def test_a_failed_run_still_records_which_prompt_it_used(app):
+    """B2G traceability: an error row that cannot name its prompt is not traceable."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+    expected = PromptVersion.query.filter_by(path="voyage_micro").first().id
+
+    client = MagicMock()
+    client.messages.stream.side_effect = RuntimeError("upstream is down")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro["prompt_version_id"] == expected
+
+
+def test_a_build_that_raises_fails_the_row_instead_of_stranding_it(app):
+    """The route commits micro_status = "generating" before spawning us. If the
+    message build raises, this thread is the only thing that will ever move that
+    status — so it has to move it."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_micro_user_message", side_effect=ValueError("bank drift")):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert "bank drift" in row.micro["error"]
+
+
+def test_the_db_connection_is_released_before_the_stream(app):
+    """Holding a pooled connection across the call is what leaves rows stuck
+    'generating' — see the comment in anthropic_service._run_analysis."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    seen = {}
+
+    def streaming(**_kwargs):
+        # db.session.remove() empties the scoped registry; it stays empty until
+        # something asks for a session again. That is the observable fact.
+        seen["registry_empty"] = not db.session.registry.has()
+        return _stream_of("Une phrase.")
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert seen["registry_empty"] is True
+    assert _reload(voyage_id).micro_status == "success"
+
+
+def test_a_deleted_voyage_is_a_silent_no_op(app):
+    gen._run_micro("does-not-exist", app)   # must not raise
+
+
+def test_start_micro_spawns_a_daemon_thread_and_returns(app):
+    with patch.object(gen.threading, "Thread") as Thread:
+        gen.start_micro("some-id", app)
+    Thread.assert_called_once_with(target=gen._run_micro, args=("some-id", app),
+                                   daemon=True)
+    Thread.return_value.start.assert_called_once()
