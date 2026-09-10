@@ -380,7 +380,12 @@ def _stream_text(model: str, system_prompt: str, messages: list,
     try:
         return _run(kwargs)
     except anthropic.BadRequestError:
-        kwargs.pop("extra_body", None)
+        # Only worth retrying if the schema is what the API refused. With no
+        # extra_body there is nothing to degrade to, and re-sending an identical
+        # request bills twice for the same 400.
+        if "extra_body" not in kwargs:
+            raise
+        kwargs.pop("extra_body")
         return _run(kwargs)
 
 
@@ -391,9 +396,17 @@ def _one_sentence(raw: str) -> str:
     wrapping it sometimes adds anyway (quotes, a leading dash, a trailing
     newline). It never truncates: a phrase that came back too long is the PM's
     signal to edit the prompt, not something to silently cut.
+
+    The strip repeats until the string stops changing, because the wrappings
+    nest: « - « Phrase. » » puts a dash outside a quote, and one fixed
+    quotes-then-dash pass would leave the opening guillemet behind.
     """
     text = " ".join(str(raw or "").split())
-    return text.strip("«»\"“” ").lstrip("-–—").strip()
+    previous = None
+    while text != previous:
+        previous = text
+        text = text.strip("«»\"“” ").lstrip("-–—").strip()
+    return text
 
 
 def _profile_fields(user_id: str) -> dict:
@@ -468,17 +481,36 @@ def _run_micro(voyage_id: str, app) -> None:
                 [{"role": "user", "content": user_message}],
                 MICRO_MAX_TOKENS, None)
         except Exception as exc:            # noqa: BLE001 — recorded on the row
+            # The stream ran with no connection held, so whatever session is in
+            # the registry may be stale. remove() forces a fresh, pre-pinged
+            # checkout; without it this get() is the statement that raises on a
+            # dead connection, and the row strands in "generating" for ever.
+            db.session.remove()
             voyage = db.session.get(Voyage, voyage_id)
             if voyage is not None:
                 _fail_micro(voyage, str(exc))
             return
 
-        # Fresh, pre-pinged connection to write the result.
+        # Fresh, pre-pinged connection to write the result — same reason as the
+        # error path above: this write-back must not inherit a session the
+        # stream left behind.
+        db.session.remove()
         voyage = db.session.get(Voyage, voyage_id)
         if voyage is None:
             return
+
+        # An empty phrase is a failure, not a success. micro_phrase would read
+        # back as None while micro_status said "success", and Voyage.for_prompt
+        # selects on that status — it would hand this voyage to an analysis as
+        # the S0-phrase carrier with no phrase in it. portrait_sections takes
+        # the same convention one property up: incomplete means empty.
+        phrase = _one_sentence(raw)
+        if not phrase:
+            _fail_micro(voyage, "Le modèle n'a renvoyé aucune phrase lisible.")
+            return
+
         voyage.micro = {
-            "phrase": _one_sentence(raw),
+            "phrase": phrase,
             "prompt_version_id": prompt_version_id,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import anthropic
 import httpx
+import pytest
 
 from app.extensions import db
 from app.models.prompt_version import PromptVersion
@@ -558,13 +559,17 @@ def test_a_real_synthesis_feeds_both_builders_without_a_gap(app):
 
 # ── mocked Anthropic client ──────────────────────────────────────────────────
 
-def _stream_of(text: str, usage=(300, 900)):
+def _stream_of(text, usage=(300, 900)):
     """One `client.messages.stream(...)` result: a context manager exposing
     `.text_stream` and `.get_final_message()`. Same shape as the stand-in in
-    tests/test_stream_progress.py."""
+    tests/test_stream_progress.py.
+
+    `text` is one delta or a list of them. A real stream emits many, so a test
+    that wants to pin the concatenation passes a list.
+    """
     stream = MagicMock()
     stream.__enter__.return_value = stream
-    stream.text_stream = iter([text])
+    stream.text_stream = iter([text] if isinstance(text, str) else list(text))
     stream.get_final_message.return_value = MagicMock(
         usage=MagicMock(input_tokens=usage[0], output_tokens=usage[1]))
     return stream
@@ -605,10 +610,14 @@ def _voyage(responses, prenom="Marie", **columns):
     return row
 
 
-def _seed(slot, text="Consigne système."):
-    db.session.add(PromptVersion(version_label=f"v0-{slot}", system_prompt_text=text,
-                                 is_active=True, path=slot))
+def _seed(slot, text="Consigne système.", active=True):
+    """One PromptVersion on `slot`. `active=False` seeds a rolled-back version —
+    the normal production state for a slot with history behind it."""
+    row = PromptVersion(version_label=f"v0-{slot}", system_prompt_text=text,
+                        is_active=active, path=slot)
+    db.session.add(row)
     db.session.commit()
+    return row
 
 
 def _reload(voyage_id):
@@ -649,7 +658,12 @@ def test_the_micro_run_records_the_prompt_version_it_used(app):
     with patch.object(gen, "_get_client", return_value=_client("Une phrase.")):
         gen._run_micro(voyage_id, app)
 
-    assert _reload(voyage_id).micro["prompt_version_id"] == expected
+    row = _reload(voyage_id)
+    # R9 seeds prompt_version_id before the stream, so without this line the
+    # assertion below is also satisfied by a run that failed — and this test
+    # names the success path.
+    assert row.micro_status == "success"
+    assert row.micro["prompt_version_id"] == expected
 
 
 def test_the_micro_run_uses_the_free_tier_model_and_a_two_hundred_token_budget(app):
@@ -768,3 +782,242 @@ def test_start_micro_spawns_a_daemon_thread_and_returns(app):
     Thread.assert_called_once_with(target=gen._run_micro, args=("some-id", app),
                                    daemon=True)
     Thread.return_value.start.assert_called_once()
+
+
+# ── _stream_text, directly ───────────────────────────────────────────────────
+
+def test_a_schema_call_carries_the_output_config_and_is_sent_once():
+    """The portrait's structure is enforced here, not in prompt prose. Nothing
+    in the micro path builds an extra_body, so this is the only place the shape
+    is pinned before Task 8 depends on it."""
+    schema = gen._portrait_schema()
+    client = _client("{}")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._stream_text("m", "sys", [{"role": "user", "content": "u"}], 3000, schema)
+
+    assert client.messages.stream.call_count == 1
+    assert client.messages.stream.call_args.kwargs["extra_body"] == {
+        "output_config": {"format": {"type": "json_schema", "schema": schema}}
+    }
+
+
+def test_a_refused_schema_is_retried_once_without_it():
+    """The degrade path: the API refuses output_config, the same call goes out
+    again as plain text. The retry must drop extra_body — retrying with it would
+    fail identically."""
+    client = _client(_bad_request(), "Une phrase.")
+    with patch.object(gen, "_get_client", return_value=client):
+        text, _, _ = gen._stream_text(
+            "m", "sys", [{"role": "user", "content": "u"}], 3000,
+            gen._portrait_schema())
+
+    assert text == "Une phrase."
+    assert client.messages.stream.call_count == 2
+    first, second = client.messages.stream.call_args_list
+    assert "extra_body" in first.kwargs
+    assert "extra_body" not in second.kwargs
+
+
+def test_a_schema_less_bad_request_is_raised_rather_than_retried():
+    """Every micro call passes schema=None, so there is no extra_body to drop:
+    a retry would re-send a byte-identical request that just failed, billing and
+    waiting twice for the same 400."""
+    client = _client(_bad_request(), "jamais atteint")
+    with patch.object(gen, "_get_client", return_value=client):
+        with pytest.raises(anthropic.BadRequestError):
+            gen._stream_text("m", "sys", [{"role": "user", "content": "u"}], 200, None)
+
+    assert client.messages.stream.call_count == 1
+
+
+def test_a_bad_request_on_the_micro_path_costs_one_call_and_errors_the_row(app):
+    """The same rule seen from the runner: one upstream call, row in error."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client(_bad_request(), "jamais atteint")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 1
+    assert _reload(voyage_id).micro_status == "error"
+
+
+# ── _one_sentence ────────────────────────────────────────────────────────────
+
+def test_a_dash_then_quoted_answer_is_fully_unwrapped():
+    """« - « Phrase. » » is an ordinary shape for a model asked for one quoted
+    sentence. A single quotes-then-dash pass leaves the opening guillemet on the
+    phrase the candidate reads."""
+    assert gen._one_sentence("- « Tu cherches des endroits. »") == \
+        "Tu cherches des endroits."
+    assert gen._one_sentence('— "Phrase."') == "Phrase."
+    assert gen._one_sentence("- Phrase.") == "Phrase."
+    assert gen._one_sentence("  «  Phrase.  »  ") == "Phrase."
+
+
+def test_a_long_answer_comes_back_whole():
+    """« It never truncates » at a length where a cap would actually bite: a
+    15-25 word French sentence runs 120-200 characters, so the one 56-character
+    fixture below cannot tell an uncapped result from a capped one."""
+    raw = " ".join(f"mot{i}" for i in range(60))
+    out = gen._one_sentence(raw)
+    assert out == raw
+    assert len(out) > 300
+
+
+def test_nothing_at_all_normalises_to_the_empty_string():
+    """The falsy guard in str(raw or ""): the runner turns this into an error
+    row rather than an empty success."""
+    assert gen._one_sentence(None) == ""
+    assert gen._one_sentence("") == ""
+    assert gen._one_sentence("   ") == ""
+    assert gen._one_sentence(" « » ") == ""
+
+
+# ── _run_micro, continued ────────────────────────────────────────────────────
+
+def test_an_empty_phrase_is_an_error_not_a_success(app):
+    """micro_phrase reads an empty phrase back as None, and Voyage.for_prompt
+    selects on micro_status == "success" — so a successful row with no phrase
+    would be handed to an analysis as the S0-phrase carrier."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_get_client", return_value=_client("  « »  ")):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro_phrase is None
+    assert row.micro["error"] == "Le modèle n'a renvoyé aucune phrase lisible."
+    assert Voyage.for_prompt(row.user_id) is None
+
+
+def test_the_run_uses_the_active_prompt_not_a_rolled_back_one(app):
+    """Version history with rollback is a hard requirement, so inactive rows on
+    a slot are the normal production state. The inactive row is seeded first, so
+    dropping the is_active filter would pick it."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro", "Consigne annulée.", active=False)
+    active = _seed("voyage_micro", "Consigne en vigueur.")
+    voyage_id, active_id = voyage.id, active.id
+
+    client = _client("Une phrase.")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_args.kwargs["system"] == "Consigne en vigueur."
+    assert _reload(voyage_id).micro["prompt_version_id"] == active_id
+
+
+def test_the_token_counters_accumulate_rather_than_overwrite(app):
+    """Task 8's portrait run writes these same two columns, so `=` in place of
+    `+=` would silently erase the micro's tokens from the cost dashboard and the
+    B2G token trail."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine",
+                     tokens_in=5, tokens_out=7)
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_get_client",
+                      return_value=_client("Une phrase.", usage=(120, 40))):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.tokens_in == 125
+    assert row.tokens_out == 47
+
+
+def test_the_prenom_comes_from_this_voyages_own_profile(app):
+    """The decoy profile is created first, so reading Profile.query.first()
+    instead of filtering on user_id would put a stranger's prénom in the message
+    the model writes the candidate's phrase from."""
+    _voyage(_s0_only_responses(), prenom="Autre")
+    voyage = _voyage(_s0_only_responses(), prenom="Marie", status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client("Une phrase.")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    sent = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+    assert "Prénom : Marie" in sent
+    assert "Autre" not in sent
+
+
+def test_every_streamed_chunk_reaches_the_phrase(app):
+    """A real stream emits many deltas; keeping only the last one would hand the
+    candidate the tail of a sentence."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    chunks = ["Tu cherches ", "des endroits ", "où ce que tu fabriques compte."]
+    with patch.object(gen, "_get_client", return_value=_client(chunks)):
+        gen._run_micro(voyage_id, app)
+
+    assert _reload(voyage_id).micro_phrase == "".join(chunks)
+
+
+def test_a_huge_error_message_is_capped_before_it_is_stored(app):
+    """ERROR_MAX_CHARS: an upstream traceback in the payload must not turn one
+    failed row into an unbounded encrypted blob."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = MagicMock()
+    client.messages.stream.side_effect = RuntimeError("x" * 5000)
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert len(row.micro["error"]) == gen.ERROR_MAX_CHARS
+
+
+def test_the_success_write_back_does_not_inherit_the_streams_session(app):
+    """The stream holds no connection, so anything left in the registry when it
+    returns may be stale. Here the stream dirties a session; the write-back must
+    discard it rather than flush its pending change alongside the phrase."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", tokens_in=5)
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    def streaming(**_kwargs):
+        db.session.get(Voyage, voyage_id).tokens_in = 999
+        return _stream_of("Une phrase.", usage=(120, 40))
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "success"
+    assert row.tokens_in == 125       # 5 + 120, not 999 + 120
+
+
+def test_the_error_write_back_does_not_inherit_the_streams_session(app):
+    """Same rule on the path that matters most: the failure has to be recorded
+    from a fresh, pre-pinged session, not from whatever the stream left."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", tokens_in=5)
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    def streaming(**_kwargs):
+        db.session.get(Voyage, voyage_id).tokens_in = 999
+        raise RuntimeError("connection reset by peer")
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.tokens_in == 5
