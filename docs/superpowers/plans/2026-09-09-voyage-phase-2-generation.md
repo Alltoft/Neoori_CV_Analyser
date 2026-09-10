@@ -299,6 +299,17 @@ Claude-Session: https://claude.ai/code/session_015fDz83zwALmXr4REGPGH8P"
 > it holds the five slot ids and `normalize()`, confirm the route validates against it,
 > and add only what is genuinely missing. Do not re-create the file.
 
+> **DEFECT — do not copy this task's `_read_path` code.** As written it does
+> `slot = prompt_slots.normalize(raw)` then `if not prompt_slots.is_valid(slot)`.
+> `normalize()` defaults anything unrecognised to parcours `'1'`, so `is_valid()` is
+> always true and the 400 branch is unreachable. Shipped in phase 1 and caught in review:
+> `POST /api/prompts {"path": "totally-bogus"}` returned 201 and wrote `path: "1"`, and
+> with `activate: true` a typo'd slot silently deactivated the **live** parcours-1 prompt.
+> `normalize()` is a coercer for values we already stored (old rows carry `'A'`/`'B'`);
+> it must never be used to validate client input. Phase 1 fixed this — read the shipped
+> `backend/app/routes/prompts.py` and keep it, do not re-apply the block below.
+
+
 **Files:**
 - Modify: `backend/app/routes/prompts.py:1-24`
 - Modify: `backend/app/models/prompt_version.py:14-17`
