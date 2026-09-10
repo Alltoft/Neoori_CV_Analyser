@@ -374,3 +374,56 @@ def test_score_s5_risque_is_one_of_the_four_levels():
         result = scoring.score_s5(_answers(**{"S5-1": letter}))
         assert result["risque"] == level, f"S5-1={letter}"
         assert result["risque"] in bank.RISK_LEVELS
+
+
+# ── Synthesis sheet ──────────────────────────────────────────────────────────
+
+SECTION_KEYS = ("s0", "riasec", "s2", "s3", "s4", "s5")
+
+
+def test_synthesize_never_returns_none_and_always_has_every_key():
+    result = scoring.synthesize({"answers": {}, "billets": {}})
+    assert result is not None
+    assert set(result) == {"scoring_version", "completeness", *SECTION_KEYS}
+    assert result["scoring_version"] == bank.SCORING_VERSION
+    assert all(result[key] is None for key in SECTION_KEYS)
+    assert result["completeness"] == dict.fromkeys(bank.SESSION_IDS, False)
+
+
+def test_synthesize_s0_only_is_a_normal_state():
+    """The self-serve half of the product produces exactly this."""
+    s0_only = {"answers": {i: True for i in bank.item_ids("0")}, "billets": {}}
+    result = scoring.synthesize(s0_only)
+    assert result["s0"] is not None
+    assert all(result[key] is None for key in ("riasec", "s2", "s3", "s4", "s5"))
+    assert result["completeness"] == {
+        "0": True, "1": False, "2": False, "3": False, "4": False, "5": False,
+    }
+
+
+def test_synthesize_complete_fills_every_section():
+    result = scoring.synthesize(_answers())
+    assert all(result[key] is not None for key in SECTION_KEYS)
+    assert result["completeness"] == dict.fromkeys(bank.SESSION_IDS, True)
+    assert set(result["s0"]) == {"axes", "tensions", "top3"}
+    assert set(result["riasec"]) == {"scores", "maxima", "normalized", "top3"}
+    assert set(result["s2"]) == {
+        "sdt", "sdt_dominant", "schwartz", "schwartz_dominant", "ambivalences",
+    }
+    assert set(result["s3"]) == {
+        "big5", "levels", "style", "style_dominant", "intro_extra",
+    }
+    assert set(result["s4"]) == set(bank.S4_SLOTS)
+    assert set(result["s5"]) == {
+        "risque", "rapport_echec", "rapport_flou",
+        "valeur_centrale", "trace", "sacrifice", "vivant",
+    }
+
+
+def test_synthesize_is_pure():
+    """Same answers, same sheet — twice, and without touching the bank."""
+    responses = _answers()
+    assert scoring.synthesize(responses) == scoring.synthesize(responses)
+    assert bank.SESSIONS[0]["items"][0]["text"] == (
+        "Travailler dehors, sur le terrain, en mouvement"
+    )

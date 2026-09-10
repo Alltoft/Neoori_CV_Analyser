@@ -310,3 +310,25 @@ def score_s5(responses: dict) -> dict | None:
         "sacrifice": tag("S5-6", "sens"),
         "vivant": tag("S5-7", "sens"),
     }
+
+
+# ── The synthesis sheet ──────────────────────────────────────────────────────
+
+def synthesize(responses: dict) -> dict:
+    """The counselor manual's page-18 sheet, assembled from the answers.
+
+    Never None: a voyage that has only finished session 0 still has a sheet, and
+    a caller should read `completeness` rather than probe for a missing key. The
+    session-1 section is keyed `riasec` because that is what it contains — the
+    other five keep their session number since no single framework names them.
+    """
+    return {
+        "scoring_version": bank.SCORING_VERSION,
+        "s0": score_s0(responses),
+        "riasec": score_riasec(responses),
+        "s2": score_s2(responses),
+        "s3": score_s3(responses),
+        "s4": score_s4(responses),
+        "s5": score_s5(responses),
+        "completeness": completeness(responses),
+    }
