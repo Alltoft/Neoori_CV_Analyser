@@ -27,13 +27,16 @@ from ..models.profile import Profile
 from ..models.voyage import (
     CONSENT_VERSION,
     LOCK_ORDER,
+    PORTRAIT_KEYS,
     STATUS_EN_COURS,
     STATUS_S0,
     STATUS_TERMINE,
     Voyage,
+    VoyageNote,
     session_lock,
 )
 from ..services.voyage import bank, scoring
+from ..utils.decorators import role_required
 from ..utils.tokens import generate_share_token
 
 voyage_bp = Blueprint("voyage", __name__)
@@ -374,3 +377,185 @@ def get_portrait():
             if voyage.portrait_validated_at else None
         ),
     }}), 200
+
+
+# ── counselor ────────────────────────────────────────────────────────────────
+# Role AND token. /api/c/<token> for an analysis is public by design — a
+# counselor opens the link without an account. The synthesis sheet is a
+# psychometric read-out, so a leaked link alone must not open it.
+
+NOT_FOUND = "Voyage introuvable."
+
+
+def _counselor_portrait(voyage: Voyage) -> dict:
+    """The five-key shape every counselor portrait response returns.
+
+    Deliberately narrow: the snapshot, the token counts, the prompt version and
+    the stored error stay inside the ciphertext where they were written.
+    """
+    payload = voyage.portrait or {}
+    sections = payload.get("sections") or {}
+    return {
+        "status": voyage.portrait_status,
+        "sections": {k: v for k, v in sections.items() if k in PORTRAIT_KEYS},
+        "flags": list(payload.get("flags") or []),
+        "edited": bool(payload.get("edited")),
+        "validated_at": (
+            voyage.portrait_validated_at.isoformat()
+            if voyage.portrait_validated_at else None
+        ),
+    }
+
+
+@voyage_bp.get("/c/<token>")
+@role_required("counselor", "admin")
+def counselor_sheet(token):
+    """The page-18 synthesis sheet plus the portrait draft.
+
+    The synthesis is recomputed from the answers on every read, so a corrected
+    scoring table takes effect without a migration. The 5-phase restitution
+    guide is static frontend content and is not served here.
+    """
+    voyage = Voyage.by_token(token)
+    if voyage is None:
+        return jsonify({"error": NOT_FOUND}), 404
+
+    profile = Profile.query.filter_by(user_id=voyage.user_id).first()
+    return jsonify({"voyage": {
+        "id": voyage.id,
+        "status": voyage.status,
+        "prenom": getattr(profile, "prenom", None),
+        "tranche_age": getattr(profile, "tranche_age", None),
+        "situation": getattr(profile, "situation", None),
+        "synthesis": voyage.synthesis(),
+        "portrait": _counselor_portrait(voyage),
+    }}), 200
+
+
+@voyage_bp.put("/c/<token>/portrait")
+@role_required("counselor", "admin")
+def counselor_edit_portrait(token):
+    """Replace all six sections. Allowed while draft or validated — a
+    correction made during the restitution session must not force the
+    counselor to un-validate the portrait in front of the person."""
+    voyage = Voyage.by_token(token)
+    if voyage is None:
+        return jsonify({"error": NOT_FOUND}), 404
+    if voyage.portrait_status not in ("draft", "validated"):
+        return jsonify({"error": "Aucun portrait à modifier."}), 409
+
+    # request.get_json(silent=True) or {} lets a JSON array or a bare string
+    # survive as truthy, and the next .get() call then raises AttributeError
+    # -> an unhandled 500 (the same defect fixed in put_responses/unlock_voyage
+    # above). Coerce any non-dict body to {} instead, so an array body falls
+    # through to the ordinary "sections missing" 400 below.
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    raw = data.get("sections")
+    sections = raw if isinstance(raw, dict) else {}
+
+    errors = [f"Section inconnue : {key}." for key in sorted(sections)
+              if key not in PORTRAIT_KEYS]
+    errors += [f"Section manquante ou vide : {key}." for key in PORTRAIT_KEYS
+               if not str(sections.get(key) or "").strip()]
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    payload = dict(voyage.portrait or {})
+    payload["sections"] = {key: str(sections[key]).strip() for key in PORTRAIT_KEYS}
+    payload["edited"] = True
+    voyage.portrait = payload
+    db.session.commit()
+    return jsonify({"portrait": _counselor_portrait(voyage)}), 200
+
+
+@voyage_bp.post("/c/<token>/portrait/regenerate")
+@role_required("counselor", "admin")
+def counselor_regenerate_portrait(token):
+    """Re-run the portrait call. Draft only: a validated portrait has been
+    restituted and must not change under the person's feet."""
+    voyage = Voyage.by_token(token)
+    if voyage is None:
+        return jsonify({"error": NOT_FOUND}), 404
+    if voyage.portrait_status != "draft":
+        return jsonify({"error": "Le portrait ne peut plus être régénéré."}), 409
+
+    voyage.portrait_status = "generating"
+    db.session.commit()
+    _spawn_portrait(voyage.id)
+    # The stored sections are about to be overwritten, so the response reports
+    # the run rather than the text that is on its way out.
+    return jsonify({"portrait": {
+        "status": "generating", "sections": {}, "flags": [],
+        "edited": False, "validated_at": None,
+    }}), 202
+
+
+@voyage_bp.post("/c/<token>/validate")
+@role_required("counselor", "admin")
+def counselor_validate_portrait(token):
+    """« Valider et transmettre » — the step that opens the portrait to the
+    candidate. Who did it and when are both recorded.
+
+    Refuses a draft with an incomplete section set (⚑ guard added here, not
+    in the brief or the contract): get_portrait exposes sections only once
+    portrait_status == "validated", with no completeness check of its own —
+    validating an incomplete draft would hand the candidate a 200 with
+    empty/partial `sections` and nothing to say it went wrong. Reuses
+    Voyage.portrait_sections, which is already {} unless all six
+    PORTRAIT_KEYS are present and non-empty (models/voyage.py).
+    """
+    voyage = Voyage.by_token(token)
+    if voyage is None:
+        return jsonify({"error": NOT_FOUND}), 404
+    if voyage.portrait_status != "draft":
+        return jsonify({"error": "Aucun portrait à valider."}), 409
+    if not voyage.portrait_sections:
+        return jsonify({"error": "Le portrait est incomplet : impossible de le valider."}), 409
+
+    voyage.portrait_status = "validated"
+    voyage.portrait_validated_at = datetime.utcnow()
+    voyage.validated_by_id = get_jwt_identity()
+    db.session.commit()
+    return jsonify({"portrait": _counselor_portrait(voyage)}), 200
+
+
+@voyage_bp.get("/c/<token>/notes")
+@role_required("counselor", "admin")
+def get_voyage_note(token):
+    """This counselor's own note. Never shown to the candidate."""
+    voyage = Voyage.by_token(token)
+    if voyage is None:
+        return jsonify({"error": NOT_FOUND}), 404
+    note = VoyageNote.query.filter_by(
+        voyage_id=voyage.id, counselor_id=get_jwt_identity()
+    ).first()
+    return jsonify({"note": note.to_dict() if note else None}), 200
+
+
+@voyage_bp.put("/c/<token>/notes")
+@role_required("counselor", "admin")
+def upsert_voyage_note(token):
+    """Upsert keyed on (voyage_id, counselor_id) — every counselor keeps
+    their own private note on the same voyage; nobody reads another's."""
+    voyage = Voyage.by_token(token)
+    if voyage is None:
+        return jsonify({"error": NOT_FOUND}), 404
+
+    # Same non-dict guard as counselor_edit_portrait above: a JSON array body
+    # must fall through to "" rather than crash .get("body") into a 500.
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+
+    counselor_id = get_jwt_identity()
+    note = VoyageNote.query.filter_by(voyage_id=voyage.id, counselor_id=counselor_id).first()
+    if note is None:
+        note = VoyageNote(voyage_id=voyage.id, counselor_id=counselor_id)
+        db.session.add(note)
+    # "" is a valid body: it clears the note without deleting the row. A
+    # "body" field that parsed but is not a string (an int, a list) must not
+    # reach the Text column as-is — same guard as unlock_voyage's raw_code.
+    raw_body = data.get("body", "")
+    note.body = raw_body if isinstance(raw_body, str) else ""
+    db.session.commit()
+    return jsonify({"note": note.to_dict()}), 200

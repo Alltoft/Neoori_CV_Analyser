@@ -1048,3 +1048,278 @@ def test_the_portrait_is_only_ever_the_callers_own(client, auth, candidate):
 
     res = client.get("/api/voyage/portrait", headers=auth)
     assert res.get_json()["portrait"]["sections"]["accroche"] == "texte A"
+
+
+# ── counselor: role AND token ────────────────────────────────────────────────
+
+@pytest.fixture
+def counselor_auth(app):
+    return _headers(_user("conseiller@test.fr", role="counselor"))
+
+
+@pytest.fixture
+def sheet(candidate):
+    """A finished voyage with a portrait draft, built directly: walking six
+    sessions through the API again would test the player, not the gate."""
+    voyage = _voyage(
+        candidate,
+        status=STATUS_TERMINE,
+        sessions_completed=["0", "1", "2", "3", "4", "5"],
+        share_token="tok-conseiller",
+        portrait_status="draft",
+        completed_at=datetime.utcnow(),
+    )
+    voyage.responses = {"answers": _answers_for("0"), "billets": {}}
+    voyage.portrait = {
+        "sections": {k: f"texte {k}" for k in PORTRAIT_KEYS},
+        "snapshot": {}, "flags": [], "edited": False,
+        "prompt_version_id": "pv-1", "tokens_in": 10, "tokens_out": 20, "error": None,
+    }
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie",
+                            tranche_age="25_34", situation="en_recherche"))
+    _db.session.commit()
+    return voyage
+
+
+def test_the_sheet_is_never_reachable_by_link_alone(client, sheet, auth, counselor_auth):
+    """Unlike /api/c/<token> for an analysis. Deliberate: this is a
+    psychometric read-out, not a report the person already has."""
+    assert client.get("/api/voyage/c/tok-conseiller").status_code == 401
+    res = client.get("/api/voyage/c/tok-conseiller", headers=auth)
+    assert res.status_code == 403
+    assert res.get_json()["error"] == "Accès non autorisé."
+    assert client.get("/api/voyage/c/tok-conseiller", headers=counselor_auth).status_code == 200
+
+
+def test_an_unknown_token_is_a_404(client, counselor_auth):
+    res = client.get("/api/voyage/c/nope", headers=counselor_auth)
+    assert res.status_code == 404
+    assert res.get_json()["error"] == "Voyage introuvable."
+
+
+def test_the_sheet_carries_the_profile_the_synthesis_and_the_draft(client, sheet, counselor_auth):
+    res = client.get("/api/voyage/c/tok-conseiller", headers=counselor_auth)
+    body = res.get_json()["voyage"]
+    assert set(body) == {"id", "status", "prenom", "tranche_age", "situation",
+                         "synthesis", "portrait"}
+    assert body["prenom"] == "Marie"
+    assert body["synthesis"]["scoring_version"] == bank.SCORING_VERSION
+    assert body["synthesis"]["s0"] is not None
+    assert body["synthesis"]["riasec"] is None          # sessions 1-5 unanswered
+    assert set(body["portrait"]) == {"status", "sections", "flags", "edited", "validated_at"}
+    assert body["portrait"]["status"] == "draft"
+
+
+def test_the_sheet_never_carries_the_generation_bookkeeping(client, sheet, counselor_auth):
+    body = client.get("/api/voyage/c/tok-conseiller", headers=counselor_auth).get_data(as_text=True)
+    assert "prompt_version_id" not in body
+    assert "tokens_in" not in body
+
+
+# ── editing, regenerating, validating ────────────────────────────────────────
+
+def _sections(**overrides):
+    sections = {k: f"nouveau {k}" for k in PORTRAIT_KEYS}
+    sections.update(overrides)
+    return sections
+
+
+def test_editing_replaces_all_six_sections_and_marks_the_draft_edited(client, sheet, counselor_auth):
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json={"sections": _sections()}, headers=counselor_auth)
+    assert res.status_code == 200
+    portrait = res.get_json()["portrait"]
+    assert portrait["edited"] is True
+    assert portrait["sections"]["accroche"] == "nouveau accroche"
+
+
+def test_editing_refuses_a_missing_blank_or_unknown_section(client, sheet, counselor_auth):
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json={"sections": _sections(accroche="   ")}, headers=counselor_auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == ["Section manquante ou vide : accroche."]
+
+    partial = _sections()
+    partial.pop("chemins")
+    partial["intro"] = "x"
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json={"sections": partial}, headers=counselor_auth)
+    assert res.status_code == 400
+    errors = res.get_json()["errors"]
+    assert "Section inconnue : intro." in errors
+    assert "Section manquante ou vide : chemins." in errors
+
+
+def test_editing_rejects_a_json_array_body(client, sheet, counselor_auth):
+    """Same probe as the candidate-side handlers (put_responses, unlock):
+    request.get_json(silent=True) or {} lets a JSON array survive as truthy,
+    and the next .get("sections") call then raises AttributeError -> an
+    unhandled 500. Coerced to {}, this must fall through to the ordinary
+    "all six sections missing" 400, never a 500."""
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json=[1, 2, 3], headers=counselor_auth)
+    assert res.status_code == 400
+    errors = res.get_json()["errors"]
+    assert len(errors) == len(PORTRAIT_KEYS)
+    assert "Section manquante ou vide : accroche." in errors
+
+
+def test_editing_a_portrait_that_does_not_exist_yet_is_a_409(client, candidate, counselor_auth):
+    _voyage(candidate, status=STATUS_TERMINE, share_token="tok-vide",
+            portrait_status="generating")
+    res = client.put("/api/voyage/c/tok-vide/portrait",
+                     json={"sections": _sections()}, headers=counselor_auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Aucun portrait à modifier."
+
+
+def test_regenerating_a_draft_spawns_the_run(client, sheet, counselor_auth):
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        res = client.post("/api/voyage/c/tok-conseiller/portrait/regenerate",
+                          headers=counselor_auth)
+    assert res.status_code == 202
+    assert res.get_json()["portrait"] == {"status": "generating", "sections": {},
+                                          "flags": [], "edited": False, "validated_at": None}
+    spawn.assert_called_once_with(sheet.id)
+    assert Voyage.query.one().portrait_status == "generating"
+
+
+def test_a_validated_portrait_is_not_regenerated(client, sheet, counselor_auth):
+    client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    res = client.post("/api/voyage/c/tok-conseiller/portrait/regenerate", headers=counselor_auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Le portrait ne peut plus être régénéré."
+
+
+def test_validating_records_who_did_it(client, sheet, counselor_auth):
+    res = client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    assert res.status_code == 200
+    portrait = res.get_json()["portrait"]
+    assert portrait["status"] == "validated"
+    assert portrait["validated_at"] is not None
+
+    row = Voyage.query.one()
+    assert row.validated_by_id is not None
+    assert row.portrait_validated_at is not None
+
+
+def test_a_portrait_is_validated_once(client, sheet, counselor_auth):
+    client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    res = client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Aucun portrait à valider."
+
+
+def test_validating_an_incomplete_portrait_is_refused(client, candidate, counselor_auth):
+    """A generation run that only produced some of the six sections must not
+    be validatable: get_portrait has no completeness check of its own (it
+    trusts portrait_status == "validated"), so this is the last point that
+    can stop an empty/partial portrait from reaching the candidate behind a
+    200. A blank string counts as missing, same as portrait_sections."""
+    voyage = _voyage(candidate, status=STATUS_TERMINE, share_token="tok-incomplet",
+                     portrait_status="draft")
+    sections = {k: f"texte {k}" for k in PORTRAIT_KEYS}
+    sections["chemins"] = ""
+    voyage.portrait = {"sections": sections, "flags": [], "edited": False}
+    _db.session.commit()
+
+    res = client.post("/api/voyage/c/tok-incomplet/validate", headers=counselor_auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Le portrait est incomplet : impossible de le valider."
+
+    row = Voyage.query.get(voyage.id)
+    assert row.portrait_status == "draft"
+    assert row.portrait_validated_at is None
+    assert row.validated_by_id is None
+
+
+def test_validation_is_what_opens_the_candidate_endpoint(client, sheet, auth, counselor_auth):
+    assert client.get("/api/voyage/portrait", headers=auth).status_code == 409
+    client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    res = client.get("/api/voyage/portrait", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["portrait"]["sections"]["accroche"] == "texte accroche"
+
+
+def test_a_validated_portrait_reaches_the_candidate_with_all_six_sections_intact(
+        client, sheet, auth, counselor_auth):
+    """Not just that six keys exist: the exact text the counselor validated
+    must be what the candidate reads, nothing dropped or substituted."""
+    client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    res = client.get("/api/voyage/portrait", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["portrait"]["sections"] == {k: f"texte {k}" for k in PORTRAIT_KEYS}
+
+
+def test_an_edit_is_still_allowed_after_validation(client, sheet, counselor_auth):
+    """A correction made during the restitution session must not require
+    un-validating the portrait in front of the person."""
+    client.post("/api/voyage/c/tok-conseiller/validate", headers=counselor_auth)
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json={"sections": _sections()}, headers=counselor_auth)
+    assert res.status_code == 200
+    assert res.get_json()["portrait"]["status"] == "validated"
+
+
+# ── private notes ────────────────────────────────────────────────────────────
+
+def test_notes_start_empty_and_upsert(client, sheet, counselor_auth):
+    assert client.get("/api/voyage/c/tok-conseiller/notes",
+                      headers=counselor_auth).get_json()["note"] is None
+
+    res = client.put("/api/voyage/c/tok-conseiller/notes",
+                     json={"body": "à revoir en RDV 2"}, headers=counselor_auth)
+    assert res.status_code == 200
+    assert res.get_json()["note"]["body"] == "à revoir en RDV 2"
+
+    res = client.put("/api/voyage/c/tok-conseiller/notes",
+                     json={"body": ""}, headers=counselor_auth)
+    assert res.get_json()["note"]["body"] == ""
+    assert VoyageNote.query.count() == 1
+
+
+def test_a_note_belongs_to_the_counselor_who_wrote_it(client, sheet, counselor_auth, app):
+    client.put("/api/voyage/c/tok-conseiller/notes",
+               json={"body": "note A"}, headers=counselor_auth)
+    other = _headers(_user("conseiller-2@test.fr", role="counselor"))
+    assert client.get("/api/voyage/c/tok-conseiller/notes",
+                      headers=other).get_json()["note"] is None
+    client.put("/api/voyage/c/tok-conseiller/notes", json={"body": "note B"}, headers=other)
+    assert VoyageNote.query.count() == 2
+
+
+def test_a_candidate_cannot_read_counselor_notes(client, sheet, auth):
+    assert client.get("/api/voyage/c/tok-conseiller/notes", headers=auth).status_code == 403
+
+
+def test_a_candidate_cannot_write_counselor_notes(client, sheet, auth):
+    """The role gate applies to the write side too, not only the read side."""
+    res = client.put("/api/voyage/c/tok-conseiller/notes",
+                     json={"body": "je ne devrais pas pouvoir écrire ceci"}, headers=auth)
+    assert res.status_code == 403
+    assert VoyageNote.query.count() == 0
+
+
+def test_notes_put_rejects_a_json_array_body_without_crashing(client, sheet, counselor_auth):
+    """Same probe as counselor_edit_portrait: a JSON array is truthy JSON and
+    must not survive to crash .get("body") into a 500. "body" is optional
+    here, so the coerced {} falls through to the ordinary empty-body case."""
+    res = client.put("/api/voyage/c/tok-conseiller/notes",
+                     json=[1, 2, 3], headers=counselor_auth)
+    assert res.status_code == 200
+    assert res.get_json()["note"]["body"] == ""
+
+
+def test_an_unknown_token_404s_every_counselor_route(client, counselor_auth):
+    """The 404 guard is not just on the sheet's GET — every one of the five
+    counselor handlers resolves the token first and must refuse the same way
+    for a token nobody holds."""
+    msg = {"error": "Voyage introuvable."}
+    assert client.put("/api/voyage/c/nope/portrait", json={"sections": _sections()},
+                      headers=counselor_auth).get_json() == msg
+    assert client.post("/api/voyage/c/nope/portrait/regenerate",
+                       headers=counselor_auth).get_json() == msg
+    assert client.post("/api/voyage/c/nope/validate", headers=counselor_auth).get_json() == msg
+    assert client.get("/api/voyage/c/nope/notes", headers=counselor_auth).get_json() == msg
+    assert client.put("/api/voyage/c/nope/notes", json={"body": "x"},
+                      headers=counselor_auth).get_json() == msg
