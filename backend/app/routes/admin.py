@@ -142,7 +142,11 @@ def set_user_role(user_id):
     # explicitly instead.
     data = request.get_json(silent=True)
     data = data if isinstance(data, dict) else {}
-    role = (data.get("role") or "").strip()
+    # Same guard as unlock_voyage's "code" and upsert_voyage_note's "body":
+    # a non-string "role" (an int, a list, a dict, a bool) must not reach
+    # .strip() and raise AttributeError -> an unhandled 500.
+    role = data.get("role")
+    role = role.strip() if isinstance(role, str) else ""
     if role not in ROLES:
         return jsonify({"error": "Rôle invalide."}), 400
 

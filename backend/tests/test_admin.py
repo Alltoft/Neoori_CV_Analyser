@@ -239,6 +239,20 @@ def test_a_non_dict_json_body_is_a_400_not_a_500(client, admin_headers, app):
     assert _db.session.get(User, user.id).role == "candidate"
 
 
+def test_a_non_string_role_field_is_a_400_not_a_500(client, admin_headers, app):
+    """`(data.get("role") or "").strip()` crashed on a non-string "role" (an
+    int, a list, a dict, a bool all survive `or` as truthy) with
+    AttributeError -> an unhandled 500. Must be the same clean 400 as an
+    unknown role string, for every one of those shapes."""
+    user = _plain_user("non-string-role@test.fr")
+    for bad_role in (5, [], {}, True):
+        res = client.put(f"/api/admin/users/{user.id}/role",
+                         json={"role": bad_role}, headers=admin_headers)
+        assert res.status_code == 400
+        assert res.get_json()["error"] == "Rôle invalide."
+    assert _db.session.get(User, user.id).role == "candidate"
+
+
 def test_the_last_admin_cannot_demote_itself(client, admin_headers, app):
     """Locking every admin out of the dashboard is not recoverable from the UI."""
     last_admin = User.query.filter_by(role="admin").one()
