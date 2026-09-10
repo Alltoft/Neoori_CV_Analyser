@@ -233,7 +233,288 @@ _SESSION_0 = {
 }
 
 
-SESSIONS: list[dict] = [_SESSION_0]
+_SESSION_1 = {
+    "n": "1",
+    "title": "Ce que tu faisais naturellement",
+    "subtitle": "Là où tout a commencé… · 6 scènes de ton enfance",
+    "intro": [
+        "Bienvenue dans cette session.",
+        "Aujourd'hui, on remonte plus loin. Bien plus loin. "
+        "On retourne dans ta cour d'école. "
+        "L'époque où quelque chose, déjà, te branchait. "
+        "Où tu étais naturellement, sans réfléchir.",
+        "Je vais te décrire 6 scènes de vie. Pour chacune, une question simple : "
+        "quelle était TA place là-dedans ?",
+    ],
+    "outro": [
+        "Voilà. Tu viens de poser les 6 premières pierres de ton portrait Neoori.",
+        "Ce que tu as choisi, ce ne sont pas des réponses à un questionnaire. "
+        "Ce sont des empreintes. Des traces laissées par ton fonctionnement naturel.",
+    ],
+    "duration": "15–20 min",
+    "kind": KIND_SCENES,
+    "items": [
+        {
+            "id": "S1-1",
+            "title": "La cabane",
+            "subtitle": "Ce que tu construisais avec les autres",
+            "narrative": [
+                "Il y a des bouts de bois, des cartons, des couvertures usées.",
+                "Et une idée qui flotte dans l'air : construire une cabane.",
+                "Autour de cette cabane, il y a toujours plusieurs tribus d'enfants.",
+                "Toi, tu repères instinctivement OÙ TU ÉTAIS.",
+            ],
+            "question": "À cet âge-là… tu te reconnaissais dans quel groupe ?",
+            "options": [
+                {"letter": "A", "label": "Les architectes",
+                 "text": "Ceux qui dessinaient le plan, qui avaient la vision.",
+                 "plain": "tu dessinais le plan, tu avais la vision",
+                 "riasec": {"R": 1, "I": 1, "E": 1, "C": 1}},
+                {"letter": "B", "label": "Les bâtisseurs",
+                 "text": "Ceux qui attrapaient les planches et construisaient. L'énergie brute.",
+                 "plain": "tu attrapais les planches et tu construisais",
+                 "riasec": {"R": 2, "C": 1}},
+                {"letter": "C", "label": "Les prospecteurs",
+                 "text": "Ceux qui partaient fouiller les garages, qui ramenaient LE bon carton.",
+                 "plain": "tu partais chercher et tu ramenais ce qu'il fallait",
+                 "riasec": {"R": 1, "I": 1}},
+                {"letter": "D", "label": "Les décorateurs",
+                 "text": "Ceux qui rendaient l'intérieur vivable et chaleureux.",
+                 "plain": "tu rendais l'endroit vivable et chaleureux",
+                 "riasec": {"A": 2, "C": 1}},
+                {"letter": "E", "label": "Les gardiens",
+                 "text": "Ceux qui montaient la garde, négociaient le territoire.",
+                 "plain": "tu gardais et tu négociais le territoire",
+                 "riasec": {"S": 1, "E": 1}},
+                {"letter": "F", "label": "Les rêveurs",
+                 "text": "Ceux qui racontaient des histoires une fois la cabane finie.",
+                 "plain": "tu racontais les histoires une fois la cabane finie",
+                 "riasec": {"A": 1, "I": 1}},
+            ],
+        },
+        {
+            "id": "S1-2",
+            "title": "Le cours qu'on attendait",
+            "subtitle": "La matière où le temps disparaissait",
+            "narrative": [
+                "La plupart des cours… bon. Mais il y avait CE cours,",
+                "où le temps n'existait plus. Où la sonnerie te faisait sursauter.",
+            ],
+            "question": "L'ambiance qui te parle le plus viscéralement :",
+            "options": [
+                {"letter": "A", "label": "Le labo",
+                 "text": "Microscopes, réactions chimiques. Le plaisir de comprendre les rouages.",
+                 "plain": "le plaisir de comprendre comment les choses marchent",
+                 "riasec": {"I": 2, "C": 1}},
+                {"letter": "B", "label": "L'atelier",
+                 "text": "Travaux manuels. La fierté de voir quelque chose naître entre ses mains.",
+                 "plain": "la fierté de voir quelque chose naître entre tes mains",
+                 "riasec": {"R": 2, "C": 1}},
+                {"letter": "C", "label": "La scène",
+                 "text": "Théâtre, musique, exposé. Le trac qui devient excitation.",
+                 "plain": "le trac qui devient de l'excitation devant les autres",
+                 "riasec": {"A": 2, "S": 1, "E": 1}},
+                {"letter": "D", "label": "Le terrain",
+                 "text": "Sport, sorties nature. S'adapter au réel, coordonner son corps.",
+                 "plain": "t'adapter au réel, bouger, coordonner ton corps",
+                 "riasec": {"R": 1, "S": 1}},
+                {"letter": "E", "label": "La bibliothèque",
+                 "text": "Le plaisir des mots, des histoires, des univers inventés.",
+                 "plain": "le plaisir des mots et des univers inventés",
+                 "riasec": {"I": 1, "A": 2}},
+                {"letter": "F", "label": "La cour",
+                 "text": "L'intercours. Organiser le jeu, convaincre les copains, rassembler.",
+                 "plain": "organiser le jeu, convaincre, rassembler",
+                 "riasec": {"E": 2, "S": 1}},
+            ],
+        },
+        {
+            "id": "S1-3",
+            "title": "L'histoire qu'on racontait",
+            "subtitle": "Les archétypes de l'enfance",
+            "narrative": [
+                "Quand t'étais petit(e), les adultes déposaient en toi des graines de métiers.",
+                "Lequel de ces archétypes résonne encore — celui qui, à 8 ans, "
+                "t'a fait dire « plus tard, je veux faire ça » pendant une semaine ?",
+            ],
+            "question": "Ta pulsion derrière, elle était réelle. La tienne, c'était quoi ?",
+            "options": [
+                {"letter": "A", "label": "L'archéologue",
+                 "text": "Celui qui découvre des trucs enfouis, qui lit le passé comme un livre.",
+                 "plain": "découvrir ce qui est enfoui et le déchiffrer",
+                 "riasec": {"I": 2, "R": 1}},
+                {"letter": "B", "label": "L'astronaute",
+                 "text": "Celui qui va là où personne n'est allé. La conquête.",
+                 "plain": "aller là où personne n'est allé",
+                 "riasec": {"I": 1, "E": 2}},
+                {"letter": "C", "label": "Le vétérinaire",
+                 "text": "Celui qui soigne, qui répare le vivant. La douceur, le soin.",
+                 "plain": "soigner, réparer le vivant",
+                 "riasec": {"S": 2, "R": 1}},
+                {"letter": "D", "label": "Le pompier",
+                 "text": "Celui qui sauve. Le courage physique, l'action héroïque, l'urgence.",
+                 "plain": "sauver, agir dans l'urgence",
+                 "riasec": {"R": 2, "S": 1}},
+                {"letter": "E", "label": "La maîtresse/le maître",
+                 "text": "Celui qui apprend aux autres. La transmission.",
+                 "plain": "apprendre aux autres, transmettre",
+                 "riasec": {"S": 2, "C": 1}},
+                {"letter": "F", "label": "Le/la chef(fe)",
+                 "text": "Celui qui décide. Le pouvoir, la responsabilité.",
+                 "plain": "décider et porter la responsabilité",
+                 "riasec": {"E": 2, "C": 1}},
+            ],
+        },
+        {
+            "id": "S1-4",
+            "title": "Le jeu dont tu ne te lassais pas",
+            "subtitle": "L'activité qui faisait perdre le temps",
+            "narrative": [
+                "On a tous eu CE jeu. Une activité ludique qui pouvait nous occuper des heures.",
+                "Laquelle te faisait vraiment perdre la notion du temps ?",
+            ],
+            "question": "Laquelle te faisait vraiment kiffer ?",
+            "options": [
+                {"letter": "A", "label": "Construire",
+                 "text": "Légos, Kapla, cabanes dans le jardin. La création matérielle.",
+                 "plain": "construire des choses de tes mains",
+                 "riasec": {"R": 2, "C": 1}},
+                {"letter": "B", "label": "Stratégie",
+                 "text": "Échecs, Risk. Le jeu où on gagnait par le plan, la ruse, l'intelligence.",
+                 "plain": "gagner par le plan et la ruse",
+                 "riasec": {"I": 2, "E": 1}},
+                {"letter": "C", "label": "Imaginer",
+                 "text": "Playmobil, poupées, les univers qu'on inventait. Fiction, faire-semblant.",
+                 "plain": "inventer des univers",
+                 "riasec": {"A": 2, "I": 1}},
+                {"letter": "D", "label": "Conquérir",
+                 "text": "Jeu vidéo d'action, cache-cache, sport. Adrénaline, défi physique.",
+                 "plain": "l'adrénaline et le défi physique",
+                 "riasec": {"R": 1, "E": 2}},
+                {"letter": "E", "label": "Collectionner",
+                 "text": "Cartes, timbres, billes. L'ordre, le classement, la complétude.",
+                 "plain": "l'ordre, le classement, la collection complète",
+                 "riasec": {"C": 2}},
+                {"letter": "F", "label": "Partager",
+                 "text": "Jeux de société, être ensemble. La connivence, le lien, le collectif.",
+                 "plain": "être ensemble, la connivence",
+                 "riasec": {"S": 2}},
+            ],
+        },
+        {
+            "id": "S1-5",
+            "title": "Le moment de fierté",
+            "subtitle": "La fierté qui montait de l'intérieur",
+            "narrative": [
+                "Un moment, entre 6 et 12 ans, où tu as ressenti une fierté immense.",
+                "Pas celle que les adultes t'ont donnée — celle qui est montée de l'intérieur.",
+            ],
+            "question": "En fermant les yeux… lequel de ces souvenirs émet encore une petite lumière ?",
+            "options": [
+                {"letter": "A", "label": "De ses mains",
+                 "text": "J'ai réussi à faire quelque chose de mes mains. "
+                         "Un objet qui n'existait pas avant.",
+                 "plain": "faire de tes mains un objet qui n'existait pas",
+                 "riasec": {"R": 2, "C": 1}},
+                {"letter": "B", "label": "Comprendre",
+                 "text": "J'ai compris quelque chose de compliqué. "
+                         "« Ahhh, c'est ça ! » La lumière, l'intuition.",
+                 "plain": "comprendre enfin quelque chose de compliqué",
+                 "riasec": {"I": 2}},
+                {"letter": "C", "label": "Captiver",
+                 "text": "J'ai fait rire ou j'ai captivé. J'ai raconté, et les autres ont réagi.",
+                 "plain": "captiver, raconter et voir les autres réagir",
+                 "riasec": {"A": 2, "S": 1}},
+                {"letter": "D", "label": "Gagner",
+                 "text": "J'ai gagné. Le match, la compétition, la course. "
+                         "Le sentiment de la victoire.",
+                 "plain": "gagner, le sentiment de la victoire",
+                 "riasec": {"E": 2, "R": 1}},
+                {"letter": "E", "label": "Aider",
+                 "text": "J'ai aidé. J'ai consolé quelqu'un, défendu un plus petit.",
+                 "plain": "aider, consoler, défendre plus petit que toi",
+                 "riasec": {"S": 2}},
+                {"letter": "F", "label": "Organiser",
+                 "text": "J'ai organisé. J'ai réuni, mené le projet, décidé. Et ça a marché.",
+                 "plain": "organiser, réunir, mener le projet",
+                 "riasec": {"E": 1, "C": 2}},
+            ],
+        },
+        {
+            "id": "S1-6",
+            "title": "Ce qu'on disait de toi",
+            "subtitle": "Le regard des autres — enfant",
+            "narrative": [
+                "Quand tu étais enfant, les adultes utilisaient des mots pour te décrire.",
+                "Des qualificatifs qui revenaient. Lequel collait le plus à ta peau d'enfant ?",
+            ],
+            "question": "S'il y avait UN adjectif qui revenait comme un leitmotiv… c'était lequel ?",
+            "options": [
+                {"letter": "A", "label": "Curieux(se)",
+                 "text": "« Il/elle est curieux(se) » — Tu posais tout le temps des questions.",
+                 "plain": "on te disait curieux, tu posais tout le temps des questions",
+                 "riasec": {"I": 2}},
+                {"letter": "B", "label": "Habile de ses mains",
+                 "text": "« Il/elle est habile de ses mains » — Tu réparais, bricolais, construisais.",
+                 "plain": "on te disait habile de tes mains",
+                 "riasec": {"R": 2}},
+                {"letter": "C", "label": "Imaginatif(ve)",
+                 "text": "« Il/elle est imaginatif(ve) » — Tu inventais des histoires, des mondes.",
+                 "plain": "on te disait imaginatif, tu inventais des mondes",
+                 "riasec": {"A": 2}},
+                {"letter": "D", "label": "Sportif(ve)",
+                 "text": "« Il/elle est sportif(ve) » — Tu avais besoin de bouger, courir.",
+                 "plain": "on te disait sportif, tu avais besoin de bouger",
+                 "riasec": {"R": 2, "E": 1}},
+                {"letter": "E", "label": "Sensible",
+                 "text": "« Il/elle est sensible » — Tu ressentais les émotions des autres.",
+                 "plain": "on te disait sensible aux émotions des autres",
+                 "riasec": {"S": 2}},
+                {"letter": "F", "label": "Suite dans les idées",
+                 "text": "« Il/elle a de la suite dans les idées » — Tu ne lâchais pas, tu insistais.",
+                 "plain": "on disait que tu avais de la suite dans les idées",
+                 "riasec": {"E": 1, "C": 2}},
+                {"letter": "G", "label": "Fédérateur(trice)",
+                 "text": "« Il/elle est fédérateur(trice) » — Les jeux s'organisaient autour de toi.",
+                 "plain": "les jeux s'organisaient autour de toi",
+                 "riasec": {"S": 1, "E": 2}},
+                {"letter": "H", "label": "Sérieux(se)",
+                 "text": "« Il/elle est sérieux(se) » — Tu écoutais, tu suivais les règles.",
+                 "plain": "on te disait sérieux, tu suivais les règles",
+                 "riasec": {"C": 2}},
+            ],
+        },
+    ],
+    "billet": [
+        {"key": "cabane", "label": "Dans la cabane, tu étais plutôt :"},
+        {"key": "jeu", "label": "Au jeu, tu préférais :"},
+        {"key": "fierte", "label": "Ta fierté venait de :"},
+        {"key": "regard", "label": "Les autres disaient que tu étais :"},
+    ],
+}
+
+
+SESSIONS: list[dict] = [_SESSION_0, _SESSION_1]
+
+
+def riasec_maxima() -> dict[str, int]:
+    """The best score reachable per RIASEC letter, computed from session 1.
+
+    Computed, never a literal: the counselor manual prints E 10 and C 10, but
+    summing the best available option per scene gives E 11 and C 9. Those two
+    are transcription slips in the paper sheet (spec errata 17b), and a
+    normalisation against the printed maxima would score E too high and C too
+    low for every person, invisibly.
+    """
+    maxima = {letter: 0 for letter in RIASEC_LETTERS}
+    for scene in _SESSION_1["items"]:
+        for letter in RIASEC_LETTERS:
+            best = max(
+                (option.get("riasec", {}).get(letter, 0) for option in scene["options"]),
+                default=0,
+            )
+            maxima[letter] += best
+    return maxima
 
 
 def axis_items(axis_id: str) -> list[tuple[str, int]]:
