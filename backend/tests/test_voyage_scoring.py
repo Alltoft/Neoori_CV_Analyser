@@ -427,3 +427,103 @@ def test_synthesize_is_pure():
     assert bank.SESSIONS[0]["items"][0]["text"] == (
         "Travailler dehors, sur le terrain, en mouvement"
     )
+
+
+# ── prompt_context — the reduced block, with no numbers in it ───────────────
+
+import re
+import unicodedata
+
+BANNED_ROOTS = (
+    "nevrotisme", "neuroticisme", "big five", "riasec", "schwartz", "sdt", "dunn",
+    "kahneman", "dweck", "frankl", "logotherapie", "conscienciosite", "agreabilite",
+    "extraversion", "introversion", "score", "trait", "axe",
+)
+
+# Pins the ordered label sequence of the validated-stage block: this pins
+# count, presence and order in one assertion, and stays stable when a
+# scorer's values legitimately change — unlike pinning all nine lines
+# verbatim, which would couple these tests to every scorer's output.
+EXPECTED_LABELS = [
+    "Phrase révélée",
+    "Ce qui l'attire le plus dans dix ans",
+    "Univers dominants",
+    "Besoin dominant",
+    "Ambivalences relevées",
+    "Cadre où elle donne le meilleur",
+    "Ce qui l'épuise",
+    "Ce qui la met en colère",
+    "Se sent vivant(e) quand",
+]
+
+
+def _fold(text):
+    stripped = unicodedata.normalize("NFD", text.lower())
+    return "".join(c for c in stripped if unicodedata.category(c) != "Mn")
+
+
+def test_prompt_context_s0_stage_is_the_phrase_and_the_attractions():
+    synthesis = scoring.synthesize(_answers())
+    lines = scoring.prompt_context(synthesis, "Une phrase.", scoring.STAGE_S0)
+    assert [line.split(" : ", 1)[0] for line in lines] == EXPECTED_LABELS[:2]
+    assert lines[0] == "Phrase révélée : Une phrase."
+    assert lines[1].startswith("Ce qui l'attire le plus dans dix ans : ")
+
+
+def test_prompt_context_validated_stage_adds_the_rest():
+    """The ordered label sequence pins count, presence and order in one
+    assertion, and stays stable when a scorer's values legitimately change —
+    unlike pinning all nine lines verbatim, which would couple this test to
+    every scorer's output.
+    """
+    synthesis = scoring.synthesize(_answers())
+    lines = scoring.prompt_context(synthesis, "Une phrase.", scoring.STAGE_VALIDATED)
+    assert [line.split(" : ", 1)[0] for line in lines] == EXPECTED_LABELS
+    assert lines[0] == "Phrase révélée : Une phrase."
+    assert lines[2] == "Univers dominants : Investigateur, Réaliste, Conventionnel"
+    assert lines[8] == "Se sent vivant(e) quand : elle crée"
+
+
+def test_prompt_context_never_emits_a_digit():
+    """A number in the block is a score reaching the report, whatever it counts."""
+    synthesis = scoring.synthesize(_answers())
+    for stage in scoring.STAGES:
+        for line in scoring.prompt_context(synthesis, "Une phrase.", stage):
+            assert not re.search(r"[0-9]", line), line
+
+
+def test_prompt_context_never_emits_a_framework_word():
+    synthesis = scoring.synthesize(_answers())
+    for stage in scoring.STAGES:
+        for line in scoring.prompt_context(synthesis, "Une phrase.", stage):
+            folded = _fold(line)
+            for word in BANNED_ROOTS:
+                assert not re.search(rf"\b{re.escape(word)}\b", folded), f"{word}: {line}"
+
+
+def test_prompt_context_never_emits_a_level_or_an_axis_label():
+    synthesis = scoring.synthesize(_answers())
+    lines = scoring.prompt_context(synthesis, "p", scoring.STAGE_VALIDATED)
+    joined = "\n".join(lines)
+    for level in (scoring.LEVEL_HIGH, scoring.LEVEL_MID, scoring.LEVEL_LOW):
+        assert level not in joined
+    for axis in bank.AXES.values():
+        assert axis["label"] not in joined
+        assert axis["pos"] not in joined
+        assert axis["neg"] not in joined
+
+
+def test_prompt_context_omits_a_line_rather_than_printing_an_empty_label():
+    synthesis = scoring.synthesize({"answers": {}, "billets": {}})
+    assert scoring.prompt_context(synthesis, None, scoring.STAGE_S0) == []
+    lines = scoring.prompt_context(synthesis, "Une phrase.", scoring.STAGE_VALIDATED)
+    assert lines == ["Phrase révélée : Une phrase."]
+    for line in lines:
+        assert not line.rstrip().endswith(":")
+
+
+def test_prompt_context_treats_an_unknown_stage_as_s0():
+    """Fail closed: an unrecognised stage must not leak the validated block."""
+    synthesis = scoring.synthesize(_answers())
+    unknown = scoring.prompt_context(synthesis, "p", "something-else")
+    assert unknown == scoring.prompt_context(synthesis, "p", scoring.STAGE_S0)

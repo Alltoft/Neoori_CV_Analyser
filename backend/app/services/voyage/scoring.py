@@ -332,3 +332,75 @@ def synthesize(responses: dict) -> dict:
         "s5": score_s5(responses),
         "completeness": completeness(responses),
     }
+
+
+# ── The reduced block that reaches an analysis ───────────────────────────────
+
+def _line(label: str, value) -> str | None:
+    """A labelled line, or None when there is nothing to say.
+
+    Never prints a label with an empty value: a bare « Besoin dominant : » in
+    the prompt invites the model to fill the blank.
+    """
+    if isinstance(value, (list, tuple)):
+        value = ", ".join(v for v in value if v)
+    text = (value or "").strip() if isinstance(value, str) else ""
+    return f"{label} : {text}" if text else None
+
+
+def prompt_context(synthesis: dict, micro_phrase: str | None, stage: str) -> list[str]:
+    """The plain-French lines stored as Analysis.inputs["_voyage"].
+
+    Content lines only — anthropic_service._voyage_block() adds the
+    "--- ... ---" header, exactly as _conditions_block() does for bloc 5.
+
+    Pure over `synthesis`: every string it can emit is already in that dict, and
+    it never reaches back into the bank. That is what makes "no numbers, no
+    framework words" a testable property rather than a promise.
+
+    Two stages, and the distinction is load-bearing. Before a counselor has
+    validated the portrait, an analysis receives only the phrase and the
+    session-0 attractions — the person has not been restituted yet, and a report
+    must not tell them what the counselor hasn't. An unrecognised stage is
+    treated as s0: this fails closed.
+
+    Note for phase 3: "Phrase révélée" shares a root with "révélation", which is
+    on the candidate-facing banned-copy list. That ban does not reach this
+    label because it is model-facing prompt text, not UI copy — but the
+    candidate-facing hub must not reuse this wording as its label for the
+    phrase.
+    """
+    synthesis = synthesis or {}
+    lines = [_line("Phrase révélée", micro_phrase)]
+
+    s0 = synthesis.get("s0") or {}
+    lines.append(_line(
+        "Ce qui l'attire le plus dans dix ans",
+        [entry["plain"] for entry in s0.get("top3") or []],
+    ))
+
+    if stage == STAGE_VALIDATED:
+        riasec = synthesis.get("riasec") or {}
+        s2 = synthesis.get("s2") or {}
+        s4 = synthesis.get("s4") or {}
+        s5 = synthesis.get("s5") or {}
+        lines.append(_line(
+            "Univers dominants",
+            [entry["univers"] for entry in riasec.get("top3") or []],
+        ))
+        lines.append(_line("Besoin dominant", s2.get("sdt_dominant") or []))
+        lines.append(_line(
+            "Ambivalences relevées",
+            " · ".join(t["tension"] for t in s0.get("tensions") or []),
+        ))
+        lines.append(_line(
+            "Cadre où elle donne le meilleur",
+            " · ".join(
+                v for v in (s4.get("espace"), s4.get("rythme"), s4.get("equipe")) if v
+            ),
+        ))
+        lines.append(_line("Ce qui l'épuise", s4.get("irritant")))
+        lines.append(_line("Ce qui la met en colère", s5.get("valeur_centrale")))
+        lines.append(_line("Se sent vivant(e) quand", s5.get("vivant")))
+
+    return [line for line in lines if line]
