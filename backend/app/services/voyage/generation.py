@@ -171,3 +171,35 @@ def leak_check(sections: dict[str, str] | None) -> list[str]:
     """
     haystack = _fold(" ".join(str(v or "") for v in (sections or {}).values()))
     return sorted({pattern for pattern, rx in _LEAK_RE if rx.search(haystack)})
+
+
+# ── message builders ─────────────────────────────────────────────────────────
+# Pure functions, called before db.session.remove(). The reduction discipline is
+# models/profile.prompt_context()'s: the model receives only what it is allowed
+# to say, so a rule can be enforced by a test rather than hoped for in prose.
+
+
+def _micro_user_message(synthesis: dict, prenom: str | None) -> str:
+    """Session 0 in plain words: the three strongest pulls and the hesitations.
+
+    No number, no axis id, no framework name. `plain` and `tension` come
+    straight from the bank's AXES table, which is where that wording has its
+    single home (contracts § A.2).
+    """
+    s0 = (synthesis or {}).get("s0") or {}
+    blocks: list[list[str]] = []
+
+    if str(prenom or "").strip():
+        blocks.append([HEADER_PROFIL, f"Prénom : {str(prenom).strip()}"])
+
+    session_0: list[str] = []
+    attractions = [a.get("plain") for a in s0.get("top3") or [] if a.get("plain")]
+    if attractions:
+        session_0.append(f"Ce qui l'attire le plus : {', '.join(attractions)}")
+    tensions = [t.get("tension") for t in s0.get("tensions") or [] if t.get("tension")]
+    if tensions:
+        session_0.append(f"Autant coché des deux côtés sur : {' · '.join(tensions)}")
+    if session_0:
+        blocks.append([HEADER_SESSION_0] + session_0)
+
+    return "\n\n".join("\n".join(block) for block in blocks)

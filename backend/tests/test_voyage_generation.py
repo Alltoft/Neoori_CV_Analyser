@@ -266,3 +266,54 @@ def test_empty_and_missing_sections_are_tolerated():
     assert gen.leak_check({}) == []
     assert gen.leak_check(None) == []
     assert gen.leak_check({"accroche": None, "vibrer": ""}) == []
+
+
+# ── _micro_user_message ──────────────────────────────────────────────────────
+
+def test_the_micro_message_has_the_two_blocks_in_order():
+    msg = gen._micro_user_message(SYNTHESIS, "Marie")
+    assert msg.index(gen.HEADER_PROFIL) < msg.index(gen.HEADER_SESSION_0)
+    assert "Prénom : Marie" in msg
+
+
+def test_the_micro_message_names_the_three_strongest_pulls_in_plain_french():
+    msg = gen._micro_user_message(SYNTHESIS, "Marie")
+    assert _line(msg, "Ce qui l'attire le plus : ") == (
+        "le lien avec les gens, un impact visible, le terrain et l'action")
+
+
+def test_the_micro_message_joins_the_tensions_with_a_middle_dot():
+    msg = gen._micro_user_message(SYNTHESIS, "Marie")
+    line = _line(msg, "Autant coché des deux côtés sur : ")
+    assert line.split(" · ") == [t["tension"] for t in SYNTHESIS["s0"]["tensions"]]
+
+
+def test_a_voyage_with_no_tension_gets_no_tension_line():
+    """A label with nothing after it is worse than no label."""
+    synthesis = copy.deepcopy(SYNTHESIS)
+    synthesis["s0"]["tensions"] = []
+    assert "Autant coché" not in gen._micro_user_message(synthesis, "Marie")
+
+
+def test_the_profile_block_disappears_when_the_prenom_is_unknown():
+    msg = gen._micro_user_message(SYNTHESIS, None)
+    assert gen.HEADER_PROFIL not in msg
+    assert "Prénom" not in msg
+    assert msg.startswith(gen.HEADER_SESSION_0)
+
+
+def test_an_s0_that_has_not_been_scored_yet_yields_an_empty_message():
+    assert gen._micro_user_message({"s0": None}, None) == ""
+
+
+def test_the_micro_message_carries_no_number_and_no_framework_word():
+    """« --- SESSION 0 --- » is the block label the module pins as a constant,
+    not a figure derived from the scoring, so it is stripped before the digit
+    rule applies — the same carve-out the synthesis block makes for the
+    manual's own ×1,5 note."""
+    msg = gen._micro_user_message(SYNTHESIS, "Marie")
+    assert not re.search(r"\d", msg.replace(gen.HEADER_SESSION_0, ""))
+    assert gen.leak_check({"message": msg}) == []
+    for word in ("Élevé", "Moyen", "Faible", "ouverture", "conscienciosite",
+                 "A1", "A9", "A10", "Réaliste"):
+        assert word not in msg
