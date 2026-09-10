@@ -10,6 +10,7 @@ from datetime import datetime
 import pytest
 
 from app.extensions import db as _db
+from app.models.analysis import Analysis
 from app.models.user import User
 from app.models.profile import Profile
 from app.models.voyage import (
@@ -510,6 +511,58 @@ def test_delete_erases_only_the_callers_own_voyage(client, auth, candidate):
     assert res.status_code == 200
     assert Voyage.query.get(voyage_a.id) is None
     assert Voyage.query.get(voyage_b.id) is not None
+
+
+def test_deleting_a_voyage_still_referenced_by_an_analysis_sets_it_null(client, auth, candidate):
+    """The regression test for the FK defect analyses.voyage_id was missing
+    an ondelete action for. Under FK enforcement, deleting a voyage an
+    analysis still points at used to raise an uncaught IntegrityError (would
+    be a 500 in production) because the constraint defaulted to no action.
+    ondelete="SET NULL" (analysis.py) plus the handler's own try/except mean
+    the erasure still succeeds and only the dangling link is cleared -- the
+    analysis itself, the person's own report and its B2G traceability row,
+    is never touched."""
+    voyage = _voyage(candidate)
+    analysis = Analysis(user_id=candidate.id, voyage_id=voyage.id, status="success")
+    _db.session.add(analysis)
+    _db.session.commit()
+
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["message"] == "Voyage supprimé."
+    assert Voyage.query.get(voyage.id) is None
+
+    refreshed = Analysis.query.get(analysis.id)
+    assert refreshed is not None
+    assert refreshed.voyage_id is None
+
+
+def test_deleting_a_voyage_through_the_endpoint_still_erases_its_notes(client, auth, candidate):
+    """Same cascade as test_deleting_a_voyage_erases_its_notes above, but
+    through the actual DELETE /api/voyage handler and with FK enforcement on
+    -- voyage_notes' own ondelete="CASCADE" must still let this go through
+    now that voyage_id -> voyages.id violations are no longer silently
+    ignored by SQLite."""
+    counselor = _user("note-cascade-endpoint@test.fr", role="counselor")
+    voyage = _voyage(candidate)
+    _db.session.add(VoyageNote(voyage_id=voyage.id, counselor_id=counselor.id, body="vu"))
+    _db.session.commit()
+
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert Voyage.query.get(voyage.id) is None
+    assert VoyageNote.query.count() == 0
+
+
+def test_deleting_an_unreferenced_voyage_still_returns_200(client, auth, candidate):
+    """No analysis ever pointed at this voyage: erasure must not regress
+    into the IntegrityError guard's 409 -- that guard is a safety net for a
+    database-level conflict, not the everyday path."""
+    voyage = _voyage(candidate)
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["message"] == "Voyage supprimé."
+    assert Voyage.query.get(voyage.id) is None
 
 
 # ── GET / PUT /api/voyage/responses ──────────────────────────────────────────

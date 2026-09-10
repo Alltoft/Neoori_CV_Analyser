@@ -20,6 +20,7 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
+from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models.counselor_code import CounselorCode
@@ -128,8 +129,16 @@ def delete_voyage():
     voyage = _current()
     if voyage is None:
         return jsonify({"message": "Aucun voyage à supprimer."}), 200
-    db.session.delete(voyage)
-    db.session.commit()
+    try:
+        db.session.delete(voyage)
+        db.session.commit()
+    except IntegrityError:
+        # Belt and braces alongside the FK's ondelete=SET NULL (analysis.py):
+        # a database-level constraint failure must end in a clean French 409,
+        # never an uncaught 500, and the session must not linger in a failed
+        # transaction.
+        db.session.rollback()
+        return jsonify({"error": "Voyage impossible à supprimer."}), 409
     return jsonify({"message": "Voyage supprimé."}), 200
 
 
