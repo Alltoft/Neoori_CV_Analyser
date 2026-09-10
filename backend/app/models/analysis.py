@@ -10,6 +10,9 @@ class Analysis(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True, index=True)
     prompt_version_id = db.Column(db.String(36), db.ForeignKey("prompt_versions.id"), nullable=True)
+    # Which voyage fed this analysis, when the person has played one. Nullable
+    # and never required: every parcours runs identically with no voyage.
+    voyage_id = db.Column(db.String(36), db.ForeignKey("voyages.id"), nullable=True, index=True)
 
     status = db.Column(
         db.Enum("draft", "queued", "running", "success", "error", "timeout", name="analysis_status"),
@@ -66,6 +69,7 @@ class Analysis(db.Model):
             "progress": 100 if self.status == "success" else (self.progress or 0),
             "share_token": self.share_token,
             "prompt_version_id": self.prompt_version_id,
+            "voyage_id": self.voyage_id,
             "unlock_method": self.unlock_method,
             "unlocked_at": self.unlocked_at.isoformat() if self.unlocked_at else None,
             "created_at": self.created_at.isoformat(),

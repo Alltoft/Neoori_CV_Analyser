@@ -81,3 +81,27 @@ def test_candidate_view_keeps_every_generated_section():
     output = {k: {"title": k, "body_markdown": "b", "items": []} for k in ("1", "4", "5", "9")}
     data = _analysis("1", output).to_dict()
     assert set(data["output"].keys()) == {"1", "4", "5", "9"}
+
+
+# ── voyage traceability ──────────────────────────────────────────────────────
+
+def test_to_dict_carries_the_voyage_that_fed_the_analysis():
+    """Same tier of data as prompt_version_id: which exploration produced this
+    report, kept so a B2G file can be reconstructed after a retake."""
+    analysis = _analysis("1")
+    analysis.voyage_id = "voy-123"
+    assert analysis.to_dict()["voyage_id"] == "voy-123"
+
+
+def test_voyage_id_is_null_rather_than_absent_when_there_is_no_voyage():
+    """The voyage is never required — every parcours runs identically without
+    one, and the key must still be there so the client need not branch."""
+    payload = _analysis("1").to_dict()
+    assert "voyage_id" in payload
+    assert payload["voyage_id"] is None
+
+
+def test_the_counselor_view_carries_it_too():
+    analysis = _analysis("1")
+    analysis.voyage_id = "voy-456"
+    assert analysis.to_dict(audience="counselor")["voyage_id"] == "voy-456"
