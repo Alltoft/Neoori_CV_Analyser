@@ -28,3 +28,6 @@ next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 .vercel
+
+# Superpowers SDD scratch (ledger, briefs, review packages)
+.superpowers/
