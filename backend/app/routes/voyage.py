@@ -17,18 +17,22 @@ session needs the one before it.
 """
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
 from ..models.profile import Profile
 from ..models.voyage import (
     CONSENT_VERSION,
+    LOCK_ORDER,
     STATUS_EN_COURS,
+    STATUS_S0,
+    STATUS_TERMINE,
     Voyage,
     session_lock,
 )
-from ..services.voyage import bank
+from ..services.voyage import bank, scoring
+from ..utils.tokens import generate_share_token
 
 voyage_bp = Blueprint("voyage", __name__)
 
@@ -200,3 +204,89 @@ def put_responses():
     voyage.responses = merged
     db.session.commit()
     return jsonify({"responses": voyage.responses}), 200
+
+
+# ── generation seam ──────────────────────────────────────────────────────────
+# The two spawn points live behind these two functions for two reasons: tests
+# monkeypatch them by name (app.routes.voyage._spawn_micro), the way
+# test_unlock.py patches app.services.unlock_service.start_analysis; and the
+# import is late, so this phase ships before services/voyage/generation.py
+# exists. Phase 2 creates that module with start_micro(voyage_id, app) /
+# start_portrait(voyage_id, app) and nothing here changes.
+
+def _spawn_micro(voyage_id: str) -> None:
+    try:
+        from ..services.voyage import generation
+    except ImportError:
+        current_app.logger.info("voyage: generation service absent, micro not spawned")
+        return
+    generation.start_micro(voyage_id, current_app._get_current_object())
+
+
+def _spawn_portrait(voyage_id: str) -> None:
+    try:
+        from ..services.voyage import generation
+    except ImportError:
+        current_app.logger.info("voyage: generation service absent, portrait not spawned")
+        return
+    generation.start_portrait(voyage_id, current_app._get_current_object())
+
+
+@voyage_bp.post("/sessions/<n>/complete")
+@jwt_required()
+def complete_session(n):
+    """Close a session.
+
+    Everything the session asks must be answered — the billet is optional, the
+    items are not. S0 flips the status and asks for the phrase; S5 finishes the
+    voyage, mints the share token the person hands to their counselor, and asks
+    for the portrait. Sessions 1-4 change no status.
+    """
+    if n not in bank.SESSION_IDS:
+        return jsonify({"error": "Session inconnue."}), 400
+
+    voyage = _current()
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+
+    done = list(voyage.sessions_completed or [])
+    if n in done:
+        return jsonify({"error": "Cette session est déjà terminée."}), 409
+
+    lock = session_lock(voyage, _profile(), n)
+    if lock == LOCK_ORDER:
+        # Out of order is a state conflict, not a permission problem.
+        return jsonify({"error": LOCK_ORDER}), 409
+    if lock:
+        return jsonify({"error": lock}), 403
+
+    missing = scoring.missing_items(voyage.responses, n)
+    if missing:
+        return jsonify({"errors": ["Réponses manquantes.", *missing]}), 400
+
+    # JSON column: reassign a new list. Appending in place leaves SQLAlchemy
+    # unaware of the change (the same trap as unlock_service's dict(inputs)).
+    voyage.sessions_completed = done + [n]
+
+    spawn = None
+    if n == "0":
+        voyage.status = STATUS_S0
+        voyage.micro_status = "generating"
+        spawn = "micro"
+    elif n == "5":
+        voyage.status = STATUS_TERMINE
+        voyage.completed_at = datetime.utcnow()
+        voyage.share_token = generate_share_token()
+        voyage.portrait_status = "generating"
+        spawn = "portrait"
+
+    db.session.commit()
+
+    # After the commit: the background run re-queries the row on its own
+    # connection, so it must already be there to find.
+    if spawn == "micro":
+        _spawn_micro(voyage.id)
+    elif spawn == "portrait":
+        _spawn_portrait(voyage.id)
+
+    return jsonify({"voyage": voyage.to_dict()}), 200

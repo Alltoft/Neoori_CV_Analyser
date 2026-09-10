@@ -655,3 +655,207 @@ def test_a_non_object_body_is_a_400_not_a_500(client, auth):
 
     stored = Voyage.query.get(voyage.id).responses
     assert stored["answers"] == {"S0-01": True}
+
+
+# ── POST /api/voyage/sessions/<n>/complete ───────────────────────────────────
+
+from unittest.mock import patch  # noqa: E402  (kept beside the tests that use it)
+
+
+def _play_session_zero(client, auth):
+    client.put("/api/voyage/responses", json={"answers": _answers_for("0")}, headers=auth)
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    return res, spawn
+
+
+def test_an_unknown_session_is_rejected(client, auth):
+    _open_voyage(client, auth)
+    res = client.post("/api/voyage/sessions/9/complete", headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Session inconnue."
+
+
+def test_completing_needs_every_item_of_the_session(client, auth):
+    _open_voyage(client, auth)
+    first, second = bank.items("0")[0]["id"], bank.items("0")[1]["id"]
+    client.put("/api/voyage/responses", json={"answers": {first: True}}, headers=auth)
+
+    res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert res.status_code == 400
+    errors = res.get_json()["errors"]
+    assert errors[0] == "Réponses manquantes."
+    assert second in errors[1:]
+    assert first not in errors[1:]
+
+
+def test_completing_session_zero_flips_the_status_and_asks_for_the_phrase(client, auth):
+    _open_voyage(client, auth)
+    res, spawn = _play_session_zero(client, auth)
+    assert res.status_code == 200
+    payload = res.get_json()["voyage"]
+    assert payload["status"] == STATUS_S0
+    assert payload["sessions_completed"] == ["0"]
+    assert payload["micro_status"] == "generating"
+    assert payload["share_token"] is None
+    spawn.assert_called_once_with(Voyage.query.one().id)
+
+
+def test_a_session_cannot_be_completed_twice(client, auth):
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+    res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Cette session est déjà terminée."
+    assert Voyage.query.one().sessions_completed == ["0"]
+
+
+def test_session_one_needs_the_code_then_the_profile(client, auth, candidate):
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+
+    res = client.post("/api/voyage/sessions/1/complete", headers=auth)
+    assert res.status_code == 403
+    assert res.get_json()["error"] == LOCK_CODE
+
+    voyage = Voyage.query.one()
+    voyage.counselor_code_id = "code-1"
+    _db.session.commit()
+    res = client.post("/api/voyage/sessions/1/complete", headers=auth)
+    assert res.status_code == 403
+    assert res.get_json()["error"] == LOCK_PROFILE
+
+
+def test_sessions_must_be_completed_in_order(client, auth, candidate):
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+    voyage = Voyage.query.one()
+    voyage.counselor_code_id = "code-1"
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _db.session.commit()
+
+    client.put("/api/voyage/responses", json={"answers": _answers_for("2")}, headers=auth)
+    res = client.post("/api/voyage/sessions/2/complete", headers=auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == LOCK_ORDER
+
+
+def _play_to_the_end(client, auth, candidate):
+    """Consent → S0 → code + profile → S1..S5. Returns the S5 response and the
+    patched portrait spawn."""
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+    voyage = Voyage.query.one()
+    voyage.counselor_code_id = "code-1"
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _db.session.commit()
+
+    for n in ("1", "2", "3", "4"):
+        client.put("/api/voyage/responses", json={"answers": _answers_for(n)}, headers=auth)
+        assert client.post(f"/api/voyage/sessions/{n}/complete", headers=auth).status_code == 200
+
+    client.put("/api/voyage/responses", json={"answers": _answers_for("5")}, headers=auth)
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        res = client.post("/api/voyage/sessions/5/complete", headers=auth)
+    return res, spawn
+
+
+def test_the_middle_sessions_change_no_status(client, auth, candidate):
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+    voyage = Voyage.query.one()
+    voyage.counselor_code_id = "code-1"
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _db.session.commit()
+
+    client.put("/api/voyage/responses", json={"answers": _answers_for("1")}, headers=auth)
+    res = client.post("/api/voyage/sessions/1/complete", headers=auth)
+    assert res.status_code == 200
+    payload = res.get_json()["voyage"]
+    assert payload["status"] == STATUS_S0
+    assert payload["sessions_completed"] == ["0", "1"]
+    assert payload["portrait_status"] == "none"
+
+
+def test_completing_session_five_finishes_the_voyage(client, auth, candidate):
+    res, spawn = _play_to_the_end(client, auth, candidate)
+    assert res.status_code == 200
+    payload = res.get_json()["voyage"]
+    assert payload["status"] == STATUS_TERMINE
+    assert payload["sessions_completed"] == ["0", "1", "2", "3", "4", "5"]
+    assert payload["completed_at"] is not None
+    assert payload["portrait_status"] == "generating"
+    assert len(payload["share_token"]) == 32
+    spawn.assert_called_once_with(Voyage.query.one().id)
+
+
+def test_completing_without_a_voyage_is_a_404(client, auth):
+    res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert res.status_code == 404
+    assert res.get_json()["error"] == "Aucun voyage en cours."
+
+
+# ── extra coverage: this phase shipped two production 500s already, so these
+# probes exist specifically to fail loudly if a similar defect creeps back in.
+
+def test_a_non_numeric_session_id_is_also_a_clean_400(client, auth):
+    """bank.SESSION_IDS is a tuple of digit strings; session_lock() does
+    str(int(n) - 1) once past that gate, so an unvalidated 'abc' would raise
+    ValueError -> 500 instead of a clean 4xx."""
+    _open_voyage(client, auth)
+    res = client.post("/api/voyage/sessions/abc/complete", headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Session inconnue."
+
+
+def test_completing_the_same_session_twice_leaves_no_duplicate(client, auth):
+    """The list column must be reassigned, not appended to in place, and the
+    second attempt must not sneak a second '0' into the list even though it
+    is refused with a 409."""
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+    client.post("/api/voyage/sessions/0/complete", headers=auth)
+    client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert Voyage.query.one().sessions_completed == ["0"]
+
+
+def test_the_lock_check_is_not_decorative(client, auth, candidate, monkeypatch):
+    """Prove the gate actually gates: with session_lock() forced to always
+    return None, completing S1 with no counselor code and no profile must
+    succeed — showing that without the real gate this request would have
+    been let through. Restored immediately after, and never committed."""
+    import app.routes.voyage as voyage_routes
+
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+
+    # With the real gate: refused outright — session_lock() is checked before
+    # the missing-items check, so this needs no answers on file to prove it.
+    blocked = client.post("/api/voyage/sessions/1/complete", headers=auth)
+    assert blocked.status_code == 403
+    assert blocked.get_json()["error"] == LOCK_CODE
+
+    # With the gate stubbed out: the same caller — still no counselor code, no
+    # profile — can now both save and complete session 1. This is exactly why
+    # the real session_lock() call must never be removed from either route.
+    monkeypatch.setattr(voyage_routes, "session_lock", lambda voyage, profile, n: None)
+    client.put("/api/voyage/responses", json={"answers": _answers_for("1")}, headers=auth)
+    allowed = client.post("/api/voyage/sessions/1/complete", headers=auth)
+    assert allowed.status_code == 200
+    assert Voyage.query.one().sessions_completed == ["0", "1"]
+
+
+def test_the_response_carries_no_scoring_or_framework_vocabulary(client, auth):
+    """Completing a session must not leak completeness figures, trait names or
+    framework names — to_dict()'s pinned 12-key shape is the only thing a
+    candidate may see."""
+    _open_voyage(client, auth)
+    res, _spawn = _play_session_zero(client, auth)
+    payload = res.get_json()["voyage"]
+    assert set(payload) == TO_DICT_KEYS
+    flat = str(payload)
+    for forbidden in (
+        "riasec", "RIASEC", "big5", "schwartz", "sdt", "axes",
+        "completeness", "resultant", "tension", "score",
+    ):
+        assert forbidden not in flat
