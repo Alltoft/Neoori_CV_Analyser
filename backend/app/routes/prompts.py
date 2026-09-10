@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
 from ..models.prompt_version import PromptVersion
-from ..services import prompt_slots
+from ..services import prompt_slots, section_registry as registry
 from ..utils.decorators import admin_required
 
 prompts_bp = Blueprint("prompts", __name__)
@@ -13,17 +13,25 @@ _SLOTS_LABEL = ", ".join(f"'{slot}'" for slot in prompt_slots.valid())
 def _read_path(raw):
     """Validate a prompt slot from the request, accepting legacy 'A'/'B'.
 
-    Slots are the parcours ids plus the two voyage prompts; see
-    services/prompt_slots.py. normalize() matches the voyage slots before
-    uppercasing, because this function used to uppercase first and
-    'VOYAGE_MICRO' is not a slot.
+    Deliberately does NOT go through prompt_slots.normalize(): that function
+    coerces *stored* values and defaults anything unrecognised to parcours 1,
+    which is right for rendering an old row and wrong for client input — it
+    would turn a typo in the admin UI into a silent overwrite of the live
+    parcours 1 prompt. Unknown input is the caller's error and gets a 400.
 
     Returns (slot, error_response).
     """
-    slot = prompt_slots.normalize(raw)
-    if not prompt_slots.is_valid(slot):
-        return None, (jsonify({"error": f"path doit être l'un de {_SLOTS_LABEL}."}), 400)
-    return slot, None
+    value = str(raw or "").strip()
+    if not value:
+        return registry.DEFAULT_PARCOURS, None
+    if value.lower() in prompt_slots.VOYAGE_SLOTS:
+        return value.lower(), None
+    upper = value.upper()
+    if upper in ("A", "B"):
+        return registry.normalize(upper), None
+    if prompt_slots.is_valid(value):
+        return value, None
+    return None, (jsonify({"error": f"path doit être l'un de {_SLOTS_LABEL}."}), 400)
 
 
 @prompts_bp.get("/")

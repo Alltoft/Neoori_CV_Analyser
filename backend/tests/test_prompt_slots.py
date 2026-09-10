@@ -138,3 +138,106 @@ def test_activating_a_voyage_prompt_leaves_the_parcours_prompts_alone(client, ad
         "path": "voyage_portrait", "activate": True})
     assert PromptVersion.query.filter_by(is_active=True, path="1").count() == 1
     assert PromptVersion.query.filter_by(is_active=True, path="voyage_portrait").count() == 1
+
+
+# ── validation must happen on raw input, not after defaulting ───────────────
+
+def test_empty_path_defaults_to_parcours_1(client, admin_headers):
+    """Missing or empty path argument should default to parcours 1."""
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v1.0-default",
+        "system_prompt_text": "Tu écris.",
+        # path omitted
+    })
+    assert res.status_code == 201
+    assert res.get_json()["prompt"]["path"] == "1"
+
+
+def test_bogus_path_returns_400(client, admin_headers):
+    """An unrecognised path must be rejected, not defaulted to parcours 1."""
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v1.0-bogus",
+        "system_prompt_text": "Tu écris.",
+        "path": "totally-bogus",
+    })
+    assert res.status_code == 400
+    assert "path doit être l'un de" in res.get_json()["error"]
+
+
+def test_bogus_path_with_activate_does_not_deactivate_live_prompt(client, admin_headers):
+    """This is the critical regression test. A typo in path with activate=true
+    must not silently deactivate and overwrite the live prompt."""
+    from app.models.prompt_version import PromptVersion
+    # Create an active parcours-1 prompt with specific content
+    active_p1 = PromptVersion(
+        version_label="v1-live",
+        system_prompt_text="Original live parcours 1 content",
+        path="1",
+        is_active=True,
+    )
+    from app.extensions import db
+    db.session.add(active_p1)
+    db.session.commit()
+    original_p1_id = active_p1.id
+
+    # Attempt to create a prompt with a typo'd path and activate=true
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v1.0-typo",
+        "system_prompt_text": "Garbage content",
+        "path": "voyage_micr0",  # Typo: 'voyage_micr0' not 'voyage_micro'
+        "activate": True,
+    })
+
+    # Request must fail
+    assert res.status_code == 400
+
+    # The original parcours-1 prompt must still be active
+    still_active = PromptVersion.query.filter_by(is_active=True, path="1").first()
+    assert still_active is not None
+    assert still_active.id == original_p1_id
+    assert still_active.system_prompt_text == "Original live parcours 1 content"
+
+
+def test_legacy_codes_resolve_to_correct_parcours(client, admin_headers):
+    """Legacy 'A'/'B' codes still work and resolve to the correct parcours."""
+    # Create with legacy code 'A'
+    res_a = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v-legacy-a",
+        "system_prompt_text": "Legacy A",
+        "path": "A",
+    })
+    assert res_a.status_code == 201
+    assert res_a.get_json()["prompt"]["path"] == "1"
+
+    # Create with legacy code 'B'
+    res_b = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v-legacy-b",
+        "system_prompt_text": "Legacy B",
+        "path": "B",
+    })
+    assert res_b.status_code == 201
+    assert res_b.get_json()["prompt"]["path"] == "3"
+
+
+def test_voyage_slots_accept_case_variants(client, admin_headers):
+    """Voyage slot names are case-insensitive in input."""
+    # Try mixed case
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v-mixed-case",
+        "system_prompt_text": "Mixed case slot",
+        "path": "Voyage_Portrait",  # Mixed case
+    })
+    assert res.status_code == 201
+    assert res.get_json()["prompt"]["path"] == "voyage_portrait"
+
+
+def test_parcours_ids_must_be_exact_case(client, admin_headers):
+    """Parcours ids are case-sensitive (numbers don't vary, but documented
+    for completeness)."""
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v-number-test",
+        "system_prompt_text": "Number test",
+        "path": "1",
+    })
+    assert res.status_code == 201
+    assert res.get_json()["prompt"]["path"] == "1"
