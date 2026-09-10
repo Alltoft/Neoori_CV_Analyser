@@ -137,3 +137,49 @@ def test_top3_excludes_zero_and_breaks_ties_by_axis_id():
         assert entry["resultant"] != 0
     magnitudes = [abs(e["resultant"]) for e in result["top3"]]
     assert magnitudes == sorted(magnitudes, reverse=True)
+
+
+# ── Session 1 — RIASEC ───────────────────────────────────────────────────────
+
+def test_score_riasec_is_none_until_session_1_is_complete():
+    partial = {"answers": {"S1-1": "A"}, "billets": {}}
+    assert scoring.score_riasec(partial) is None
+
+
+def test_score_riasec_sums_the_chosen_options():
+    """All A: S1-1 R1 I1 E1 C1 · S1-2 I2 C1 · S1-3 I2 R1 · S1-4 R2 C1
+       · S1-5 R2 C1 · S1-6 I2."""
+    result = scoring.score_riasec(_answers())
+    assert result["scores"] == {"R": 6, "I": 7, "A": 0, "S": 0, "E": 1, "C": 4}
+    assert result["maxima"] == bank.riasec_maxima()
+
+
+def test_score_riasec_normalizes_against_each_letter_own_ceiling():
+    result = scoring.score_riasec(_answers())
+    assert result["normalized"]["R"] == round(6 / 12, 3)
+    assert result["normalized"]["C"] == round(4 / 9, 3)
+    for letter, value in result["normalized"].items():
+        assert 0.0 <= value <= 1.0, letter
+
+
+def test_score_riasec_top3_ranks_on_normalized_not_raw():
+    result = scoring.score_riasec(_answers())
+    assert len(result["top3"]) == 3
+    order = [e["normalized"] for e in result["top3"]]
+    assert order == sorted(order, reverse=True)
+    assert result["top3"][0]["letter"] == "I"          # 7/11 = 0.636
+    assert result["top3"][0]["univers"] == "Investigateur"
+    assert set(result["top3"][0]) == {"letter", "univers", "score", "normalized"}
+    assert [e["letter"] for e in result["top3"]] == ["I", "R", "C"]
+
+
+def test_score_riasec_ties_break_on_letter_order():
+    """A tie on normalized resolves R I A S E C, never alphabetically or by dict
+    insertion — otherwise the same answers could rank differently across runs."""
+    result = scoring.score_riasec(_answers())
+    letters = [e["letter"] for e in result["top3"]]
+    for first, second in zip(letters, letters[1:]):
+        n_first = result["normalized"][first]
+        n_second = result["normalized"][second]
+        if n_first == n_second:
+            assert bank.RIASEC_LETTERS.index(first) < bank.RIASEC_LETTERS.index(second)

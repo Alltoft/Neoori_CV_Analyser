@@ -139,3 +139,44 @@ def score_s0(responses: dict) -> dict | None:
         })
 
     return {"axes": axes, "tensions": tensions, "top3": top3}
+
+
+# ── Session 1 — RIASEC ───────────────────────────────────────────────────────
+
+def score_riasec(responses: dict) -> dict | None:
+    """Holland letters, summed over the six childhood scenes.
+
+    Normalised because the letters have different ceilings: R can reach 12 and C
+    only 9, so a raw 9 means "at the top" for C and "three short" for R. `top3`
+    therefore ranks on the ratio, never on the raw score.
+    """
+    if not session_complete(responses, "1"):
+        return None
+
+    scores = {letter: 0 for letter in bank.RIASEC_LETTERS}
+    for item_id in bank.item_ids("1"):
+        option = chosen_option(responses, item_id)
+        for letter, points in (option.get("riasec") or {}).items():
+            scores[letter] += points
+
+    maxima = bank.riasec_maxima()
+    normalized = {
+        letter: round(scores[letter] / maxima[letter], 3) if maxima[letter] else 0.0
+        for letter in bank.RIASEC_LETTERS
+    }
+
+    ranked = sorted(
+        bank.RIASEC_LETTERS,
+        key=lambda letter: (-normalized[letter], bank.RIASEC_LETTERS.index(letter)),
+    )
+    top3 = [
+        {
+            "letter": letter,
+            "univers": bank.RIASEC_UNIVERS[letter],
+            "score": scores[letter],
+            "normalized": normalized[letter],
+        }
+        for letter in ranked[:3]
+    ]
+
+    return {"scores": scores, "maxima": maxima, "normalized": normalized, "top3": top3}
