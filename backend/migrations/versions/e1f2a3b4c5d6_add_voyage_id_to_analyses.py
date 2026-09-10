@@ -7,6 +7,10 @@ every parcours runs identically without one.
 
 batch_alter_table so the file runs on SQLite, which cannot ADD CONSTRAINT.
 
+DOWNGRADE LOSES DATA. Harmless today because nothing populates voyage_id yet,
+but once phase 5 does, dropping the column destroys the B2G traceability link
+between an analysis and the voyage that fed it.
+
 Revision ID: e1f2a3b4c5d6
 Revises: d0e1f2a3b4c5
 Create Date: 2026-09-09

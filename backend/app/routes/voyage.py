@@ -119,8 +119,11 @@ def create_voyage():
 def delete_voyage():
     """RGPD erasure, independent of the profile in both directions.
 
-    Not a 404 when there is nothing: the person asked for nothing to be left,
-    and nothing is left (mirrors delete_profile).
+    Erases the current voyage (§ E9:1175) and its counselor notes, cascade-
+    deleted with the row. An earlier, already-finished voyage from a retake is
+    untouched: it keeps existing with its own share token, so
+    GET /api/voyage/c/<its token> still serves it to a counselor. Not a 404
+    when there is nothing to erase: mirrors delete_profile.
     """
     voyage = _current()
     if voyage is None:

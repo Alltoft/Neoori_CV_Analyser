@@ -40,8 +40,8 @@ PORTRAIT_STATUSES = ("none", "generating", "draft", "validated", "error")
 PORTRAIT_KEYS = ("accroche", "qui_tu_es", "vibrer", "besoins", "chemins", "pas_encore")
 
 # The three lock reasons, in French: the API returns them as `error` and the
-# hub renders them on the locked card. frontend/src/types/voyage.ts mirrors
-# them byte for byte.
+# hub renders them on the locked card. Phase 3's frontend/src/types/voyage.ts
+# (not created yet) must mirror them byte for byte.
 LOCK_CODE = "Avec un conseiller"
 LOCK_PROFILE = "Complétez votre profil"
 LOCK_ORDER = "Terminez la session précédente"
