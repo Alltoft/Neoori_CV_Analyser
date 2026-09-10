@@ -331,3 +331,75 @@ def test_bank_totals():
     assert len(bank.all_item_ids()) == 53
     assert len(set(bank.all_item_ids())) == 53
     assert sum(len(s["billet"]) for s in bank.SESSIONS) == 20
+
+
+def test_public_strips_every_weight_at_every_depth():
+    payload = json.loads(json.dumps(bank.public()))
+
+    def walk(node, path="$"):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                assert key not in bank.PUBLIC_STRIP, f"{path}.{key} leaked"
+                walk(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{path}[{index}]")
+
+    walk(payload)
+    assert payload["scoring_version"] == bank.SCORING_VERSION
+    assert len(payload["sessions"]) == 6
+    assert "AXES" not in payload and "axes" not in payload
+
+
+def test_public_keeps_every_piece_of_text_the_ui_needs():
+    payload = bank.public()
+    s1 = next(s for s in payload["sessions"] if s["n"] == "1")
+    scene = s1["items"][0]
+    assert scene["title"] == "La cabane"
+    assert scene["options"][0]["label"] == "Les architectes"
+    assert scene["options"][0]["text"].startswith("Ceux qui dessinaient")
+    assert scene["options"][0]["letter"] == "A"
+
+
+def test_public_is_a_deep_copy():
+    payload = bank.public()
+    payload["sessions"][0]["items"][0]["text"] = "MUTATED"
+    assert bank.SESSIONS[0]["items"][0]["text"] != "MUTATED"
+
+
+def test_lookups():
+    assert bank.session("0")["title"] == "Dans 10 ans"
+    with pytest.raises(KeyError):
+        bank.session("9")
+    assert len(bank.items("1")) == 6
+    assert bank.item("S1-1")["title"] == "La cabane"
+    assert bank.item("S9-9") is None
+    assert bank.item_ids("4") == [f"S4-{k}" for k in range(1, 7)]
+    assert bank.option("S1-1", "B")["label"] == "Les bâtisseurs"
+    assert bank.option("S1-1", "Z") is None
+    assert bank.option("S0-01", "A") is None      # checklist items have no options
+    assert bank.billet_keys("5") == ["risque", "colere", "trace", "vivant"]
+
+
+def test_all_item_ids_is_session_order_then_item_order():
+    ids = bank.all_item_ids()
+    assert ids[0] == "S0-01"
+    assert ids[19] == "S0-20"
+    assert ids[20] == "S1-1"
+    assert ids[-1] == "S5-7"
+
+
+def test_validate_answer():
+    # session 0 takes booleans, and only booleans
+    assert bank.validate_answer("S0-01", True) is True
+    assert bank.validate_answer("S0-01", False) is True
+    assert bank.validate_answer("S0-01", "A") is False
+    assert bank.validate_answer("S0-01", 1) is False
+    assert bank.validate_answer("S0-01", "oui") is False
+    # scenes take a letter that exists on that scene
+    assert bank.validate_answer("S1-6", "H") is True
+    assert bank.validate_answer("S1-1", "H") is False    # S1-1 stops at F
+    assert bank.validate_answer("S1-1", "a") is False    # case-sensitive
+    assert bank.validate_answer("S1-1", True) is False
+    # unknown ids
+    assert bank.validate_answer("S9-1", "A") is False

@@ -1523,3 +1523,90 @@ def axis_items(axis_id: str) -> list[tuple[str, int]]:
             if loaded_axis == axis_id:
                 out.append((item["id"], sign))
     return out
+
+
+# ── Lookups ──────────────────────────────────────────────────────────────────
+# `item()` is defined earlier, next to `axis()`, from task 8. `option()` and the
+# rest are here so the newer lookups stay together.
+
+def sessions() -> list[dict]:
+    """All six sessions, in play order."""
+    return SESSIONS
+
+
+def session(n: str) -> dict:
+    """One session. Raises KeyError on an unknown id."""
+    for entry in SESSIONS:
+        if entry["n"] == n:
+            return entry
+    raise KeyError(n)
+
+
+def items(n: str) -> list[dict]:
+    return session(n)["items"]
+
+
+def item_ids(n: str) -> list[str]:
+    return [entry["id"] for entry in items(n)]
+
+
+def all_item_ids() -> list[str]:
+    """The 53 ids, session order then item order."""
+    return [entry["id"] for s in SESSIONS for entry in s["items"]]
+
+
+def option(item_id: str, letter: str) -> dict | None:
+    """One option of a scene, or None — including when the item is a checklist
+    item, which has no options at all."""
+    entry = item(item_id)
+    if entry is None:
+        return None
+    for candidate in entry.get("options", []):
+        if candidate["letter"] == letter:
+            return candidate
+    return None
+
+
+def billet_keys(n: str) -> list[str]:
+    return [field["key"] for field in session(n)["billet"]]
+
+
+def validate_answer(item_id: str, value) -> bool:
+    """Is `value` an acceptable answer to `item_id`?
+
+    The rule PUT /api/voyage/responses enforces. Deliberately strict about
+    booleans: `1` and `"oui"` are rejected, because a truthy check here would
+    let a client's stray string score as OUI on every axis the item loads.
+    """
+    entry = item(item_id)
+    if entry is None:
+        return False
+    if "options" not in entry:                      # session 0 checklist item
+        return value is True or value is False
+    if not isinstance(value, str):
+        return False
+    return any(candidate["letter"] == value for candidate in entry["options"])
+
+
+# ── The public view ──────────────────────────────────────────────────────────
+
+def _strip(node):
+    """Deep copy with every PUBLIC_STRIP key removed, at every depth."""
+    if isinstance(node, dict):
+        return {k: _strip(v) for k, v in node.items() if k not in PUBLIC_STRIP}
+    if isinstance(node, (list, tuple)):
+        return [_strip(v) for v in node]
+    return node
+
+
+def public() -> dict:
+    """The bank as GET /api/voyage/bank serves it: text only, no weights.
+
+    A deep copy — a caller mutating the result must not touch SESSIONS.
+
+    AXES is deliberately absent. Axis names are scoring output, and the person
+    never sees an axis, a trait or a framework name (spec decision 7). The same
+    reasoning removes `plain`: it is the model's paraphrase of an option, in a
+    register the UI never uses.
+    """
+    return {"scoring_version": SCORING_VERSION, "sessions": _strip(SESSIONS)}
