@@ -75,3 +75,67 @@ def chosen_option(responses: dict, item_id: str) -> dict | None:
     if not isinstance(value, str):
         return None
     return bank.option(item_id, value)
+
+
+# ── Session 0 — the ten bipolar axes ─────────────────────────────────────────
+
+def score_s0(responses: dict) -> dict | None:
+    """The manual's page-1 grid: ten axes, their tensions, and the top three.
+
+    Per item loading on an axis with sign s: OUI contributes +s, NON contributes
+    -s. `oui` / `non` count contributing items; `resultant` is the signed sum.
+    """
+    if not session_complete(responses, "0"):
+        return None
+
+    given = _answers(responses)
+    axes = {}
+    for axis_id, meta in bank.AXES.items():
+        loadings = bank.axis_items(axis_id)
+        oui = sum(1 for item_id, _ in loadings if given[item_id] is True)
+        non = len(loadings) - oui
+        resultant = sum(
+            sign if given[item_id] is True else -sign for item_id, sign in loadings
+        )
+        axes[axis_id] = {
+            "oui": oui,
+            "non": non,
+            "resultant": resultant,
+            "n_items": len(loadings),
+            "tension": (
+                TENSION_BAND[0] <= resultant <= TENSION_BAND[1]
+                and len(loadings) >= TENSION_MIN_ITEMS
+            ),
+        }
+
+    tensions = [
+        {
+            "axis": axis_id,
+            "resultant": entry["resultant"],
+            "label": bank.AXES[axis_id]["label"],
+            "tension": bank.AXES[axis_id]["tension"],
+        }
+        for axis_id, entry in axes.items()
+        if entry["tension"]
+    ]
+    tensions.sort(key=lambda t: int(t["axis"][1:]))
+
+    ranked = [
+        (axis_id, entry["resultant"])
+        for axis_id, entry in axes.items()
+        if entry["resultant"] != 0
+    ]
+    ranked.sort(key=lambda pair: (-abs(pair[1]), int(pair[0][1:])))
+    top3 = []
+    for axis_id, resultant in ranked[:3]:
+        pole = "pos" if resultant > 0 else "neg"
+        meta = bank.AXES[axis_id]
+        top3.append({
+            "axis": axis_id,
+            "resultant": resultant,
+            "pole": pole,
+            "label": meta[pole],
+            "plain": meta[f"plain_{pole}"],
+        })
+
+    return {"axes": axes, "tensions": tensions, "top3": top3}

@@ -65,3 +65,74 @@ def test_chosen_option():
     assert scoring.chosen_option(responses, "S1-1")["label"] == "Les prospecteurs"
     assert scoring.chosen_option({"answers": {}, "billets": {}}, "S1-1") is None
     assert scoring.chosen_option(responses, "S0-01") is None   # checklist, no options
+
+
+def test_score_s0_is_none_until_the_session_is_complete():
+    assert scoring.score_s0({"answers": {"S0-01": True}, "billets": {}}) is None
+
+
+def test_score_s0_sign_of_a_reversed_item():
+    """S0-11 loads A5 negatively. OUI pushes A5 toward stability."""
+    oui = scoring.score_s0(_answers(**{"S0-11": True}))
+    non = scoring.score_s0(_answers(**{"S0-11": False}))
+    # every other A5 item is False, so they each contribute -1 (sign +1, NON)
+    assert oui["axes"]["A5"]["resultant"] == non["axes"]["A5"]["resultant"] - 2
+    assert oui["axes"]["A5"]["oui"] == 1
+    assert oui["axes"]["A5"]["non"] == 3
+
+
+def test_score_s0_all_false_gives_every_positive_axis_its_full_negative():
+    result = scoring.score_s0(_answers())
+    # A9 has two items, both sign +1; both NON -> -2
+    assert result["axes"]["A9"] == {
+        "oui": 0, "non": 2, "resultant": -2, "n_items": 2, "tension": True,
+    }
+    assert set(result["axes"]) == set(bank.AXES)
+
+
+def test_a1_is_never_a_tension_even_though_it_always_lands_in_the_band():
+    """A1 has one item, so its resultant is always -1 or +1 — inside the band
+    for every person alive. Flagging it would weight it x1.5 in every portrait."""
+    for value in (True, False):
+        result = scoring.score_s0(_answers(**{"S0-08": value}))
+        assert result["axes"]["A1"]["n_items"] == 1
+        assert result["axes"]["A1"]["resultant"] in (-1, 1)
+        assert result["axes"]["A1"]["tension"] is False
+        assert all(t["axis"] != "A1" for t in result["tensions"])
+
+
+def test_tension_band_edges():
+    result = scoring.score_s0(_answers())
+    for entry in result["axes"].values():
+        inside = scoring.TENSION_BAND[0] <= entry["resultant"] <= scoring.TENSION_BAND[1]
+        expected = inside and entry["n_items"] >= scoring.TENSION_MIN_ITEMS
+        assert entry["tension"] is expected
+
+
+def test_tensions_are_ordered_by_axis_id_and_carry_plain_wording():
+    result = scoring.score_s0(_answers())
+    ids = [t["axis"] for t in result["tensions"]]
+    assert ids == sorted(ids, key=lambda a: int(a[1:]))
+    for entry in result["tensions"]:
+        assert set(entry) == {"axis", "resultant", "label", "tension"}
+        assert " vs " in entry["tension"]
+
+
+def test_top3_picks_the_pole_the_sign_points_to():
+    """Answer only the A7 items OUI: A7 resolves positive and ranks."""
+    a7_items = [item_id for item_id, _ in bank.axis_items("A7")]
+    result = scoring.score_s0(_answers(**{item_id: True for item_id in a7_items}))
+    a7 = next((e for e in result["top3"] if e["axis"] == "A7"), None)
+    assert a7 is not None, "A7 should rank in the top three"
+    assert a7["pole"] == "pos"
+    assert a7["label"] == bank.AXES["A7"]["pos"]
+    assert a7["plain"] == bank.AXES["A7"]["plain_pos"]
+    assert len(result["top3"]) <= 3
+
+
+def test_top3_excludes_zero_and_breaks_ties_by_axis_id():
+    result = scoring.score_s0(_answers())
+    for entry in result["top3"]:
+        assert entry["resultant"] != 0
+    magnitudes = [abs(e["resultant"]) for e in result["top3"]]
+    assert magnitudes == sorted(magnitudes, reverse=True)
