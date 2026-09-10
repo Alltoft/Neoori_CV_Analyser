@@ -4,6 +4,7 @@ from ..extensions import db
 from ..models.prompt_version import PromptVersion
 from ..services import prompt_slots, section_registry as registry
 from ..utils.decorators import admin_required
+from ..utils.request_body import json_object, text_field
 
 prompts_bp = Blueprint("prompts", __name__)
 
@@ -73,10 +74,10 @@ def get_prompt(prompt_id):
 def create_prompt():
     """Publish a new prompt version. Optionally activate it immediately."""
     user_id = get_jwt_identity()
-    data = request.get_json(silent=True) or {}
+    data = json_object()
 
-    version_label = (data.get("version_label") or "").strip()
-    system_prompt_text = (data.get("system_prompt_text") or "").strip()
+    version_label = text_field(data, "version_label")
+    system_prompt_text = text_field(data, "system_prompt_text")
     activate = data.get("activate", False)
     path, error = _read_path(data.get("path"))
     if error:

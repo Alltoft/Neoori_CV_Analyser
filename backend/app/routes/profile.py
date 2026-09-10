@@ -6,7 +6,7 @@ whether or not it is set. See `_upsert_sensitive`.
 """
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
@@ -19,6 +19,7 @@ from ..models.profile import (
     SensitiveProfile,
     normalize_conditions,
 )
+from ..utils.request_body import json_object
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -114,7 +115,7 @@ def get_conditions():
 @jwt_required()
 def upsert_profile():
     user_id = get_jwt_identity()
-    data = request.get_json(silent=True) or {}
+    data = json_object()
 
     errors = _validate(data)
     if errors:

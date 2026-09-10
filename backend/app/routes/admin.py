@@ -11,6 +11,7 @@ from ..models.voyage import STATUS_S0, STATUS_TERMINE, Voyage
 from ..services import section_registry as registry
 from ..services import tiers
 from ..utils.decorators import admin_required
+from ..utils.request_body import json_object, text_field
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -174,8 +175,8 @@ def list_counselor_codes():
 @admin_required
 def create_counselor_code():
     user_id = get_jwt_identity()
-    data = request.get_json(silent=True) or {}
-    label = (data.get("label") or "").strip()
+    data = json_object()
+    label = text_field(data, "label")
     if not label:
         return jsonify({"error": "label requis."}), 400
 

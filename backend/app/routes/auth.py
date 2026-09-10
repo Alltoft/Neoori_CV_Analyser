@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -11,14 +11,15 @@ from flask_jwt_extended import (
 )
 from ..extensions import db, bcrypt
 from ..models.user import User
+from ..utils.request_body import json_object, text_field
 
 auth_bp = Blueprint("auth", __name__)
 
 
 @auth_bp.post("/register")
 def register():
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
+    data = json_object()
+    email = text_field(data, "email").lower()
     password = data.get("password") or ""
 
     if not email or not password:
@@ -42,8 +43,8 @@ def register():
 
 @auth_bp.post("/login")
 def login():
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
+    data = json_object()
+    email = text_field(data, "email").lower()
     password = data.get("password") or ""
 
     user = User.query.filter_by(email=email).first()

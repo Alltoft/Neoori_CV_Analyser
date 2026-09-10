@@ -18,6 +18,7 @@ from ..models.analysis import Analysis
 from ..services import section_registry as registry
 from ..services import tiers
 from ..services.unlock_service import unlock_analysis
+from ..utils.request_body import json_object
 
 payments_bp = Blueprint("payments", __name__)
 
@@ -77,7 +78,7 @@ def create_checkout():
     if stripe is None:
         return jsonify({"error": "Paiement indisponible pour le moment."}), 503
 
-    data = request.get_json(silent=True) or {}
+    data = json_object()
     analysis_id = data.get("analysis_id")
     if not analysis_id:
         return jsonify({"error": "analysis_id requis."}), 400
@@ -126,7 +127,7 @@ def verify_session():
     if stripe is None:
         return jsonify({"error": "Paiement indisponible pour le moment."}), 503
 
-    data = request.get_json(silent=True) or {}
+    data = json_object()
     session_id = data.get("session_id")
     if not session_id:
         return jsonify({"error": "session_id requis."}), 400

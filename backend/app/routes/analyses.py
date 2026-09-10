@@ -1,7 +1,7 @@
 import os
 import re
 
-from flask import Blueprint, current_app, request, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from ..extensions import db
 from ..models.analysis import Analysis
@@ -9,6 +9,7 @@ from ..models.counselor_code import CounselorCode
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..utils.tokens import generate_share_token
+from ..utils.request_body import json_object, text_field
 from ..services import section_registry as registry
 from ..services import tiers
 from ..services.anthropic_service import start_analysis
@@ -54,7 +55,7 @@ def _normalize_chemin(value) -> str:
 @analyses_bp.post("/")
 def create_analysis():
     user_id = _optional_user_id()
-    data = request.get_json(silent=True) or {}
+    data = json_object()
     inputs = dict(data.get("inputs", {}))
     # normalize() maps the legacy 'A'/'B' codes onto parcours ids and falls
     # back to parcours 1 for anything unrecognised.
@@ -110,7 +111,7 @@ def save_draft():
     """Create or update a draft. Auth required — anonymous drafts would be
     orphaned (no user_id) and never visible in the user's space."""
     user_id = get_jwt_identity()
-    data = request.get_json(silent=True) or {}
+    data = json_object()
     inputs = data.get("inputs", {})
     draft_id = data.get("draft_id")
 
@@ -169,10 +170,10 @@ def unlock_with_code(analysis_id):
     analysis = Analysis.query.get_or_404(analysis_id)
     if not _may_access(analysis):
         return jsonify({"error": "Accès non autorisé."}), 403
-    data = request.get_json(silent=True) or {}
+    data = json_object()
 
     # Accept "ABCD1234", "abcd 1234", "ABCD-1234"… — codes are 8 alnum chars
-    raw = (data.get("code") or "").strip()
+    raw = text_field(data, "code")
     code_str = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
     if not code_str:
         return jsonify({"error": "Code requis."}), 400
@@ -201,8 +202,8 @@ def submit_price_feedback(analysis_id):
     if not _may_access(analysis):
         return jsonify({"error": "Accès non autorisé."}), 403
 
-    data = request.get_json(silent=True) or {}
-    bucket = (data.get("bucket") or "").strip()
+    data = json_object()
+    bucket = text_field(data, "bucket")
     if bucket not in BUCKETS:
         return jsonify({"error": "Réponse invalide."}), 400
 
