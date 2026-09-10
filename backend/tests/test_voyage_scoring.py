@@ -488,14 +488,18 @@ def test_prompt_context_never_emits_a_digit():
     """A number in the block is a score reaching the report, whatever it counts."""
     synthesis = scoring.synthesize(_answers())
     for stage in scoring.STAGES:
-        for line in scoring.prompt_context(synthesis, "Une phrase.", stage):
+        lines = scoring.prompt_context(synthesis, "Une phrase.", stage)
+        assert lines, stage
+        for line in lines:
             assert not re.search(r"[0-9]", line), line
 
 
 def test_prompt_context_never_emits_a_framework_word():
     synthesis = scoring.synthesize(_answers())
     for stage in scoring.STAGES:
-        for line in scoring.prompt_context(synthesis, "Une phrase.", stage):
+        lines = scoring.prompt_context(synthesis, "Une phrase.", stage)
+        assert lines, stage
+        for line in lines:
             folded = _fold(line)
             for word in BANNED_ROOTS:
                 assert not re.search(rf"\b{re.escape(word)}\b", folded), f"{word}: {line}"
@@ -527,3 +531,26 @@ def test_prompt_context_treats_an_unknown_stage_as_s0():
     synthesis = scoring.synthesize(_answers())
     unknown = scoring.prompt_context(synthesis, "p", "something-else")
     assert unknown == scoring.prompt_context(synthesis, "p", scoring.STAGE_S0)
+
+
+def test_prompt_context_emits_only_what_exists_at_the_validated_stage():
+    """The state most voyages actually sit in: session 0 done, 1-5 not.
+
+    Session 0 is the self-serve half of the product and sessions 1-5 need a
+    counselor, so this is the common case, not an edge case. It is also the
+    only one where the stage rule and the omission rule interact — the
+    validated stage asks for nine lines, six sources are None, and
+    "Ambivalences relevées" still emits because it reads s0.tensions.
+    """
+    s0_only = scoring.synthesize(
+        {"answers": {item_id: True for item_id in bank.item_ids("0")}, "billets": {}}
+    )
+    lines = scoring.prompt_context(s0_only, "Une phrase.", scoring.STAGE_VALIDATED)
+    assert [line.split(" : ", 1)[0] for line in lines] == [
+        "Phrase révélée",
+        "Ce qui l'attire le plus dans dix ans",
+        "Ambivalences relevées",
+    ]
+    assert lines[0] == "Phrase révélée : Une phrase."
+    for line in lines:
+        assert not line.rstrip().endswith(":")
