@@ -1,8 +1,23 @@
+import sqlite3
+
 import pytest
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
 from app import create_app
 from app.extensions import db as _db
 from app.models.user import User
 from flask_jwt_extended import create_access_token
+
+
+@event.listens_for(Engine, "connect")
+def _sqlite_enforce_foreign_keys(dbapi_connection, connection_record):
+    """SQLite ignores FK constraints unless asked, so tests silently pass over
+    violations MySQL would reject in production."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 @pytest.fixture

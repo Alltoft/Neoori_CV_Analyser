@@ -326,7 +326,7 @@ def test_the_later_sessions_need_a_counselor_code(app, candidate):
 def test_the_later_sessions_need_a_prenom_and_an_age_bracket(app, candidate):
     """The portrait uses both; « une information, une seule fois » forbids
     asking again inside the voyage."""
-    voyage = _voyage(candidate, sessions_completed=["0"], counselor_code_id="code-1")
+    voyage = _voyage(candidate, sessions_completed=["0"], counselor_code_id=_code().id)
     assert session_lock(voyage, None, "1") == LOCK_PROFILE
     profile = _profile_for(candidate, prenom="Marie")
     assert session_lock(voyage, profile, "1") == LOCK_PROFILE
@@ -336,7 +336,7 @@ def test_the_later_sessions_need_a_prenom_and_an_age_bracket(app, candidate):
 
 
 def test_sessions_come_in_order(app, candidate):
-    voyage = _voyage(candidate, sessions_completed=["0"], counselor_code_id="code-1")
+    voyage = _voyage(candidate, sessions_completed=["0"], counselor_code_id=_code().id)
     profile = _profile_for(candidate, prenom="Marie", tranche_age="25_34")
     assert session_lock(voyage, profile, "2") == LOCK_ORDER
     voyage.sessions_completed = ["0", "1"]
@@ -810,7 +810,7 @@ def test_session_one_needs_the_code_then_the_profile(client, auth, candidate):
     assert res.get_json()["error"] == LOCK_CODE
 
     voyage = Voyage.query.one()
-    voyage.counselor_code_id = "code-1"
+    voyage.counselor_code_id = _code().id
     _db.session.commit()
     res = client.post("/api/voyage/sessions/1/complete", headers=auth)
     assert res.status_code == 403
@@ -821,7 +821,7 @@ def test_sessions_must_be_completed_in_order(client, auth, candidate):
     _open_voyage(client, auth)
     _play_session_zero(client, auth)
     voyage = Voyage.query.one()
-    voyage.counselor_code_id = "code-1"
+    voyage.counselor_code_id = _code().id
     _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
     _db.session.commit()
 
@@ -837,7 +837,7 @@ def _play_to_the_end(client, auth, candidate):
     _open_voyage(client, auth)
     _play_session_zero(client, auth)
     voyage = Voyage.query.one()
-    voyage.counselor_code_id = "code-1"
+    voyage.counselor_code_id = _code().id
     _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
     _db.session.commit()
 
@@ -855,7 +855,7 @@ def test_the_middle_sessions_change_no_status(client, auth, candidate):
     _open_voyage(client, auth)
     _play_session_zero(client, auth)
     voyage = Voyage.query.one()
-    voyage.counselor_code_id = "code-1"
+    voyage.counselor_code_id = _code().id
     _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
     _db.session.commit()
 
