@@ -180,3 +180,129 @@ def test_costs_bills_legacy_nickname_rows(app, client, admin_headers):
     assert body["total"]["tiers"]["paid"]["tokens_in"] == 1_000_000
     # 1M in @ $3 + 1M out @ $15 = $18, converted to EUR
     assert body["total"]["cost_eur"] == round(18.0 * 0.92, 4)
+
+
+# ── roles ────────────────────────────────────────────────────────────────────
+
+from app.models.user import User  # noqa: E402
+from app.models.voyage import STATUS_S0, STATUS_TERMINE, Voyage  # noqa: E402
+from datetime import datetime as _dt  # noqa: E402
+
+
+def _plain_user(email="candidat@test.fr", role="candidate"):
+    user = User(email=email, password_hash="x", role=role)
+    _db.session.add(user)
+    _db.session.commit()
+    return user
+
+
+def test_an_admin_can_grant_the_counselor_role(client, admin_headers, app):
+    """Without this nobody can validate a voyage portrait, and the feature
+    ships with its last step unreachable."""
+    user = _plain_user()
+    res = client.put(f"/api/admin/users/{user.id}/role",
+                     json={"role": "counselor"}, headers=admin_headers)
+    assert res.status_code == 200
+    assert res.get_json()["user"]["role"] == "counselor"
+    assert _db.session.get(User, user.id).role == "counselor"
+
+
+def test_an_unknown_role_is_refused(client, admin_headers, app):
+    user = _plain_user("autre@test.fr")
+    res = client.put(f"/api/admin/users/{user.id}/role",
+                     json={"role": "superviseur"}, headers=admin_headers)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Rôle invalide."
+    assert _db.session.get(User, user.id).role == "candidate"
+
+
+def test_an_unknown_user_is_a_404(client, admin_headers):
+    assert client.put("/api/admin/users/nobody/role",
+                      json={"role": "counselor"}, headers=admin_headers).status_code == 404
+
+
+def test_a_malformed_user_id_is_a_clean_4xx(client, admin_headers):
+    """A String(36) primary key means a garbage id never matches, not a 500."""
+    res = client.put("/api/admin/users/!!!not-a-uuid!!!/role",
+                     json={"role": "counselor"}, headers=admin_headers)
+    assert res.status_code == 404
+
+
+def test_a_non_dict_json_body_is_a_400_not_a_500(client, admin_headers, app):
+    """`request.get_json(silent=True) or {}` would let a truthy list through
+    to .get() and raise AttributeError -> 500. Must be a clean 400 instead."""
+    user = _plain_user("array-body@test.fr")
+    res = client.put(f"/api/admin/users/{user.id}/role",
+                     json=[1, 2, 3], headers=admin_headers)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "Rôle invalide."
+    assert _db.session.get(User, user.id).role == "candidate"
+
+
+def test_the_last_admin_cannot_demote_itself(client, admin_headers, app):
+    """Locking every admin out of the dashboard is not recoverable from the UI."""
+    last_admin = User.query.filter_by(role="admin").one()
+    res = client.put(f"/api/admin/users/{last_admin.id}/role",
+                     json={"role": "candidate"}, headers=admin_headers)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Impossible de retirer le dernier rôle administrateur."
+    assert _db.session.get(User, last_admin.id).role == "admin"
+
+
+def test_an_admin_can_be_demoted_once_another_one_exists(client, admin_headers, app):
+    first = User.query.filter_by(role="admin").one()
+    _plain_user("admin-2@test.fr", role="admin")
+    res = client.put(f"/api/admin/users/{first.id}/role",
+                     json={"role": "counselor"}, headers=admin_headers)
+    assert res.status_code == 200
+    # Status alone would pass on a handler that returns 200 without committing.
+    assert res.get_json()["user"]["role"] == "counselor"
+    assert _db.session.get(User, first.id).role == "counselor"
+
+
+def test_the_role_endpoint_is_admin_only(client, app):
+    from flask_jwt_extended import create_access_token
+    user = _plain_user("pas-admin@test.fr")
+    token = create_access_token(identity=str(user.id), additional_claims={"role": "candidate"})
+    res = client.put(f"/api/admin/users/{user.id}/role", json={"role": "admin"},
+                     headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 403
+
+
+def test_the_role_endpoint_rejects_a_counselor_jwt(client, app):
+    from flask_jwt_extended import create_access_token
+    user = _plain_user("conseiller@test.fr", role="counselor")
+    token = create_access_token(identity=str(user.id), additional_claims={"role": "counselor"})
+    res = client.put(f"/api/admin/users/{user.id}/role", json={"role": "admin"},
+                     headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 403
+
+
+# ── voyage KPIs ──────────────────────────────────────────────────────────────
+
+def _voyage_row(user, **overrides):
+    fields = {"user_id": user.id, "status": "en_cours", "sessions_completed": [],
+              "consent_at": _dt.utcnow(), "consent_version": "voyage-v1",
+              "age_attested": True}
+    fields.update(overrides)
+    row = Voyage(**fields)
+    _db.session.add(row)
+    _db.session.commit()
+    return row
+
+
+def test_stats_counts_voyages_by_stage(client, admin_headers, app):
+    user = _plain_user("kpi@test.fr")
+    _voyage_row(user)
+    _voyage_row(user, status=STATUS_S0)
+    _voyage_row(user, status=STATUS_TERMINE, share_token="kpi-1")
+    _voyage_row(user, status=STATUS_TERMINE, share_token="kpi-2",
+                portrait_status="validated")
+
+    stats = client.get("/api/admin/stats", headers=admin_headers).get_json()
+    assert stats["voyages"] == {"started": 4, "s0_done": 3, "completed": 2, "validated": 1}
+
+
+def test_stats_reports_zeros_rather_than_omitting_the_block(client, admin_headers):
+    stats = client.get("/api/admin/stats", headers=admin_headers).get_json()
+    assert stats["voyages"] == {"started": 0, "s0_done": 0, "completed": 0, "validated": 0}

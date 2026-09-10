@@ -7,11 +7,17 @@ from ..models.analysis import Analysis
 from ..models.user import User
 from ..models.prompt_version import PromptVersion
 from ..models.counselor_code import CounselorCode
+from ..models.voyage import STATUS_S0, STATUS_TERMINE, Voyage
 from ..services import section_registry as registry
 from ..services import tiers
 from ..utils.decorators import admin_required
 
 admin_bp = Blueprint("admin", __name__)
+
+# The three values User.role may hold. PUT /users/<id>/role is the only way to
+# change one: without it nobody can be made a counselor, and nobody can
+# validate a voyage portrait.
+ROLES = ("candidate", "counselor", "admin")
 
 # Pricing and model routing live in services/tiers.py so the generation path
 # and this dashboard can't drift. Legacy rows store the old model nicknames
@@ -44,6 +50,15 @@ def stats():
     active_prompts = PromptVersion.query.filter_by(is_active=True).all()
     by_path = {p.path: p.to_dict(include_text=False) for p in active_prompts}
 
+    voyages = {
+        "started": Voyage.query.count(),
+        # A voyage past S0 is either s0_termine or termine — the status
+        # carries what "0" in sessions_completed says, without a JSON read.
+        "s0_done": Voyage.query.filter(Voyage.status.in_((STATUS_S0, STATUS_TERMINE))).count(),
+        "completed": Voyage.query.filter_by(status=STATUS_TERMINE).count(),
+        "validated": Voyage.query.filter_by(portrait_status="validated").count(),
+    }
+
     return jsonify({
         "total_analyses": total_analyses,
         "success_count": success_count,
@@ -56,6 +71,7 @@ def stats():
         "active_prompts": by_path,
         # Kept so an older frontend build doesn't lose the KPI tile mid-deploy.
         "active_prompt": by_path.get(registry.DEFAULT_PARCOURS),
+        "voyages": voyages,
     }), 200
 
 
@@ -108,6 +124,39 @@ def list_all_analyses():
 def list_users():
     users = User.query.order_by(User.created_at.desc()).all()
     return jsonify({"users": [u.to_dict() for u in users]}), 200
+
+
+@admin_bp.put("/users/<user_id>/role")
+@admin_required
+def set_user_role(user_id):
+    """Grant or revoke a role.
+
+    The only way to make a counselor, and therefore the only way anyone can
+    ever validate a voyage portrait. Demoting the last admin is refused: it
+    locks every admin out of the dashboard, and nothing in the UI recovers
+    from that.
+    """
+    # A JSON body that parses but isn't an object (e.g. a bare array or
+    # string) is still truthy, so `... or {}` would let a non-dict through
+    # to .get() and raise AttributeError -> an unhandled 500. Normalize
+    # explicitly instead.
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    role = (data.get("role") or "").strip()
+    if role not in ROLES:
+        return jsonify({"error": "Rôle invalide."}), 400
+
+    user = User.query.get_or_404(user_id)
+    if user.role == "admin" and role != "admin":
+        others = User.query.filter(User.role == "admin", User.id != user.id).count()
+        if others == 0:
+            return jsonify({
+                "error": "Impossible de retirer le dernier rôle administrateur."
+            }), 409
+
+    user.role = role
+    db.session.commit()
+    return jsonify({"user": user.to_dict()}), 200
 
 
 @admin_bp.get("/counselor-codes")
