@@ -1021,3 +1021,272 @@ def test_the_error_write_back_does_not_inherit_the_streams_session(app):
     row = _reload(voyage_id)
     assert row.micro_status == "error"
     assert row.tokens_in == 5
+
+
+# ── _run_portrait ────────────────────────────────────────────────────────────
+
+def _portrait_json(sections):
+    return json.dumps(sections, ensure_ascii=False)
+
+
+def test_the_portrait_run_stores_six_sections_a_snapshot_and_a_draft_status(app):
+    voyage = _voyage(_full_responses(), status="termine", portrait_status="generating")
+    _seed("voyage_portrait", "Tu écris six sections.")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_get_client",
+                      return_value=_client(_portrait_json(CLEAN_SECTIONS))):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert row.portrait_sections == CLEAN_SECTIONS
+    assert row.portrait["flags"] == []
+    assert row.portrait["edited"] is False
+    assert row.portrait["error"] is None
+    assert row.portrait["snapshot"]["scoring_version"] == bank.SCORING_VERSION
+    assert row.portrait["tokens_in"] == 300
+    assert row.portrait["tokens_out"] == 900
+    assert row.tokens_in == 300
+
+
+def test_the_portrait_call_carries_the_schema_the_paid_model_and_the_budget(app):
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = _client(_portrait_json(CLEAN_SECTIONS))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    kwargs = client.messages.stream.call_args.kwargs
+    assert kwargs["model"] == tiers.model_for(tiers.PAID)[0]
+    assert kwargs["max_tokens"] == gen.PORTRAIT_MAX_TOKENS
+    fmt = kwargs["extra_body"]["output_config"]["format"]
+    assert fmt["type"] == "json_schema"
+    assert list(fmt["schema"]["properties"]) == list(gen.PORTRAIT_KEYS)
+
+
+def test_a_refused_output_config_degrades_to_a_plain_call(app):
+    """Same fallback as _run_analysis: an old API surface must not cost the
+    portrait, only its schema."""
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = _client(_bad_request(), "```json\n" + _portrait_json(CLEAN_SECTIONS) + "\n```")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    first, second = client.messages.stream.call_args_list
+    assert "extra_body" in first.kwargs
+    assert "extra_body" not in second.kwargs
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert row.portrait_sections == CLEAN_SECTIONS
+
+
+def test_a_leaking_draft_is_regenerated_once_with_the_words_quoted(app):
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = _client(_portrait_json(LEAKY_SECTIONS), _portrait_json(CLEAN_SECTIONS))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2
+    retry = client.messages.stream.call_args_list[1].kwargs["messages"]
+    assert [m["role"] for m in retry] == ["user", "assistant", "user"]
+    for word in ("névrotisme", "riasec", "score"):
+        assert word in retry[-1]["content"]
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert row.portrait["flags"] == []
+    assert row.portrait_sections["qui_tu_es"] == CLEAN_SECTIONS["qui_tu_es"]
+    # Both calls are billed to the row.
+    assert row.portrait["tokens_in"] == 600
+    assert row.portrait["tokens_out"] == 1800
+
+
+def test_a_draft_that_still_leaks_is_kept_and_flagged(app):
+    """Flag-and-keep, not fail: a counselor validates before the person reads
+    it, and a flagged draft is more useful than none."""
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = _client(_portrait_json(LEAKY_SECTIONS), _portrait_json(LEAKY_SECTIONS))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2      # one retry, never two
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert row.portrait["flags"] == [gen.FLAG_VOCABULAIRE]
+    assert row.portrait_sections["qui_tu_es"] == LEAKY_SECTIONS["qui_tu_es"]
+
+
+def test_a_missing_slot_prompt_puts_the_portrait_in_error(app):
+    voyage = _voyage(_full_responses(), status="termine", portrait_status="generating")
+    voyage_id = voyage.id
+
+    gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert row.portrait["error"] == "Aucun prompt actif pour le slot voyage_portrait."
+    assert row.portrait_sections == {}
+
+
+def test_an_unreadable_answer_puts_the_portrait_in_error(app):
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_get_client",
+                      return_value=_client("Je ne peux pas répondre à cette demande.")):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert row.portrait["error"]
+
+
+def test_an_api_failure_puts_the_portrait_in_error(app):
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = MagicMock()
+    client.messages.stream.side_effect = RuntimeError("upstream timeout")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert "upstream timeout" in row.portrait["error"]
+
+
+def test_a_missing_key_comes_back_as_an_empty_section_not_a_crash(app):
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+    partial = {k: v for k, v in CLEAN_SECTIONS.items() if k != "pas_encore"}
+
+    with patch.object(gen, "_get_client", return_value=_client(_portrait_json(partial))):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert set(row.portrait["sections"]) == set(gen.PORTRAIT_KEYS)
+    assert row.portrait["sections"]["pas_encore"] == ""
+
+
+def test_a_portrait_build_that_raises_fails_the_row_instead_of_stranding_it(app):
+    """The route commits portrait_status = "generating" before spawning us. If
+    the message build raises, this thread is the only thing that will ever move
+    that status — so it has to move it."""
+    voyage = _voyage(_full_responses(), status="termine", portrait_status="generating")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_portrait_user_message", side_effect=ValueError("bank drift")):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert "bank drift" in row.portrait["error"]
+
+
+def test_a_failed_portrait_run_still_records_which_prompt_it_used(app):
+    """B2G traceability: an error row that cannot name its prompt is not traceable."""
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+    expected = PromptVersion.query.filter_by(path="voyage_portrait").first().id
+
+    client = MagicMock()
+    client.messages.stream.side_effect = RuntimeError("upstream is down")
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert row.portrait["prompt_version_id"] == expected
+
+
+def test_the_portrait_success_write_back_does_not_inherit_the_streams_session(app):
+    """The stream holds no connection, so anything left in the registry when it
+    returns may be stale. Here the stream dirties a session; the write-back must
+    discard it rather than flush its pending change alongside the sections."""
+    voyage = _voyage(_full_responses(), status="termine", tokens_in=5)
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    def streaming(**_kwargs):
+        db.session.get(Voyage, voyage_id).tokens_in = 999
+        return _stream_of(_portrait_json(CLEAN_SECTIONS))
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert row.tokens_in == 305       # 5 + 300, not 999 + 300
+
+
+def test_the_portrait_error_write_back_does_not_inherit_the_streams_session(app):
+    """Same rule on the path that matters most: the failure has to be recorded
+    from a fresh, pre-pinged session, not from whatever the stream left."""
+    voyage = _voyage(_full_responses(), status="termine", tokens_in=5)
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    def streaming(**_kwargs):
+        db.session.get(Voyage, voyage_id).tokens_in = 999
+        raise RuntimeError("connection reset by peer")
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert row.tokens_in == 5
+
+
+def test_the_generated_texts_are_ciphertext_at_rest(app):
+    """A psychometric portrait is more sensitive than bloc 5. The plaintext
+    columns hold statuses and timestamps, nothing else."""
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_micro")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_get_client", return_value=_client("Une phrase à toi.")):
+        gen._run_micro(voyage_id, app)
+    with patch.object(gen, "_get_client",
+                      return_value=_client(_portrait_json(CLEAN_SECTIONS))):
+        gen._run_portrait(voyage_id, app)
+
+    db.session.expire_all()
+    raw = db.session.execute(
+        db.text("SELECT micro_encrypted, portrait_encrypted FROM voyages WHERE id = :i"),
+        {"i": voyage_id}).first()
+    blob = f"{raw[0]}{raw[1]}"
+    assert "Une phrase à toi." not in blob
+    assert CLEAN_SECTIONS["accroche"] not in blob
+    assert "accroche" not in blob
+
+
+def test_start_portrait_spawns_a_daemon_thread_and_returns(app):
+    with patch.object(gen.threading, "Thread") as Thread:
+        gen.start_portrait("some-id", app)
+    Thread.assert_called_once_with(target=gen._run_portrait, args=("some-id", app),
+                                   daemon=True)
+    Thread.return_value.start.assert_called_once()

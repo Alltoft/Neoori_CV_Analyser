@@ -525,3 +525,172 @@ def _run_micro(voyage_id: str, app) -> None:
 def start_micro(voyage_id: str, app) -> None:
     """Spawn a daemon thread that writes the session-0 phrase. Returns at once."""
     threading.Thread(target=_run_micro, args=(voyage_id, app), daemon=True).start()
+
+
+# ── the portrait ─────────────────────────────────────────────────────────────
+
+
+def _parse_sections(raw: str) -> dict:
+    """The six sections out of the model's answer.
+
+    Structured output makes this a plain JSON object; the degraded path
+    (extra_body refused) can return a fenced block or prose, so the same
+    extract-then-repair ladder the analysis parser uses runs here too. Missing
+    keys come back as empty strings rather than absent, so the counselor editor
+    always has its six boxes.
+    """
+    candidate = _extract_json_candidate(str(raw or ""))
+    parsed = None
+    for text in (candidate, repair_json(candidate)):
+        try:
+            value = json.loads(text)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            continue
+        if isinstance(value, dict):
+            parsed = value
+            break
+    parsed = parsed or {}
+    return {key: str(parsed.get(key) or "").strip() for key in PORTRAIT_KEYS}
+
+
+def _leak_retry_message(leaks: list) -> str:
+    """The corrective turn, in French — the whole exchange is in French."""
+    return (
+        "Ce texte contient des mots interdits : " + ", ".join(leaks) + ". "
+        "Réécris le portrait en entier sans ces mots et sans aucun autre terme "
+        "technique de psychologie ou de ressources humaines. Garde les six mêmes "
+        "sections, le même fond et la même longueur. Réponds uniquement avec le "
+        "JSON des six sections."
+    )
+
+
+def _fail_portrait(voyage: Voyage, message: str) -> None:
+    """Record the failure inside the ciphertext; only the status is plaintext."""
+    voyage.portrait = {**(voyage.portrait or {}), "error": str(message)[:ERROR_MAX_CHARS]}
+    voyage.portrait_status = "error"
+    db.session.commit()
+
+
+def _run_portrait(voyage_id: str, app) -> None:
+    """Draft the six-section portrait onto the voyage row.
+
+    Runs inside a background daemon thread spawned by
+    POST /api/voyage/sessions/5/complete, or by the counselor's regenerate.
+    The result is a DRAFT: a counselor edits and validates it before the person
+    can read a word of it.
+    """
+    with app.app_context():
+        voyage = db.session.get(Voyage, voyage_id)
+        if not voyage:
+            return
+
+        prompt = PromptVersion.query.filter_by(is_active=True, path=PORTRAIT_SLOT).first()
+        if not prompt:
+            _fail_portrait(voyage, f"Aucun prompt actif pour le slot {PORTRAIT_SLOT}.")
+            return
+
+        # Everything the call needs, captured as plain values BEFORE the
+        # connection is released.
+        try:
+            system_prompt = prompt.system_prompt_text
+            prompt_version_id = prompt.id
+            synthesis = voyage.synthesis()
+            user_message = _portrait_user_message(
+                synthesis, voyage.responses, _profile_fields(voyage.user_id))
+            schema = _portrait_schema()
+            model, _ = tiers.model_for(tiers.PAID)
+        except Exception as exc:            # noqa: BLE001 — recorded on the row
+            # The route already set portrait_status = "generating" and committed, so
+            # a build that raises here would strand the row there for ever: this
+            # thread is the only thing that will ever move it.
+            _fail_portrait(voyage, str(exc))
+            return
+
+        # prompt_version_id is written now rather than only in the success
+        # payload, so a run that fails still names the prompt that produced the
+        # failure (B2G traceability). _fail_portrait merges onto this dict.
+        voyage.portrait = {**(voyage.portrait or {}), "prompt_version_id": prompt_version_id}
+        voyage.portrait_status = "generating"
+        db.session.commit()
+
+        # Release the pooled connection for the duration of the call: holding
+        # one across the stream lets the DB drop it as idle, and the final
+        # commit then fails with "Lost connection" on a row stuck 'generating'.
+        db.session.remove()
+
+        messages = [{"role": "user", "content": user_message}]
+        tokens_in = tokens_out = 0
+        flags: list[str] = []
+        try:
+            raw, t_in, t_out = _stream_text(model, system_prompt, messages,
+                                            PORTRAIT_MAX_TOKENS, schema)
+            tokens_in += t_in or 0
+            tokens_out += t_out or 0
+            sections = _parse_sections(raw)
+
+            leaks = leak_check(sections)
+            if leaks:
+                # One corrective turn quoting the offending words. Whatever
+                # comes back is what we keep: still leaking means flagged, not
+                # discarded — the counselor sees a banner and fixes the wording
+                # in the editor.
+                retry = messages + [
+                    {"role": "assistant",
+                     "content": json.dumps(sections, ensure_ascii=False)},
+                    {"role": "user", "content": _leak_retry_message(leaks)},
+                ]
+                raw, t_in, t_out = _stream_text(model, system_prompt, retry,
+                                                PORTRAIT_MAX_TOKENS, schema)
+                tokens_in += t_in or 0
+                tokens_out += t_out or 0
+                sections = _parse_sections(raw)
+                if leak_check(sections):
+                    flags = [FLAG_VOCABULAIRE]
+        except Exception as exc:            # noqa: BLE001 — recorded on the row
+            # The stream ran with no connection held, so whatever session is in
+            # the registry may be stale. remove() forces a fresh, pre-pinged
+            # checkout; without it this get() is the statement that raises on a
+            # dead connection, and the row strands in "generating" for ever.
+            db.session.remove()
+            voyage = db.session.get(Voyage, voyage_id)
+            if voyage is not None:
+                _fail_portrait(voyage, str(exc))
+            return
+
+        # Fresh, pre-pinged connection to write the result — same reason as the
+        # error path above: this write-back must not inherit a session the
+        # stream left behind.
+        db.session.remove()
+        voyage = db.session.get(Voyage, voyage_id)
+        if voyage is None:
+            return
+
+        # Six empty sections are a failure, not a success. portrait_status
+        # "draft" is what puts this row in the counselor's validation queue, and
+        # portrait_sections would read back as {} — the counselor would open an
+        # empty editor with no clue why. Same convention as the micro's phrase.
+        if not any(sections.values()):
+            _fail_portrait(voyage, "Le modèle n'a renvoyé aucune section lisible.")
+            return
+
+        voyage.portrait = {
+            "sections": sections,
+            # The synthesis the portrait was written from, kept so a later
+            # scoring correction can never make an existing portrait a lie.
+            "snapshot": synthesis,
+            "flags": flags,
+            "edited": False,
+            "prompt_version_id": prompt_version_id,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "error": None,
+        }
+        voyage.portrait_status = "draft"
+        voyage.tokens_in = (voyage.tokens_in or 0) + tokens_in
+        voyage.tokens_out = (voyage.tokens_out or 0) + tokens_out
+        db.session.commit()
+
+
+def start_portrait(voyage_id: str, app) -> None:
+    """Spawn a daemon thread that drafts the portrait. Returns at once."""
+    threading.Thread(target=_run_portrait, args=(voyage_id, app), daemon=True).start()
