@@ -758,7 +758,247 @@ _SESSION_2 = {
 }
 
 
-SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2]
+_SESSION_3 = {
+    "n": "3",
+    "title": "Comment tu penses et tu fonctionnes",
+    "subtitle": "Pas ce que tu fais — comment tu le fais · 7 situations",
+    "intro": [
+        "Les fois précédentes, on a regardé ce que tu faisais naturellement, "
+        "et ce qui te fait vibrer.",
+        "Aujourd'hui, on s'intéresse à quelque chose de plus difficile à voir. "
+        "Pas ce que tu fais. Comment tu le fais.",
+        "Ta façon naturelle de traiter l'information. De prendre des décisions. "
+        "D'interagir avec les autres. De te recharger, de te fatiguer.",
+    ],
+    "outro": [],
+    "duration": "20 min",
+    "kind": KIND_SCENES,
+    "items": [
+        {
+            "id": "S3-1",
+            "title": "La réunion surprise",
+            "subtitle": "Décider sans préparation",
+            "narrative": [
+                "Il est 9h. On t'annonce une réunion dans 5 minutes.",
+                "Tu n'as rien préparé. Tu dois prendre position sur un sujet important.",
+            ],
+            "question": "Comment tu réagis ?",
+            "options": [
+                {"letter": "A", "label": "S'adapte, improvise",
+                 "text": "Tu t'adaptes. Tu improvises, tu te lances. L'imprévu te réveille.",
+                 "plain": "tu improvises, l'imprévu te réveille",
+                 "big5": {"extraversion": 1, "ouverture": 1, "nevrotisme": -1},
+                 "style": "holistique"},
+                {"letter": "B", "label": "Prend 5 min de structure",
+                 "text": "Tu prends 5 minutes pour noter les points essentiels. "
+                         "Un minimum de structure.",
+                 "plain": "tu prends cinq minutes pour te donner un minimum de structure",
+                 "big5": {"conscienciosite": 1}, "style": "sequentiel"},
+                {"letter": "C", "label": "Écoute les autres d'abord",
+                 "text": "Tu stresses un peu, mais tu écoutes les autres d'abord "
+                         "avant de te positionner.",
+                 "plain": "tu écoutes les autres avant de te positionner",
+                 "big5": {"agreabilite": 1, "extraversion": -1}, "style": "consultatif"},
+                {"letter": "D", "label": "Mal à l'aise sans prépa",
+                 "text": "Tu es mal à l'aise. Décider sans préparation, c'est contre ta nature.",
+                 "plain": "décider sans préparation va contre ta nature",
+                 "big5": {"nevrotisme": 1, "conscienciosite": 1}},
+            ],
+        },
+        {
+            "id": "S3-2",
+            "title": "Le collègue très différent",
+            "subtitle": "Travailler avec son opposé",
+            "narrative": [
+                "Tu dois travailler pendant 3 semaines avec quelqu'un qui fonctionne "
+                "à l'opposé de toi.",
+                "Il/elle pense différemment, n'a pas les mêmes méthodes.",
+            ],
+            "question": "Comment tu vis les 3 premières semaines ?",
+            "options": [
+                {"letter": "A", "label": "Stimulant",
+                 "text": "C'est stimulant. Les différences forcent à voir les choses autrement.",
+                 "plain": "les différences te stimulent",
+                 "big5": {"ouverture": 1}},
+                {"letter": "B", "label": "Inconfortable → s'adapte",
+                 "text": "Inconfortable au début, mais tu t'adaptes. "
+                         "Tu cherches à comprendre sa logique.",
+                 "plain": "tu t'adaptes et tu cherches à comprendre sa logique",
+                 "big5": {"agreabilite": 1, "ouverture": 1}, "style": "adaptatif"},
+                {"letter": "C", "label": "S'ajuste, harmonie",
+                 "text": "Tu t'ajustes à lui/elle plus que tu ne l'exprimes. L'harmonie avant tout.",
+                 "plain": "tu t'ajustes plutôt que de l'exprimer",
+                 "big5": {"agreabilite": 1}},
+                {"letter": "D", "label": "Épuisant",
+                 "text": "C'est épuisant. Être en décalage constant, ça consomme de l'énergie.",
+                 "plain": "le décalage constant te consomme de l'énergie",
+                 "big5": {"nevrotisme": 1, "extraversion": -1}},
+            ],
+        },
+        {
+            "id": "S3-3",
+            "title": "L'information incomplète",
+            "subtitle": "Agir sans tout savoir",
+            "narrative": [
+                "Tu dois prendre une décision importante, mais tu n'as pas toutes "
+                "les informations.",
+                "Il te manque des données clés.",
+            ],
+            "question": "Comment tu procèdes ?",
+            "options": [
+                {"letter": "A", "label": "Décide quand même",
+                 "text": "Tu décides quand même. Avec ce que tu as, tu avances. "
+                         "L'attente est pire que l'imperfection.",
+                 "plain": "tu avances avec ce que tu as",
+                 "big5": {"nevrotisme": -1, "extraversion": 1}, "style": "holistique"},
+                {"letter": "B", "label": "Cartographie les manques",
+                 "text": "Tu cartographies ce que tu sais et ce que tu ne sais pas. "
+                         "Tu identifies tes angles morts.",
+                 "plain": "tu cartographies ce que tu sais et ce qui te manque",
+                 "big5": {"ouverture": 1, "conscienciosite": 1}, "style": "sequentiel"},
+                {"letter": "C", "label": "Demande aux autres",
+                 "text": "Tu demandes à d'autres personnes. "
+                         "Plusieurs perspectives compensent les manques.",
+                 "plain": "tu vas chercher d'autres points de vue",
+                 "big5": {"agreabilite": 1, "extraversion": 1}, "style": "consultatif"},
+                {"letter": "D", "label": "Attend plus d'éléments",
+                 "text": "Tu attends. Tu repousses la décision jusqu'à avoir plus d'éléments.",
+                 "plain": "tu attends d'avoir plus d'éléments",
+                 "big5": {"conscienciosite": 1, "nevrotisme": 1}},
+            ],
+        },
+        {
+            "id": "S3-4",
+            "title": "La tâche répétitive",
+            "subtitle": "Le rapport à la routine",
+            "narrative": [
+                "Tu dois effectuer la même tâche, dans le même ordre, "
+                "tous les jours pendant un mois.",
+            ],
+            "question": "Au bout d'une semaine, qu'est-ce qui se passe en toi ?",
+            "options": [
+                {"letter": "A", "label": "S'ennuie",
+                 "text": "Tu t'ennuies assez vite. La répétition t'anesthésie. "
+                         "Tu as besoin de changement.",
+                 "plain": "la répétition t'anesthésie vite",
+                 "big5": {"ouverture": 1}},
+                {"letter": "B", "label": "Confort dans la routine",
+                 "text": "Tu trouves une forme de confort. Maîtriser, ne pas avoir de surprise.",
+                 "plain": "tu trouves du confort à maîtriser sans surprise",
+                 "big5": {"conscienciosite": 1, "ouverture": -1}},
+                {"letter": "C", "label": "Optimise",
+                 "text": "Tu optimises. Puisque c'est répétitif, tu cherches comment "
+                         "le faire mieux.",
+                 "plain": "tu cherches comment le faire mieux",
+                 "big5": {"ouverture": 1, "conscienciosite": 1}, "style": "adaptatif"},
+                {"letter": "D", "label": "Tient si ça a du sens",
+                 "text": "Ça dépend du contexte. Si ça a du sens, tu tiens. Sinon, non.",
+                 "plain": "tu tiens si ça a du sens, pas autrement",
+                 # S3-4 D: manual reads "Motivation intrinsèque conditionnelle — Besoin
+                 # de finalité". Neither a Big Five trait nor a cognitive style; carried
+                 # as the meaning signal it is. score_s2 counts session 2 only, so this
+                 # never reaches the Schwartz tally.
+                 "schwartz": ["universalisme"]},
+            ],
+        },
+        {
+            "id": "S3-5",
+            "title": "Le feedback difficile",
+            "subtitle": "Recevoir une critique sur son travail",
+            "narrative": [
+                "Ton responsable t'a dit que ton travail avait des lacunes.",
+                "La critique est juste, mais elle fait mal.",
+            ],
+            "question": "Ce soir-là, qu'est-ce qui se passe ?",
+            "options": [
+                {"letter": "A", "label": "Digère et avance",
+                 "text": "Tu digères et tu avances. Avoir tort ne te définit pas.",
+                 "plain": "avoir tort ne te définit pas, tu avances",
+                 "big5": {"nevrotisme": -1}},
+                {"letter": "B", "label": "Cerveau ne lâche pas",
+                 "text": "Tu refais mentalement tout le chemin. "
+                         "Ton cerveau ne lâche pas facilement.",
+                 "plain": "tu refais mentalement tout le chemin",
+                 "big5": {"nevrotisme": 1}, "style": "sequentiel"},
+                {"letter": "C", "label": "Besoin d'en parler",
+                 "text": "Tu as besoin d'en parler à quelqu'un de confiance.",
+                 "plain": "tu as besoin d'en parler à quelqu'un de confiance",
+                 "big5": {"agreabilite": 1, "extraversion": 1}, "style": "consultatif"},
+                {"letter": "D", "label": "Analyse le pourquoi",
+                 "text": "Tu veux comprendre exactement pourquoi c'est une erreur. Tu analyses.",
+                 "plain": "tu veux comprendre exactement pourquoi",
+                 "big5": {"ouverture": 1, "conscienciosite": 1}, "style": "sequentiel"},
+            ],
+        },
+        {
+            "id": "S3-6",
+            "title": "Solo ou ensemble ?",
+            "subtitle": "Source d'énergie au travail",
+            "narrative": [
+                "Pour une tâche importante qui demande beaucoup de réflexion,",
+            ],
+            "question": "Qu'est-ce que tu choisirais instinctivement ?",
+            "options": [
+                {"letter": "A", "label": "Seul(e)",
+                 "text": "Seul(e). La concentration profonde, c'est là que tu produis le mieux.",
+                 "plain": "tu produis le mieux dans la concentration profonde, seul",
+                 "big5": {"extraversion": -1}},
+                {"letter": "B", "label": "Ensemble",
+                 "text": "Ensemble. Les échanges génèrent des idées que tu n'aurais pas "
+                         "eues seul(e).",
+                 "plain": "les échanges te donnent des idées que tu n'aurais pas eues seul",
+                 "big5": {"extraversion": 1}, "style": "consultatif"},
+                {"letter": "C", "label": "Seul(e) puis ensemble",
+                 "text": "Seul(e) pour réfléchir, ensemble pour valider. Le meilleur des deux.",
+                 "plain": "seul pour réfléchir, ensemble pour valider",
+                 # S3-6 C: manual reads "Ambiversion — Style hybride". Mapped to adaptatif:
+                 # switching mode by task is what STYLE_PLAIN["adaptatif"] says.
+                 "style": "adaptatif"},
+                {"letter": "D", "label": "S'adapte",
+                 "text": "Ça dépend de la tâche. Tu t'adaptes.",
+                 "plain": "tu t'adaptes à la tâche",
+                 "big5": {"ouverture": 1, "agreabilite": 1}, "style": "adaptatif"},
+            ],
+        },
+        {
+            "id": "S3-7",
+            "title": "La surcharge",
+            "subtitle": "Quand trop de choses arrivent en même temps",
+            "narrative": [
+                "Trois urgences arrivent en même temps. Ton téléphone sonne. "
+                "Tes collègues te sollicitent.",
+            ],
+            "question": "Comment tu t'en sors instinctivement ?",
+            "options": [
+                {"letter": "A", "label": "Priorise, liste",
+                 "text": "Tu priorises. Tu fais une liste, tu identifies l'urgent et l'important.",
+                 "plain": "tu fais une liste et tu tries l'urgent de l'important",
+                 "big5": {"conscienciosite": 1}, "style": "sequentiel"},
+                {"letter": "B", "label": "S'isole",
+                 "text": "Tu t'isoles. Tu coupes les notifications, tu te mets dans une bulle.",
+                 "plain": "tu coupes tout et tu te mets dans une bulle",
+                 "big5": {"extraversion": -1}},
+                {"letter": "C", "label": "Délègue ou demande aide",
+                 "text": "Tu délègues ou tu demandes de l'aide.",
+                 "plain": "tu délègues ou tu demandes de l'aide",
+                 "big5": {"agreabilite": 1, "extraversion": 1}, "style": "consultatif"},
+                {"letter": "D", "label": "Absorbe, jongle",
+                 "text": "Tu absorbes. Tu encaisses, tu gères, tu jonglles. "
+                         "Les autres sont souvent surpris.",
+                 "plain": "tu encaisses et tu jongles, ça surprend les autres",
+                 "big5": {"nevrotisme": -1}, "style": "holistique"},
+            ],
+        },
+    ],
+    "billet": [
+        {"key": "imprevu", "label": "Face à l'imprévu, je suis plutôt :"},
+        {"key": "meilleur", "label": "Je produis le mieux quand je suis :"},
+        {"key": "pression", "label": "Sous pression, mon premier réflexe est de :"},
+    ],
+}
+
+
+SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2, _SESSION_3]
 
 
 def riasec_maxima() -> dict[str, int]:

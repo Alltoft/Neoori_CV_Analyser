@@ -233,3 +233,37 @@ def test_session_2_seventh_scene_is_the_ambivalence_probe():
     scene = next(s for s in _session("2")["items"] if s["id"] == "S2-7")
     assert len(scene["options"]) == 6
     assert [o["letter"] for o in scene["options"]] == list("ABCDEF")
+
+
+def test_session_3_header():
+    s3 = _session("3")
+    assert s3["title"] == "Comment tu penses et tu fonctionnes"
+    assert s3["subtitle"] == "Pas ce que tu fais — comment tu le fais · 7 situations"
+    assert s3["duration"] == "20 min"
+    assert [i["id"] for i in s3["items"]] == [f"S3-{k}" for k in range(1, 8)]
+    assert [b["key"] for b in s3["billet"]] == ["imprevu", "meilleur", "pression"]
+
+
+def test_session_3_negative_signs_are_preserved():
+    """« Faible Névrotisme » is -1 and « Introversion » is -1. Reading either as
+    +1 inverts the levels for every person, and nothing would fail."""
+    def big5(item_id, letter):
+        return bank.option(item_id, letter)["big5"]
+
+    assert big5("S3-1", "A")["nevrotisme"] == -1     # "Faible Névrotisme"
+    assert big5("S3-1", "C")["extraversion"] == -1   # "Introversion"
+    assert big5("S3-2", "D")["extraversion"] == -1   # "Extraversion basse"
+    assert big5("S3-3", "A")["nevrotisme"] == -1
+    assert big5("S3-4", "B")["ouverture"] == -1      # "Faible Ouverture"
+    assert big5("S3-5", "A")["nevrotisme"] == -1
+    assert big5("S3-6", "A")["extraversion"] == -1
+    assert big5("S3-7", "B")["extraversion"] == -1
+    assert big5("S3-7", "D")["nevrotisme"] == -1
+
+
+def test_session_3_styles_are_assigned_where_the_manual_names_one():
+    assert bank.option("S3-1", "A")["style"] == "holistique"
+    assert bank.option("S3-1", "B")["style"] == "sequentiel"
+    assert bank.option("S3-6", "B")["style"] == "consultatif"
+    assert bank.option("S3-6", "C")["style"] == "adaptatif"
+    assert "style" not in bank.option("S3-4", "D")
