@@ -69,3 +69,97 @@ RISK_LEVELS = ("Fort", "Modéré", "Calculé", "Faible")
 # S4-1 -> espace, S4-2 -> rythme, S4-3 -> equipe, S4-4 -> manager,
 # S4-5 -> irritant, S4-6 -> vendredi. Position in the session, not a tag.
 S4_SLOTS = ("espace", "rythme", "equipe", "manager", "irritant", "vendredi")
+
+# ── The ten S0 bipolar axes ──────────────────────────────────────────────────
+# label / neg / pos are the counselor manual's wording and appear only on the
+# counselor's synthesis sheet. plain_neg / plain_pos / tension are plain French
+# with no framework word in them, and are the only form that reaches a prompt or
+# the _voyage block — see scoring.prompt_context(), which is pure over these.
+AXES: dict[str, dict[str, str]] = {
+    "A1": {
+        "label": "Mobilité territoriale",
+        "neg": "Ancrage local",
+        "pos": "Mobilité / international",
+        "plain_neg": "rester près de chez elle",
+        "plain_pos": "bouger, voir d'autres pays",
+        "tension": "ancrage vs mobilité",
+    },
+    "A2": {
+        "label": "Visibilité",
+        "neg": "Discrétion",
+        "pos": "Reconnaissance publique",
+        "plain_neg": "travailler dans l'ombre",
+        "plain_pos": "être reconnue publiquement",
+        "tension": "discrétion vs reconnaissance",
+    },
+    "A3": {
+        "label": "Rapport au collectif",
+        "neg": "Indépendance / solo",
+        "pos": "Collectif / équipe",
+        "plain_neg": "travailler seule",
+        "plain_pos": "travailler en équipe",
+        "tension": "solo vs collectif",
+    },
+    "A4": {
+        "label": "Échelle d'impact",
+        "neg": "Impact local",
+        "pos": "Impact global / systémique",
+        "plain_neg": "compter pour les gens autour d'elle",
+        "plain_pos": "un impact visible",
+        "tension": "impact local vs impact global",
+    },
+    "A5": {
+        "label": "Sécurité vs risque",
+        "neg": "Stabilité / salariat",
+        "pos": "Risque / entrepreneuriat",
+        "plain_neg": "un cadre stable",
+        "plain_pos": "prendre des risques",
+        "tension": "sécurité vs risque",
+    },
+    "A6": {
+        "label": "Type de création",
+        "neg": "Organisation / méthode",
+        "pos": "Expression libre",
+        "plain_neg": "organiser et planifier",
+        "plain_pos": "créer librement",
+        "tension": "méthode vs expression libre",
+    },
+    "A7": {
+        "label": "Nature du lien",
+        "neg": "Systèmes / idées",
+        "pos": "Lien humain direct",
+        "plain_neg": "les systèmes et les idées",
+        "plain_pos": "le lien avec les gens",
+        "tension": "idées vs personnes",
+    },
+    "A8": {
+        "label": "Temporalité de l'impact",
+        "neg": "Long terme / différé",
+        "pos": "Impact immédiat / visible",
+        "plain_neg": "construire sur la durée",
+        "plain_pos": "voir le résultat tout de suite",
+        "tension": "impact différé vs impact immédiat",
+    },
+    "A9": {
+        "label": "Rapport au corps",
+        "neg": "Sédentaire / bureau",
+        "pos": "Terrain / action physique",
+        "plain_neg": "le bureau et la réflexion",
+        "plain_pos": "le terrain et l'action",
+        "tension": "bureau vs terrain",
+    },
+    "A10": {
+        "label": "Transmission vs expertise",
+        "neg": "Expertise individuelle",
+        "pos": "Transmission / enseigner",
+        "plain_neg": "maîtriser un domaine",
+        "plain_pos": "transmettre",
+        "tension": "expertise vs transmission",
+    },
+}
+
+
+def axis(axis_id: str) -> dict:
+    """One axis. Raises KeyError on an unknown id — a caller asking for an axis
+    that doesn't exist has a bug, and returning None would hide it."""
+    return AXES[axis_id]
