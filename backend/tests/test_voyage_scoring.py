@@ -242,3 +242,79 @@ def test_score_s2_ambivalences_is_the_s2_7_choice():
         "label": "Liberté / Indépendance",
         "plain": "tu veux que ta vie t'appartienne",
     }
+
+
+# ── Session 3 — Big Five and cognitive style ─────────────────────────────────
+
+def test_score_s3_is_none_until_session_3_is_complete():
+    assert scoring.score_s3({"answers": {"S3-1": "A"}, "billets": {}}) is None
+
+
+def test_score_s3_nets_are_signed():
+    """All A: nevrotisme picks up -1 from S3-1 A, -1 from S3-3 A, -1 from
+    S3-5 A; extraversion +1 from S3-1 A and +1 from S3-3 A, -1 from S3-6 A
+    and -1 from S3-7 B... — assert the sign, not a hand-summed total."""
+    result = scoring.score_s3(_answers())
+    assert set(result["big5"]) == set(bank.BIG5)
+    assert result["big5"]["nevrotisme"] < 0
+
+    all_d = _answers(**{f"S3-{k}": "D" for k in range(1, 8)})
+    assert scoring.score_s3(all_d)["big5"]["nevrotisme"] > (
+        scoring.score_s3(_answers())["big5"]["nevrotisme"]
+    )
+
+
+def test_score_s3_levels_use_the_plus_or_minus_two_thresholds():
+    """Concrete values, not a recomputation of _level's own branching.
+
+    The all-A fixture happens to exercise all three branches: Élevé at +3,
+    Faible at -3, and Moyen at 0 and +1.
+    """
+    result = scoring.score_s3(_answers())
+    assert result["big5"] == {
+        "ouverture": 3, "conscienciosite": 1, "extraversion": 1,
+        "agreabilite": 0, "nevrotisme": -3,
+    }
+    assert result["levels"] == {
+        "ouverture": scoring.LEVEL_HIGH,
+        "conscienciosite": scoring.LEVEL_MID,
+        "extraversion": scoring.LEVEL_MID,
+        "agreabilite": scoring.LEVEL_MID,
+        "nevrotisme": scoring.LEVEL_LOW,
+    }
+
+
+def test_score_s3_style_counts_only_options_that_carry_one():
+    """S3-4 D carries no style. Choosing it must not raise or invent one.
+
+    Four of the seven all-A options carry no style (S3-2 A, S3-4 A, S3-5 A, S3-6 A).
+    """
+    result = scoring.score_s3(_answers(**{"S3-4": "D"}))
+    assert set(result["style"]) == set(bank.STYLES)
+    assert sum(result["style"].values()) == 3   # four of the seven all-A options carry no style
+    assert result["style"] == {"holistique": 2, "sequentiel": 1, "adaptatif": 0, "consultatif": 0}
+    assert result["style_dominant"] == ["holistique"]
+
+
+def test_score_s3_intro_extra_is_plain_french_never_a_trait_name():
+    """The extraversion net is +1 under this fixture, inside the band, so the
+    middle phrasing is the right one. Pinned exactly rather than merely
+    asserted to be one of the three."""
+    result = scoring.score_s3(_answers())
+    assert result["big5"]["extraversion"] == 1
+    assert result["intro_extra"] == scoring.INTRO_EXTRA["mid"]
+    assert result["intro_extra"] == "à l'aise dans les deux registres"
+    lowered = result["intro_extra"].lower()
+    assert "introversion" not in lowered and "extraversion" not in lowered
+
+
+def test_dominant_reports_nothing_when_every_count_is_zero():
+    """An all-zero tally has no dominant value — reporting every key would be
+    worse than reporting none, since a counselor reads this aloud.
+
+    S2-6 is the only sdt-carrying option reachable in the default fixture, so
+    answering it B zeroes the whole tally.
+    """
+    result = scoring.score_s2(_answers(**{"S2-6": "B"}))
+    assert result["sdt"] == {"autonomie": 0, "appartenance": 0, "competence": 0}
+    assert result["sdt_dominant"] == []

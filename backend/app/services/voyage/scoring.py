@@ -225,3 +225,49 @@ def score_s2(responses: dict) -> dict | None:
             "plain": probe["plain"],
         },
     }
+
+
+# ── Session 3 — Big Five and cognitive style ─────────────────────────────────
+
+def _level(net: int) -> str:
+    if net >= BIG5_HIGH:
+        return LEVEL_HIGH
+    if net <= BIG5_LOW:
+        return LEVEL_LOW
+    return LEVEL_MID
+
+
+def score_s3(responses: dict) -> dict | None:
+    """The manual's Big Five box, counted over S3-1..S3-7 only.
+
+    Nets, not counts: the manual's « Faible Névrotisme » is a -1 on the same
+    trait as « Névrotisme », so reading either as a plain count would score an
+    unusually steady person as an unusually anxious one.
+    """
+    if not session_complete(responses, "3"):
+        return None
+
+    big5 = {trait: 0 for trait in bank.BIG5}
+    style = {name: 0 for name in bank.STYLES}
+    for item_id in bank.item_ids("3"):
+        option = chosen_option(responses, item_id)
+        for trait, sign in (option.get("big5") or {}).items():
+            big5[trait] += sign
+        if option.get("style"):
+            style[option["style"]] += 1
+
+    extraversion = big5["extraversion"]
+    if extraversion >= BIG5_HIGH:
+        bucket = "high"
+    elif extraversion <= BIG5_LOW:
+        bucket = "low"
+    else:
+        bucket = "mid"
+
+    return {
+        "big5": big5,
+        "levels": {trait: _level(net) for trait, net in big5.items()},
+        "style": style,
+        "style_dominant": _dominant(style, bank.STYLES),
+        "intro_extra": INTRO_EXTRA[bucket],
+    }
