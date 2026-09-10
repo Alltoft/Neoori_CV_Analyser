@@ -12,7 +12,12 @@ class Analysis(db.Model):
     prompt_version_id = db.Column(db.String(36), db.ForeignKey("prompt_versions.id"), nullable=True)
     # Which voyage fed this analysis, when the person has played one. Nullable
     # and never required: every parcours runs identically with no voyage.
-    voyage_id = db.Column(db.String(36), db.ForeignKey("voyages.id"), nullable=True, index=True)
+    # ondelete="SET NULL": erasing a voyage (DELETE /api/voyage, RGPD) must not
+    # delete the analyses it fed -- those are the person's own reports and
+    # their B2G traceability rows -- but the link must not dangle either.
+    voyage_id = db.Column(
+        db.String(36), db.ForeignKey("voyages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     status = db.Column(
         db.Enum("draft", "queued", "running", "success", "error", "timeout", name="analysis_status"),
