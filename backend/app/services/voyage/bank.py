@@ -163,3 +163,84 @@ def axis(axis_id: str) -> dict:
     """One axis. Raises KeyError on an unknown id — a caller asking for an axis
     that doesn't exist has a bug, and returning None would hide it."""
     return AXES[axis_id]
+
+
+# ── The six sessions ─────────────────────────────────────────────────────────
+# Text is verbatim from neoori_cahier_papier.pdf. Tags are from the counselor
+# manual. Session order is the play order; item order within a session is the
+# order they appear on paper.
+
+_SESSION_0 = {
+    "n": "0",
+    "title": "Dans 10 ans",
+    "subtitle": "Ta vision instinctive — 20 affirmations",
+    "intro": [
+        "Dans 10 ans, tout s'est passé comme tu l'espérais. Tu travailles. "
+        "Pas parce que tu le dois — mais parce que tu le veux. "
+        "À quoi ressemble ta vie ?",
+        "Pour chaque affirmation : coche ✓ si ça te parle, ✗ si ce n'est pas toi.",
+        "Fais confiance à ton premier ressenti. Pas de réflexion — instinctif.",
+    ],
+    "outro": [],
+    "duration": "5 min",
+    "kind": KIND_CHECKLIST,
+    "items": [
+        {"id": "S0-01", "text": "Travailler dehors, sur le terrain, en mouvement",
+         "axes": [("A9", 1)]},
+        {"id": "S0-02", "text": "Avoir mes propres horaires, travailler à mon rythme",
+         "axes": [("A2", 1), ("A5", 1)]},
+        {"id": "S0-03", "text": "Aider des personnes au quotidien",
+         "axes": [("A7", 1)]},
+        {"id": "S0-04", "text": "Diriger une équipe ou une entreprise",
+         "axes": [("A2", 1), ("A4", 1)]},
+        {"id": "S0-05", "text": "Créer des choses avec mes mains (objets, bâtiments...)",
+         "axes": [("A6", 1), ("A9", 1)]},
+        {"id": "S0-06", "text": "Analyser, comprendre, résoudre des problèmes complexes",
+         "axes": [("A6", 1), ("A8", 1)]},
+        {"id": "S0-07", "text": "Créer des contenus, des images, de la musique, du texte",
+         "axes": [("A6", 1)]},
+        {"id": "S0-08", "text": "Voyager, travailler dans plusieurs pays ou villes",
+         "axes": [("A1", 1)]},
+        {"id": "S0-09", "text": "Enseigner, transmettre, former",
+         "axes": [("A7", 1), ("A10", 1)]},
+        {"id": "S0-10", "text": "Innover, créer un projet qui n'existe pas encore",
+         "axes": [("A5", 1), ("A6", 1)]},
+        {"id": "S0-11", "text": "Avoir un emploi stable avec un salaire régulier",
+         "axes": [("A5", -1)]},
+        {"id": "S0-12", "text": "Être connu(e), avoir une visibilité publique",
+         "axes": [("A2", 1), ("A4", 1)]},
+        {"id": "S0-13", "text": "Travailler seul(e) sur des projets indépendants",
+         "axes": [("A3", -1)]},
+        {"id": "S0-14", "text": "Travailler en grande équipe, beaucoup d'interactions",
+         "axes": [("A3", 1)]},
+        {"id": "S0-15", "text": "Avoir un impact visible sur la société ou le monde",
+         "axes": [("A4", 1)]},
+        {"id": "S0-16", "text": "Maîtriser un domaine technique pointu",
+         "axes": [("A8", 1), ("A10", 1)]},
+        {"id": "S0-17", "text": "Organiser, planifier, gérer des projets",
+         "axes": [("A6", -1)]},
+        {"id": "S0-18", "text": "Travailler dans le secteur du soin ou du social",
+         "axes": [("A7", 1)]},
+        {"id": "S0-19", "text": "Gagner beaucoup d'argent",
+         "axes": [("A5", 1)]},
+        {"id": "S0-20", "text": "Être utile à ma communauté locale",
+         "axes": [("A4", -1), ("A7", 1)]},
+    ],
+    "billet": [
+        {"key": "top3", "label": "Les 3 affirmations qui m'ont le plus parlé :"},
+        {"key": "surprise", "label": "Quelque chose qui m'a surpris(e) dans mes réponses :"},
+    ],
+}
+
+
+SESSIONS: list[dict] = [_SESSION_0]
+
+
+def axis_items(axis_id: str) -> list[tuple[str, int]]:
+    """Every S0 item loading on this axis, as (item_id, sign) in item order."""
+    out = []
+    for item in _SESSION_0["items"]:
+        for loaded_axis, sign in item["axes"]:
+            if loaded_axis == axis_id:
+                out.append((item["id"], sign))
+    return out

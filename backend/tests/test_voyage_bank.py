@@ -67,3 +67,72 @@ def test_axis_lookup():
     import pytest
     with pytest.raises(KeyError):
         bank.axis("A99")
+
+
+def _session(n):
+    return next(s for s in bank.SESSIONS if s["n"] == n)
+
+
+def test_session_0_header_and_counts():
+    s0 = _session("0")
+    assert s0["title"] == "Dans 10 ans"
+    assert s0["subtitle"] == "Ta vision instinctive — 20 affirmations"
+    assert s0["duration"] == "5 min"
+    assert s0["kind"] == bank.KIND_CHECKLIST
+    assert len(s0["items"]) == 20
+    assert [b["key"] for b in s0["billet"]] == ["top3", "surprise"]
+
+
+def test_session_0_item_ids_are_zero_padded():
+    ids = [i["id"] for i in _session("0")["items"]]
+    assert ids == [f"S0-{n:02d}" for n in range(1, 21)]
+
+
+def test_session_0_axis_loadings():
+    """The complete map, from the manual's 'Axe(s) principal(aux)' column."""
+    expected = {
+        "S0-01": [("A9", 1)],
+        "S0-02": [("A2", 1), ("A5", 1)],
+        "S0-03": [("A7", 1)],
+        "S0-04": [("A2", 1), ("A4", 1)],
+        "S0-05": [("A6", 1), ("A9", 1)],
+        "S0-06": [("A6", 1), ("A8", 1)],
+        "S0-07": [("A6", 1)],
+        "S0-08": [("A1", 1)],
+        "S0-09": [("A7", 1), ("A10", 1)],
+        "S0-10": [("A5", 1), ("A6", 1)],
+        "S0-11": [("A5", -1)],
+        "S0-12": [("A2", 1), ("A4", 1)],
+        "S0-13": [("A3", -1)],
+        "S0-14": [("A3", 1)],
+        "S0-15": [("A4", 1)],
+        "S0-16": [("A8", 1), ("A10", 1)],
+        "S0-17": [("A6", -1)],
+        "S0-18": [("A7", 1)],
+        "S0-19": [("A5", 1)],
+        "S0-20": [("A4", -1), ("A7", 1)],
+    }
+    actual = {i["id"]: i["axes"] for i in _session("0")["items"]}
+    assert actual == expected
+
+
+def test_session_0_axis_item_counts():
+    """A1 has exactly one item — that is why TENSION_MIN_ITEMS exists."""
+    counts = {a: len(bank.axis_items(a)) for a in bank.AXES}
+    assert counts == {
+        "A1": 1, "A2": 3, "A3": 2, "A4": 4, "A5": 4,
+        "A6": 5, "A7": 4, "A8": 2, "A9": 2, "A10": 2,
+    }
+
+
+def test_session_0_items_are_well_formed():
+    for item in _session("0")["items"]:
+        assert set(item) == {"id", "text", "axes"}
+        assert item["text"].strip()
+        assert item["axes"]
+        seen = set()
+        for axis_id, sign in item["axes"]:
+            assert axis_id in bank.AXES
+            assert sign in (1, -1)
+            assert axis_id not in seen, f"{item['id']} loads {axis_id} twice"
+            seen.add(axis_id)
