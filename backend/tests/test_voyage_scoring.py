@@ -323,12 +323,29 @@ def test_dominant_reports_nothing_when_every_count_is_zero():
 # ── Session 4 — the environment ──────────────────────────────────────────────
 
 def test_score_s4_maps_scene_position_to_slot():
+    """All six slots pinned by value.
+
+    The slot mapping is positional, so a transposition is silent: it yields a
+    different but still plausible string. Note that asserting the dict's KEYS
+    proves nothing here — score_s4 draws them from S4_SLOTS by construction,
+    so they match in order even when the pairing is wrong. Only the values
+    test the pairing, and the letters below are chosen so all six env strings
+    differ.
+    """
     assert scoring.score_s4({"answers": {"S4-1": "A"}, "billets": {}}) is None
-    result = scoring.score_s4(_answers(**{"S4-1": "D", "S4-5": "B"}))
+    result = scoring.score_s4(_answers(**{
+        "S4-1": "A", "S4-2": "B", "S4-3": "C",
+        "S4-4": "D", "S4-5": "A", "S4-6": "B",
+    }))
+    assert result == {
+        "espace": "bureau fermé et calme",
+        "rythme": "démarrage progressif",
+        "equipe": "grande équipe diverse",
+        "manager": "un cap clair",
+        "irritant": "les réunions longues et bruyantes",
+        "vendredi": "fatigue mais recharge",
+    }
     assert list(result) == list(bank.S4_SLOTS)
-    assert result["espace"] == "en mouvement, sur le terrain"
-    assert result["irritant"] == "les interruptions constantes"
-    assert all(isinstance(v, str) and v for v in result.values())
 
 
 def test_score_s5_keys_and_registers():
