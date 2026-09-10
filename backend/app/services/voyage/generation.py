@@ -213,6 +213,17 @@ _PROFILE_LABELS = (
 )
 
 
+def _clean(value) -> str:
+    """A field's value, stripped — "" when it is missing or only whitespace.
+
+    One rule in one place for every free-text field either builder reads: a
+    label with nothing after it (« Rapport au risque :   ») is worse than no
+    label, and whitespace is truthy, so the strip has to happen before the
+    emptiness test rather than after.
+    """
+    return str(value or "").strip()
+
+
 def _profile_lines(profile_fields: dict) -> list[str]:
     """The four Profil de base fields, each omitted when empty.
 
@@ -222,7 +233,7 @@ def _profile_lines(profile_fields: dict) -> list[str]:
     """
     lines = []
     for key, label in _PROFILE_LABELS:
-        value = str((profile_fields or {}).get(key) or "").strip()
+        value = _clean((profile_fields or {}).get(key))
         if value:
             lines.append(f"{label} : {value}")
     return lines
@@ -291,19 +302,24 @@ def _synthesis_lines(synthesis: dict) -> list[str]:
     if styles:
         lines.append(f"Façon de fonctionner : {' · '.join(styles)}")
 
-    cadre = [s4.get(k) for k in ("espace", "rythme", "equipe", "manager") if s4.get(k)]
+    # s4 and s5 are free text the person typed, so they strip before the
+    # emptiness test exactly the way _profile_lines does.
+    cadre = [v for v in (_clean(s4.get(k))
+                         for k in ("espace", "rythme", "equipe", "manager")) if v]
     if cadre:
         lines.append(f"Cadre : {' · '.join(cadre)}")
-    if s4.get("irritant"):
-        lines.append(f"Ce qui l'épuise : {s4['irritant']}")
+    irritant = _clean(s4.get("irritant"))
+    if irritant:
+        lines.append(f"Ce qui l'épuise : {irritant}")
 
     for key, label in (("risque", "Rapport au risque"),
                        ("valeur_centrale", "Ce qui la met en colère"),
                        ("trace", "La trace voulue"),
                        ("sacrifice", "Prête à sacrifier"),
                        ("vivant", "Se sent vivant(e) quand")):
-        if s5.get(key):
-            lines.append(f"{label} : {s5[key]}")
+        value = _clean(s5.get(key))
+        if value:
+            lines.append(f"{label} : {value}")
 
     return lines
 

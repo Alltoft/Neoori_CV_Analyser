@@ -220,6 +220,25 @@ def test_the_token_budgets_are_the_two_the_spec_pins_not_the_tier_defaults():
     assert gen.PORTRAIT_MAX_TOKENS != tiers.model_for(tiers.PAID)[1]
 
 
+def test_the_headers_and_the_two_flags_are_pinned_literally():
+    """A header is a contract with prompt prose the PM edits from /admin/prompts
+    without touching code: the stored system prompt addresses these blocks by
+    name, so renaming one here silently breaks a prompt no test reads. That, not
+    any ripple through this file, is why « --- SESSION 0 --- » keeps its digit.
+
+    FLAG_VOCABULAIRE is the only value ever written into portrait["flags"] and
+    ERROR_MAX_CHARS caps the encrypted payload's `error` key — both are read by
+    the next batch's runners and by the counselor UI.
+    """
+    assert gen.HEADER_PROFIL == "--- PROFIL DE BASE ---"
+    assert gen.HEADER_SESSION_0 == "--- SESSION 0 ---"
+    assert gen.HEADER_CHOISI == "--- CE QUE TU AS CHOISI ---"
+    assert gen.HEADER_SYNTHESE == "--- SYNTHÈSE ---"
+    assert gen.WEIGHT_NOTE == " (à pondérer ×1,5)"
+    assert gen.FLAG_VOCABULAIRE == "vocabulaire"
+    assert gen.ERROR_MAX_CHARS == 500
+
+
 # ── leak_check ───────────────────────────────────────────────────────────────
 
 def test_a_clean_portrait_leaks_nothing():
@@ -234,10 +253,37 @@ def test_the_word_portrait_does_not_trip_the_trait_pattern():
     }) == []
 
 
+def test_an_inflected_leak_is_caught_and_reported_under_its_canonical_word():
+    """The optional trailing `s` and the [\\s-]+ join are the whole reason these
+    three get caught. Reverting either leaves the suite green without this test."""
+    assert gen.leak_check({"a": "Tes traits de personnalité ressortent."}) == ["trait"]
+    assert gen.leak_check({"a": "Des scores élevés partout."}) == ["score"]
+    assert gen.leak_check({"a": "Un profil Big-Five très net."}) == ["big five"]
+
+
+def test_the_widening_does_not_swallow_ordinary_words():
+    """« portrait » and « traites » are the words the boundary has to protect."""
+    assert gen.leak_check(
+        {"a": "Ce portrait te ressemble et tu traites tout à la suite."}) == []
+
+
 def test_framework_words_come_back_lowercased_and_sorted():
     hit = gen.leak_check({"qui_tu_es": "Ton RIASEC est net.",
                           "vibrer": "Un Score élevé en Big Five."})
     assert hit == ["big five", "riasec", "score"]
+
+
+def test_the_hits_come_back_sorted_and_deduplicated():
+    """Schwartz is declared before Dunn in LEAK_PATTERNS and sorts after it, so
+    this fixture tells « sorted » apart from « in declaration order » — a pair
+    like riasec/score/trait cannot, their two orders coincide. « trait » is in
+    both sections and must still come back once.
+    """
+    hit = gen.leak_check({
+        "a": "Ton trait dominant, et Schwartz.",
+        "b": "Encore un trait, et Dunn.",
+    })
+    assert hit == ["dunn", "schwartz", "trait"]
 
 
 def test_accents_are_folded_so_one_entry_catches_both_spellings():
@@ -274,6 +320,9 @@ def test_the_micro_message_has_the_two_blocks_in_order():
     msg = gen._micro_user_message(SYNTHESIS, "Marie")
     assert msg.index(gen.HEADER_PROFIL) < msg.index(gen.HEADER_SESSION_0)
     assert "Prénom : Marie" in msg
+    # The blank line between blocks is what keeps the headers legible to the
+    # model — joining with a single "\n" would leave them buried in prose.
+    assert f"\n\n{gen.HEADER_SESSION_0}" in msg
 
 
 def test_the_micro_message_names_the_three_strongest_pulls_in_plain_french():
@@ -326,8 +375,14 @@ def _own_words(block: str) -> str:
 
     The scene title is cahier text and S2-7's is « Dans 20 ans », so the digit
     rule can only apply to what comes after the colon.
+
+    The assertion keeps the helper from degrading into a no-op: with no
+    « Titre : … » line at all this returns "", and every digit rule resting on
+    it would pass vacuously against a builder that had stopped emitting lines.
     """
-    return "\n".join(ln.split(" : ", 1)[1] for ln in block.splitlines() if " : " in ln)
+    words = "\n".join(ln.split(" : ", 1)[1] for ln in block.splitlines() if " : " in ln)
+    assert words, "no « Titre : … » line in the block — the digit rule would be vacuous"
+    return words
 
 
 def test_the_three_headers_appear_in_order():
@@ -335,6 +390,9 @@ def test_the_three_headers_appear_in_order():
     assert (msg.index(gen.HEADER_PROFIL)
             < msg.index(gen.HEADER_CHOISI)
             < msg.index(gen.HEADER_SYNTHESE))
+    # Blocks are separated by a blank line, not just a newline.
+    assert f"\n\n{gen.HEADER_CHOISI}" in msg
+    assert f"\n\n{gen.HEADER_SYNTHESE}" in msg
 
 
 def test_the_profile_block_carries_the_four_fields_it_is_given():
@@ -345,10 +403,26 @@ def test_the_profile_block_carries_the_four_fields_it_is_given():
     assert "Projet : reprendre un travail au contact des gens" in msg
 
 
+def test_the_profile_block_keeps_the_profil_de_base_order():
+    """The order is the Profil de base's own, the order the person filled the
+    fields in — reordering the labels leaves every `in msg` assertion green."""
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    lines = [ln for ln in _block(msg, gen.HEADER_PROFIL).splitlines() if ln.strip()]
+    assert lines == [
+        "Prénom : Marie",
+        "Tranche d'âge : 25_34",
+        "Situation actuelle : en_recherche",
+        "Projet : reprendre un travail au contact des gens",
+    ]
+
+
 def test_an_empty_profile_field_never_leaves_a_naked_label():
+    """The three shapes an absent field arrives in: missing, "", and whitespace.
+    The last one is the reason _profile_lines strips before testing truthiness —
+    it is the rule the synthesis block borrows."""
     msg = gen._portrait_user_message(
         SYNTHESIS, _full_responses(),
-        {"prenom": "Marie", "tranche_age": None, "situation": "", "projet": None})
+        {"prenom": "Marie", "tranche_age": None, "situation": "", "projet": "   "})
     assert "Prénom : Marie" in msg
     assert "Tranche d'âge" not in msg
     assert "Situation actuelle" not in msg
@@ -380,12 +454,17 @@ def test_a_scene_title_may_carry_a_digit_because_the_cahier_does():
 
 def test_session_zero_contributes_nothing_to_the_choices_block():
     """S0 reaches the model through the synthesis block only — its twenty
-    statements are checkboxes, not scenes."""
+    statements are checkboxes, not scenes, and they carry no title to emit."""
     block = _block(
         gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS),
         gen.HEADER_CHOISI)
-    for item_id in bank.item_ids("0"):
-        assert bank.item(item_id)["text"] not in block
+    lines = [ln for ln in block.splitlines() if ln.strip()]
+    scene_ids = [i for n in ("1", "2", "3", "4", "5") for i in bank.item_ids(n)]
+    titles = {bank.item(i)["title"] for i in scene_ids}
+    assert lines, "the choices block must not be empty"
+    for line in lines:
+        assert line.split(" : ", 1)[0] in titles, line
+    assert len(lines) == len(scene_ids)
 
 
 def test_the_synthese_block_is_the_twelve_pinned_lines():
@@ -410,6 +489,28 @@ def test_the_synthese_block_is_the_twelve_pinned_lines():
         "Prête à sacrifier : le temps",
         "Se sent vivant(e) quand : elle crée",
     ]
+
+
+def test_a_whitespace_only_field_is_dropped_rather_than_left_naked():
+    """« Rapport au risque :   » is worse than no line — the same rule the profile
+    block has always followed.
+
+    Every one of these is whitespace, never "": an empty string is falsy, so a
+    bare `if s4.get(k)` drops it too and the missing strip would go unnoticed.
+    The Cadre line matters as much as the two labels — a blank member there
+    leaves « Cadre :   · cycles courts ».
+    """
+    synthesis = copy.deepcopy(SYNTHESIS)
+    synthesis["s5"]["risque"] = "   "
+    synthesis["s4"]["irritant"] = "\t "
+    synthesis["s4"]["espace"] = " "
+    block = _block(
+        gen._portrait_user_message(synthesis, _full_responses(), PROFILE_FIELDS),
+        gen.HEADER_SYNTHESE)
+    assert "Rapport au risque" not in block
+    assert "Ce qui l'épuise" not in block
+    assert ("Cadre : cycles courts · petite équipe soudée · "
+            "confiance et droit à l'essai") in block
 
 
 def test_an_incomplete_voyage_only_emits_the_lines_it_can_fill():
@@ -449,6 +550,7 @@ def test_a_real_synthesis_feeds_both_builders_without_a_gap(app):
     assert gen.HEADER_CHOISI in portrait
     assert gen.HEADER_SYNTHESE in portrait
     assert gen.leak_check({"a": micro, "b": portrait}) == []
+    assert not re.search(r"\d", micro.replace(gen.HEADER_SESSION_0, ""))
     assert not re.search(r"\d", _own_words(_block(portrait, gen.HEADER_CHOISI)))
     assert not re.search(
         r"\d", _block(portrait, gen.HEADER_SYNTHESE).replace(gen.WEIGHT_NOTE, ""))
