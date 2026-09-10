@@ -124,6 +124,7 @@ def test_top3_picks_the_pole_the_sign_points_to():
     result = scoring.score_s0(_answers(**{item_id: True for item_id in a7_items}))
     a7 = next((e for e in result["top3"] if e["axis"] == "A7"), None)
     assert a7 is not None, "A7 should rank in the top three"
+    assert result["top3"][0]["axis"] == "A4", "ties break toward the lower axis id"
     assert a7["pole"] == "pos"
     assert a7["label"] == bank.AXES["A7"]["pos"]
     assert a7["plain"] == bank.AXES["A7"]["plain_pos"]
