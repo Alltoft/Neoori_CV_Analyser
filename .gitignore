@@ -31,3 +31,9 @@ yarn-debug.log*
 
 # Superpowers SDD scratch (ledger, briefs, review packages)
 .superpowers/
+
+# Source instruments — the counselor manual carries the confidential
+# option→trait mapping that bank.public() exists to keep server-side.
+# Never commit these; the documented deploy ritual is `git add .`.
+neoori_cahier_papier.pdf
+neoori_scoring_restitution-1.pdf
