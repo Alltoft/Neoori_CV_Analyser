@@ -64,6 +64,7 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.admin import admin_bp
     from .routes.counselor import counselor_bp
     from .routes.profile import profile_bp
+    from .routes.voyage import voyage_bp
     from .routes.payments import payments_bp
 
     app.register_blueprint(payments_bp, url_prefix="/api/payments")
@@ -74,6 +75,7 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(counselor_bp, url_prefix="/api/c")
     app.register_blueprint(profile_bp, url_prefix="/api/profile")
+    app.register_blueprint(voyage_bp, url_prefix="/api/voyage")
 
     @app.route("/api/health")
     def health():

@@ -349,3 +349,123 @@ def test_the_first_failing_rule_wins(app, candidate):
     conseiller » — the one the person can actually act on first."""
     voyage = _voyage(candidate)
     assert session_lock(voyage, None, "5") == LOCK_CODE
+
+
+# ── GET /api/voyage/bank ─────────────────────────────────────────────────────
+
+WEIGHT_KEYS = {"riasec", "axes", "sdt", "schwartz", "big5", "style", "env",
+               "risk", "sens", "plain"}
+
+
+def _walk(node):
+    """Every dict in a nested JSON payload."""
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            yield from _walk(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _walk(value)
+
+
+def test_the_bank_serves_text_and_no_weights(client, auth):
+    """Decision 6: the option→trait mapping is the product and the counselor
+    manual is marked confidential. It never leaves the server."""
+    res = client.get("/api/voyage/bank", headers=auth)
+    assert res.status_code == 200
+    payload = res.get_json()["bank"]
+    assert payload["scoring_version"] == bank.SCORING_VERSION
+    assert [s["n"] for s in payload["sessions"]] == list(bank.SESSION_IDS)
+    for node in _walk(payload):
+        leaked = WEIGHT_KEYS & set(node)
+        assert not leaked, f"scoring key(s) {leaked} reached the client"
+
+
+def test_the_bank_needs_an_account(client):
+    assert client.get("/api/voyage/bank").status_code == 401
+
+
+# ── GET / POST /api/voyage ───────────────────────────────────────────────────
+
+def test_a_user_who_never_played_has_no_voyage(client, auth):
+    res = client.get("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["voyage"] is None
+
+
+def test_creation_requires_consent_and_the_age_attestation(client, auth):
+    """Decision 13: psychometric data needs its own consent record, and 15 is
+    the French digital-consent age."""
+    res = client.post("/api/voyage", json={}, headers=auth)
+    assert res.status_code == 400
+    errors = res.get_json()["errors"]
+    assert "Le consentement est requis." in errors
+    assert "Vous devez attester avoir 15 ans ou plus." in errors
+
+    res = client.post("/api/voyage", json={"consent": True, "age_attested": False}, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == ["Vous devez attester avoir 15 ans ou plus."]
+
+    assert Voyage.query.count() == 0
+
+
+def test_creation_stamps_the_consent_and_the_scoring_version(client, auth):
+    res = client.post("/api/voyage", json={"consent": True, "age_attested": True}, headers=auth)
+    assert res.status_code == 201
+    payload = res.get_json()["voyage"]
+    assert payload["status"] == STATUS_EN_COURS
+    assert payload["sessions_completed"] == []
+    assert payload["consent_at"] is not None
+    assert payload["age_attested"] is True
+
+    row = Voyage.query.one()
+    assert row.consent_version == CONSENT_VERSION
+    assert row.scoring_version == bank.SCORING_VERSION
+
+
+def test_only_one_open_voyage_at_a_time(client, auth):
+    client.post("/api/voyage", json={"consent": True, "age_attested": True}, headers=auth)
+    res = client.post("/api/voyage", json={"consent": True, "age_attested": True}, headers=auth)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "Un voyage est déjà en cours."
+    assert Voyage.query.count() == 1
+
+
+def test_a_retake_is_allowed_once_the_previous_one_is_finished(client, auth, candidate):
+    """Decision 3: the old row is kept, because analyses reference it."""
+    _voyage(candidate, status=STATUS_TERMINE, share_token="tok-old")
+    res = client.post("/api/voyage", json={"consent": True, "age_attested": True}, headers=auth)
+    assert res.status_code == 201
+    assert Voyage.query.count() == 2
+
+
+def test_a_voyage_is_only_ever_the_callers_own(client, auth, candidate):
+    """No candidate endpoint takes an id from the client, so there is nothing
+    to enumerate — but the neighbour must still see their own state."""
+    _voyage(candidate, status=STATUS_S0)
+    neighbour = _headers(_user("voisin@test.fr"))
+    assert client.get("/api/voyage", headers=neighbour).get_json()["voyage"] is None
+
+
+# ── DELETE /api/voyage ───────────────────────────────────────────────────────
+
+def test_erasure_is_independent_of_the_profile(client, auth, candidate):
+    """Decision 14 — the two-speed argument to a prescriber: « vous gardez le
+    contrôle de ce qu'on garde »."""
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _db.session.commit()
+    client.post("/api/voyage", json={"consent": True, "age_attested": True}, headers=auth)
+
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["message"] == "Voyage supprimé."
+    assert Voyage.query.count() == 0
+    assert Profile.query.filter_by(user_id=candidate.id).count() == 1
+
+
+def test_erasing_nothing_is_not_an_error(client, auth):
+    """Mirrors DELETE /api/profile: the person asked for nothing to be left,
+    and nothing is left."""
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["message"] == "Aucun voyage à supprimer."
