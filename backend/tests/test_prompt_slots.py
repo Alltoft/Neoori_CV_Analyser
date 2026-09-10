@@ -94,3 +94,47 @@ def test_a_voyage_slot_survives_a_round_trip_through_the_column(app):
     found = PromptVersion.query.filter_by(is_active=True, path="voyage_portrait").first()
     assert found is not None
     assert found.to_dict(include_text=False)["path"] == "voyage_portrait"
+
+
+# ── the admin route that writes the column ───────────────────────────────────
+
+def test_the_prompts_route_accepts_a_voyage_slot(client, admin_headers):
+    """Without this the PM cannot publish either voyage prompt from
+    /admin/prompts, and the feature errors on first use."""
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v1.0-VM",
+        "system_prompt_text": "Tu écris une phrase.",
+        "path": "voyage_micro",
+        "activate": True,
+    })
+    assert res.status_code == 201
+    assert res.get_json()["prompt"]["path"] == "voyage_micro"
+
+    active = client.get("/api/prompts/active?path=voyage_micro")
+    assert active.status_code == 200
+    assert active.get_json()["prompt"]["version_label"] == "v1.0-VM"
+
+
+def test_the_same_label_may_exist_once_per_slot(client, admin_headers):
+    """The uniqueness check is scoped to the slot, so 'v1.0' can belong to a
+    parcours and to a voyage prompt at once."""
+    body = {"version_label": "v1.0", "system_prompt_text": "x"}
+    assert client.post("/api/prompts/", headers=admin_headers,
+                       json={**body, "path": "1"}).status_code == 201
+    assert client.post("/api/prompts/", headers=admin_headers,
+                       json={**body, "path": "voyage_portrait"}).status_code == 201
+    assert client.post("/api/prompts/", headers=admin_headers,
+                       json={**body, "path": "voyage_portrait"}).status_code == 409
+
+
+def test_activating_a_voyage_prompt_leaves_the_parcours_prompts_alone(client, admin_headers):
+    """Activation deactivates the others *for that slot* only — activating the
+    portrait prompt must not silently disable parcours 1."""
+    from app.models.prompt_version import PromptVersion
+    client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v9-P1", "system_prompt_text": "x", "path": "1", "activate": True})
+    client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v9-VP", "system_prompt_text": "x",
+        "path": "voyage_portrait", "activate": True})
+    assert PromptVersion.query.filter_by(is_active=True, path="1").count() == 1
+    assert PromptVersion.query.filter_by(is_active=True, path="voyage_portrait").count() == 1

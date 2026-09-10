@@ -2,26 +2,28 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
 from ..models.prompt_version import PromptVersion
-from ..services import section_registry as registry
+from ..services import prompt_slots
 from ..utils.decorators import admin_required
 
 prompts_bp = Blueprint("prompts", __name__)
 
-_PATHS_LABEL = ", ".join(f"'{p}'" for p in registry.PARCOURS)
+_SLOTS_LABEL = ", ".join(f"'{slot}'" for slot in prompt_slots.valid())
 
 
 def _read_path(raw):
-    """Validate a parcours id from the request, accepting legacy 'A'/'B'.
+    """Validate a prompt slot from the request, accepting legacy 'A'/'B'.
 
-    Returns (path, error_response). Rows written before the 3-parcours
-    migration still carry the old codes, so the admin UI can address them.
+    Slots are the parcours ids plus the two voyage prompts; see
+    services/prompt_slots.py. normalize() matches the voyage slots before
+    uppercasing, because this function used to uppercase first and
+    'VOYAGE_MICRO' is not a slot.
+
+    Returns (slot, error_response).
     """
-    value = (raw or registry.DEFAULT_PARCOURS).strip().upper()
-    if value in ("A", "B"):
-        return registry.normalize(value), None
-    if not registry.is_valid(value):
-        return None, (jsonify({"error": f"path doit être l'un de {_PATHS_LABEL}."}), 400)
-    return value, None
+    slot = prompt_slots.normalize(raw)
+    if not prompt_slots.is_valid(slot):
+        return None, (jsonify({"error": f"path doit être l'un de {_SLOTS_LABEL}."}), 400)
+    return slot, None
 
 
 @prompts_bp.get("/")

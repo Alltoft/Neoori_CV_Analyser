@@ -8,7 +8,7 @@ pour le chemin 1", which is what happened on the VPS after a fresh seed.
 import re
 from pathlib import Path
 
-from app.services import section_registry as registry
+from app.services import prompt_slots
 
 # seed script → the parcours its prompt belongs to
 SEEDS = {
@@ -17,7 +17,8 @@ SEEDS = {
     "seed_prompt_v10_p2.py": "2",  # authored after the migration, no legacy code
 }
 
-_LITERAL = re.compile(r"""(?:path\s*=|^PATH\s*=)\s*["'](\w)["']""", re.MULTILINE)
+# (\w+), not (\w): a slot id is a name now, not a single character.
+_LITERAL = re.compile(r"""(?:path\s*=|^PATH\s*=)\s*["'](\w+)["']""", re.MULTILINE)
 
 
 def test_seed_scripts_write_parcours_ids():
@@ -27,8 +28,8 @@ def test_seed_scripts_write_parcours_ids():
         literals = set(_LITERAL.findall(source))
         assert literals, f"{name}: no path literal found"
         for value in literals:
-            assert registry.is_valid(value), (
-                f"{name}: path={value!r} is not a parcours id "
-                f"({sorted(registry.PARCOURS)})"
+            assert prompt_slots.is_valid(value), (
+                f"{name}: path={value!r} is not a prompt slot "
+                f"({list(prompt_slots.valid())})"
             )
             assert value == expected, f"{name}: expected path {expected!r}, found {value!r}"
