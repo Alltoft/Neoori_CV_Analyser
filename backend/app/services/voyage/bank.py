@@ -165,6 +165,16 @@ def axis(axis_id: str) -> dict:
     return AXES[axis_id]
 
 
+def item(item_id: str) -> dict | None:
+    """One item by id, or None. None rather than KeyError: item ids arrive
+    from the client, and an unknown one is a 400, not a crash."""
+    for session in SESSIONS:
+        for itm in session.get("items", []):
+            if itm["id"] == item_id:
+                return itm
+    return None
+
+
 # ── The six sessions ─────────────────────────────────────────────────────────
 # Text is verbatim from neoori_cahier_papier.pdf. Tags are from the counselor
 # manual. Session order is the play order; item order within a session is the
@@ -1203,7 +1213,286 @@ _SESSION_4 = {
 }
 
 
-SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2, _SESSION_3, _SESSION_4]
+_SESSION_5 = {
+    "n": "5",
+    "title": "Ton rapport à ce qui n'existe pas encore",
+    "subtitle": "Risque · Sens · 7 situations",
+    "intro": [
+        "Bienvenue en Session 5. La dernière avant ton portrait.",
+        "Les fois précédentes, on a exploré qui tu es, ce qui compte pour toi, "
+        "comment tu fonctionnes, et dans quel monde tu te révèles.",
+        "Aujourd'hui, on regarde devant. Dans l'inconnu. "
+        "Dans ce qui n'existe pas encore. Dans ce que tu es prêt(e) à risquer pour y arriver.",
+        "Et on regarde aussi le sens. Pas le sens qu'on te raconte. "
+        "Celui qui te fait vraiment lever le matin, ou te garder éveillé(e) le soir.",
+    ],
+    "outro": [
+        "Voilà. C'est fait. Cinq sessions. Des dizaines de choix. "
+        "Des petites fenêtres ouvertes sur toi-même.",
+    ],
+    "duration": "20 min",
+    "kind": KIND_SCENES,
+    "items": [
+        {
+            "id": "S5-1",
+            "title": "La porte entrouverte",
+            "subtitle": "Saisir ou laisser passer",
+            "narrative": [
+                "Une opportunité se présente. Pas complètement sûre. "
+                "Pas complètement claire.",
+                "C'est un peu flou, un peu risqué. Ça pourrait être génial. "
+                "Ça pourrait ne mener nulle part.",
+            ],
+            "question": "Ton premier réflexe — pas ta décision raisonnée.",
+            "options": [
+                {"letter": "A", "label": "Fonce",
+                 "text": "Tu y vas. Le risque de rater quelque chose de grand est pire "
+                         "que le risque d'échouer.",
+                 "plain": "tu y vas, rater une occasion serait pire qu'échouer",
+                 "risk": "Fort"},
+                {"letter": "B", "label": "Attend",
+                 "text": "Tu attends. Tu observes, tu te renseignes. Si ça se confirme, "
+                         "tu avanceras.",
+                 "plain": "tu observes et tu avanceras si ça se confirme",
+                 "risk": "Modéré"},
+                {"letter": "C", "label": "Calcule",
+                 "text": "Tu calcules. Pour/contre, probabilités, avis de confiance. "
+                         "Pas de risque inconsidéré.",
+                 "plain": "tu calcules, pas de risque inconsidéré",
+                 "risk": "Calculé"},
+                {"letter": "D", "label": "Passe son chemin",
+                 "text": "Tu passes ton chemin. Trop flou. Tu préfères ce que tu connais, "
+                         "ce que tu maîtrises.",
+                 "plain": "tu préfères ce que tu connais et maîtrises",
+                 "risk": "Faible"},
+            ],
+        },
+        {
+            "id": "S5-2",
+            "title": "L'échec possible",
+            "subtitle": "Le rapport à l'échec public",
+            "narrative": [
+                "Tu te lances dans un projet important. Ça peut marcher. Ça peut échouer.",
+                "Si ça échoue, ce ne sera pas invisible. Des gens le sauront.",
+            ],
+            "question": "L'échec potentiel, sous les yeux des autres. Comment tu vis ça ?",
+            "options": [
+                {"letter": "A", "label": "Ça stresse",
+                 "text": "Ça me stresse. L'idée d'échouer devant les autres, "
+                         "d'être jugé(e), de perdre la face.",
+                 "plain": "échouer devant les autres te stresse",
+                 "risk": "l'échec public l'inquiète"},
+                {"letter": "B", "label": "Ça fait partie du jeu",
+                 "text": "Ça fait partie du jeu. Si tu ne rates jamais rien, "
+                         "c'est que tu ne tentes rien d'assez grand.",
+                 "plain": "rater fait partie du jeu",
+                 "risk": "l'échec fait partie du jeu"},
+                {"letter": "C", "label": "Apprendre et recommencer",
+                 "text": "Je veux tout faire pour que ça marche, mais si ça rate, "
+                         "j'analyserai, j'apprendrai, je recommencerai.",
+                 "plain": "si ça rate, tu analyses et tu recommences",
+                 "risk": "elle analyse et recommence"},
+                {"letter": "D", "label": "Ne pas y penser",
+                 "text": "Je ne veux pas y penser. Je préfère me concentrer sur la réussite.",
+                 "plain": "tu préfères te concentrer sur la réussite",
+                 "risk": "elle préfère ne pas y penser"},
+            ],
+        },
+        {
+            "id": "S5-3",
+            "title": "Le flou",
+            "subtitle": "La tolérance à l'ambiguïté",
+            "narrative": [
+                "Tu commences une nouvelle mission. Les objectifs sont clairs.",
+                "Mais la route pour y arriver… personne ne la connaît vraiment.",
+                "Tu vas devoir inventer, tâtonner, avancer sans filet.",
+            ],
+            "question": "Ta réaction naturelle — pas idéale, naturelle.",
+            "options": [
+                {"letter": "A", "label": "Inconfortable",
+                 "text": "C'est inconfortable. J'aime savoir où je vais, comment j'y vais. "
+                         "Le flou me paralyse presque.",
+                 "plain": "le flou te paralyse presque",
+                 "risk": "le flou la bloque"},
+                {"letter": "B", "label": "Excitant",
+                 "text": "C'est excitant. Le chemin à inventer, les surprises, "
+                         "les découvertes — c'est ça qui est intéressant.",
+                 "plain": "le chemin à inventer, c'est ça qui t'intéresse",
+                 "risk": "le flou l'attire"},
+                {"letter": "C", "label": "Variable selon contexte",
+                 "text": "Ça dépend. Parfois ça me stimule, parfois ça m'angoisse. "
+                         "J'ai besoin d'un équilibre.",
+                 "plain": "parfois ça te stimule, parfois ça t'angoisse",
+                 "risk": "le flou dépend du contexte"},
+                {"letter": "D", "label": "Crée son propre cadre",
+                 "text": "Je vais créer mon propre cadre. Jalons, checkpoints. "
+                         "Je réduis le flou moi-même.",
+                 "plain": "tu réduis le flou en créant ton propre cadre",
+                 "risk": "elle crée son propre cadre"},
+            ],
+        },
+        {
+            "id": "S5-4",
+            "title": "Ce qui te met en colère",
+            "subtitle": "La valeur bafouée — le sens révélé",
+            "narrative": [
+                "Qu'est-ce qui, dans le monde, te met vraiment en colère ?",
+                "Pas énervé(e). Pas agacé(e). En colère. Jusqu'au fond.",
+            ],
+            "question": "La réponse honnête — pas celle qui est politiquement correcte.",
+            "options": [
+                {"letter": "A", "label": "L'injustice",
+                 "text": "L'injustice. Quand les plus faibles sont écrasés, "
+                         "quand les règles ne s'appliquent pas à tout le monde.",
+                 "plain": "l'injustice te met en colère",
+                 "sens": "l'injustice"},
+                {"letter": "B", "label": "La bêtise",
+                 "text": "La bêtise. L'incompétence, les décisions prises sans réflexion, "
+                         "sans penser aux conséquences.",
+                 "plain": "la bêtise et les décisions sans réflexion te mettent en colère",
+                 "sens": "la bêtise"},
+                {"letter": "C", "label": "L'indifférence",
+                 "text": "L'indifférence. Quand les gens pourraient aider et ne font rien.",
+                 "plain": "l'indifférence te met en colère",
+                 "sens": "l'indifférence"},
+                {"letter": "D", "label": "Le gâchis",
+                 "text": "Le gâchis. De talent, de temps, de ressources. "
+                         "Quand on pourrait faire quelque chose de beau.",
+                 "plain": "le gâchis de talent et de temps te met en colère",
+                 "sens": "le gâchis"},
+                {"letter": "E", "label": "La malhonnêteté",
+                 "text": "La malhonnêteté. Les mensonges, les promesses non tenues.",
+                 "plain": "la malhonnêteté te met en colère",
+                 "sens": "la malhonnêteté"},
+                {"letter": "F", "label": "La violence",
+                 "text": "La violence. La force utilisée contre la faiblesse, "
+                         "l'écrasement des plus vulnérables.",
+                 "plain": "la violence contre les plus vulnérables te met en colère",
+                 "sens": "la violence"},
+            ],
+        },
+        {
+            "id": "S5-5",
+            "title": "La trace",
+            "subtitle": "L'impact souhaité",
+            "narrative": ["À la fin de ta vie professionnelle, tu regardes en arrière."],
+            "question": "La trace. Ton rapport à ce qui reste quand tu n'es plus là.",
+            "options": [
+                {"letter": "A", "label": "Trace visible",
+                 "text": "Une trace visible. Des réalisations concrètes, "
+                         "que quelqu'un puisse dire « c'est lui/elle qui a fait ça ».",
+                 "plain": "des réalisations concrètes qu'on puisse te attribuer",
+                 "sens": "une trace visible"},
+                {"letter": "B", "label": "Trace dans les gens",
+                 "text": "Une trace dans les gens. Des personnes que tu as aidées, "
+                         "formées, inspirées.",
+                 "plain": "des personnes que tu as aidées et formées",
+                 "sens": "une trace dans les gens"},
+                {"letter": "C", "label": "Trace dans le système",
+                 "text": "Une trace dans le système. Avoir changé une organisation, "
+                         "une façon de faire.",
+                 "plain": "avoir changé une organisation ou une façon de faire",
+                 "sens": "une trace dans le système"},
+                {"letter": "D", "label": "Pas besoin de trace",
+                 "text": "Pas besoin de trace. Ce qui compte, c'est ce que tu as vécu. "
+                         "L'aventure elle-même.",
+                 "plain": "ce qui compte c'est ce que tu as vécu",
+                 "sens": "pas besoin de trace"},
+                {"letter": "E", "label": "Trace discrète",
+                 "text": "Une trace discrète. Avoir contribué à quelque chose de plus grand "
+                         "que toi, sans que ton nom soit connu.",
+                 "plain": "avoir contribué à plus grand que toi, sans ton nom dessus",
+                 "sens": "une trace discrète"},
+            ],
+        },
+        {
+            "id": "S5-6",
+            "title": "Le sacrifice",
+            "subtitle": "Jusqu'où pour du sens",
+            "narrative": [
+                "Parfois, pour que quelque chose ait vraiment du sens, "
+                "il faut accepter de sacrifier autre chose.",
+            ],
+            "question": "Pour quelque chose qui compte vraiment. Jusqu'où tu iras ?",
+            "options": [
+                {"letter": "A", "label": "Le confort",
+                 "text": "Le confort. Accepter de gagner moins, de vivre plus simplement.",
+                 "plain": "tu accepterais de gagner moins",
+                 "sens": "le confort"},
+                {"letter": "B", "label": "La sécurité",
+                 "text": "La sécurité. Accepter l'instabilité, "
+                         "ne pas savoir de quoi demain sera fait.",
+                 "plain": "tu accepterais l'instabilité",
+                 "sens": "la sécurité"},
+                {"letter": "C", "label": "Le temps",
+                 "text": "Le temps. Accepter d'y passer des heures, des soirées, des week-ends.",
+                 "plain": "tu y passerais des soirées et des week-ends",
+                 "sens": "le temps"},
+                {"letter": "D", "label": "Les relations",
+                 "text": "Les relations. Accepter que certaines personnes ne comprennent pas, "
+                         "s'éloignent.",
+                 "plain": "tu accepterais que certains ne comprennent pas",
+                 "sens": "les relations"},
+                {"letter": "E", "label": "Rien — équilibre",
+                 "text": "Rien. Le sens c'est important, mais pas au point de perdre "
+                         "ce qui compte déjà. L'équilibre avant tout.",
+                 "plain": "pas au point de perdre ce qui compte déjà",
+                 "sens": "rien, l'équilibre avant tout"},
+            ],
+        },
+        {
+            "id": "S5-7",
+            "title": "Là où tu te sens vivant(e)",
+            "subtitle": "Synthèse — Ce qui fait battre le cœur",
+            "narrative": [
+                "Dernière situation. Dernière avant le portrait.",
+                "Dans quel genre de moment te sens-tu vraiment, profondément vivant(e) ?",
+            ],
+            "question": "Sans chercher la bonne réponse. Le moment où tu te sens "
+                        "vraiment vivant(e). C'est quoi ?",
+            "options": [
+                {"letter": "A", "label": "Créer",
+                 "text": "Quand tu crées. Quand quelque chose naît de toi, de tes mains, "
+                         "de ton imagination.",
+                 "plain": "quand quelque chose naît de toi",
+                 "sens": "elle crée"},
+                {"letter": "B", "label": "Aider",
+                 "text": "Quand tu aides. Quand quelqu'un va mieux grâce à toi, "
+                         "quand tu vois que tu as compté.",
+                 "plain": "quand quelqu'un va mieux grâce à toi",
+                 "sens": "elle aide"},
+                {"letter": "C", "label": "Comprendre",
+                 "text": "Quand tu comprends. Quand les pièces s'assemblent, "
+                         "quand tu saisis quelque chose de nouveau.",
+                 "plain": "quand les pièces s'assemblent",
+                 "sens": "elle comprend"},
+                {"letter": "D", "label": "Gagner",
+                 "text": "Quand tu gagnes. Quand tu réussis quelque chose de difficile, "
+                         "que tu arrives là où peu arrivent.",
+                 "plain": "quand tu réussis là où peu arrivent",
+                 "sens": "elle gagne"},
+                {"letter": "E", "label": "Harmonie",
+                 "text": "Quand tu es en harmonie. Quand tout est à sa place, "
+                         "que tu es en phase avec toi-même.",
+                 "plain": "quand tout est à sa place",
+                 "sens": "elle est en harmonie"},
+                {"letter": "F", "label": "Explorer",
+                 "text": "Quand tu explores. Quand tu découvres, "
+                         "quand tu vas là où tu n'es jamais allé(e).",
+                 "plain": "quand tu vas là où tu n'es jamais allé",
+                 "sens": "elle explore"},
+            ],
+        },
+    ],
+    "billet": [
+        {"key": "risque", "label": "Face au risque, je suis plutôt :"},
+        {"key": "colere", "label": "Ce qui me met en colère, c'est :"},
+        {"key": "trace", "label": "La trace que je veux laisser, c'est :"},
+        {"key": "vivant", "label": "Je me sens vivant(e) quand :"},
+    ],
+}
+
+SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2, _SESSION_3, _SESSION_4, _SESSION_5]
 
 
 def riasec_maxima() -> dict[str, int]:

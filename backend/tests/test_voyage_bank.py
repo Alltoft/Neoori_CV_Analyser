@@ -290,3 +290,44 @@ def test_session_4_every_option_carries_env():
             assert env == env.lower(), env
             assert not env.endswith("."), env
             assert 1 <= len(env.split()) <= 5, env
+
+
+def test_session_5_header():
+    s5 = _session("5")
+    assert s5["title"] == "Ton rapport à ce qui n'existe pas encore"
+    assert s5["subtitle"] == "Risque · Sens · 7 situations"
+    assert s5["duration"] == "20 min"
+    assert [i["id"] for i in s5["items"]] == [f"S5-{k}" for k in range(1, 8)]
+    assert [b["key"] for b in s5["billet"]] == ["risque", "colere", "trace", "vivant"]
+
+
+def test_s5_1_risk_values_are_the_four_levels():
+    letters = {o["letter"]: o["risk"] for o in bank.item("S5-1")["options"]}
+    assert letters == {"A": "Fort", "B": "Modéré", "C": "Calculé", "D": "Faible"}
+    assert set(letters.values()) == set(bank.RISK_LEVELS)
+
+
+def test_s5_2_and_s5_3_risk_labels_are_free_lowercase():
+    for item_id in ("S5-2", "S5-3"):
+        for option in bank.item(item_id)["options"]:
+            label = option["risk"]
+            assert label == label.lower(), f"{item_id}{option['letter']}: {label}"
+            assert label not in bank.RISK_LEVELS
+
+
+def test_s5_sens_registers():
+    """S5-4/5/6 are noun phrases; S5-7 is a third-person clause."""
+    for item_id in ("S5-4", "S5-5", "S5-6"):
+        for option in bank.item(item_id)["options"]:
+            assert option["sens"], f"{item_id}{option['letter']}"
+            assert not option["sens"].startswith("elle "), item_id
+    for option in bank.item("S5-7")["options"]:
+        assert option["sens"].startswith("elle "), option["letter"]
+
+
+def test_bank_totals():
+    assert len(bank.SESSIONS) == 6
+    assert [s["n"] for s in bank.SESSIONS] == list(bank.SESSION_IDS)
+    assert len(bank.all_item_ids()) == 53
+    assert len(set(bank.all_item_ids())) == 53
+    assert sum(len(s["billet"]) for s in bank.SESSIONS) == 20
