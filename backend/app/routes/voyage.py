@@ -197,8 +197,18 @@ def put_responses():
         allowed = set(bank.billet_keys(n))
         target = dict(merged["billets"].get(n) or {})
         for key, value in fields.items():
-            if key in allowed:
-                target[key] = "" if value is None else str(value)
+            if key not in allowed:
+                continue
+            if value is None:
+                target[key] = ""
+            elif isinstance(value, (str, int, float, bool)):
+                # A scalar is what a person can type; anything else (a dict, a
+                # list) is dropped rather than stringified — the billet text
+                # is quoted into the portrait prompt as the candidate's own
+                # words, so `str({'nested': 'x'})` must never reach it looking
+                # like something a person wrote. Same disposal rule as an
+                # unknown field key (contract § E5).
+                target[key] = str(value)
         merged["billets"][n] = target
 
     voyage.responses = merged

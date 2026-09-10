@@ -529,14 +529,20 @@ def test_a_put_merges_rather_than_replaces(client, auth):
 
 
 def test_a_put_returns_the_full_merged_set(client, auth):
-    """So the player can reconcile after a reconnection without a second call."""
+    """So the player can reconcile after a reconnection without a second call.
+
+    Exact equality against what was sent, not a count — a count would still
+    pass if the merge scrambled or shifted the item ids, since it only
+    matters here that the two sets have the same size.
+    """
     _open_voyage(client, auth)
-    client.put("/api/voyage/responses", json={"answers": _answers_for("0")}, headers=auth)
+    sent = _answers_for("0")
+    client.put("/api/voyage/responses", json={"answers": sent}, headers=auth)
     res = client.put("/api/voyage/responses",
                      json={"billets": {"0": {"surprise": "je n'aime pas le bureau"}}},
                      headers=auth)
     body = res.get_json()["responses"]
-    assert len(body["answers"]) == len(bank.items("0"))
+    assert body["answers"] == sent
     assert body["billets"]["0"]["surprise"] == "je n'aime pas le bureau"
 
 
@@ -566,6 +572,36 @@ def test_billet_fields_outside_the_session_are_dropped(client, auth):
     assert res.status_code == 200
     billets = res.get_json()["responses"]["billets"]
     assert billets == {"0": {"surprise": "ok"}}
+
+
+def test_a_non_scalar_billet_value_is_dropped_not_stringified(client, auth):
+    """The billet is quoted into the portrait prompt as the candidate's own
+    words, and shown on the counselor's sheet — a stringified dict must never
+    arrive there looking like something a person typed. Both fields ("top3"
+    and "surprise") are known keys for session 0, so this exercises the
+    value-type check and not the unknown-key drop; the sibling scalar field
+    must still be saved, proving the one field is dropped rather than the
+    whole billet."""
+    _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses", json={
+        "billets": {"0": {
+            "surprise": "je n'aime pas le bureau",
+            "top3": {"nested": "x"},
+        }},
+    }, headers=auth)
+    assert res.status_code == 200
+    billet = res.get_json()["responses"]["billets"]["0"]
+    assert billet == {"surprise": "je n'aime pas le bureau"}
+    assert "top3" not in billet
+
+    res2 = client.put("/api/voyage/responses", json={
+        "billets": {"0": {"top3": ["a", "b"]}},
+    }, headers=auth)
+    assert res2.status_code == 200
+    assert "top3" not in res2.get_json()["responses"]["billets"]["0"]
+
+    stored = Voyage.query.one().responses["billets"]["0"]
+    assert stored == {"surprise": "je n'aime pas le bureau"}
 
 
 def test_an_empty_put_is_a_no_op(client, auth):
