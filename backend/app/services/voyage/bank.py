@@ -494,7 +494,271 @@ _SESSION_1 = {
 }
 
 
-SESSIONS: list[dict] = [_SESSION_0, _SESSION_1]
+_SESSION_2 = {
+    "n": "2",
+    "title": "Ce qui compte vraiment pour toi",
+    "subtitle": "Ce qui te donne envie de te lever le matin · 7 situations",
+    "intro": [
+        "Aujourd'hui, on va plus loin. On va chercher ce qui te fait vraiment vibrer.",
+        "Pas ce qui est « bien » ou « raisonnable ». Ce qui, quand c'est là, "
+        "te donne envie de te lever le matin. Et quand c'est absent, te vide de "
+        "l'intérieur, même si tout va bien.",
+        "7 scènes. Dans chacune, entoure la lettre qui te correspond.",
+    ],
+    "outro": [],
+    "duration": "20 min",
+    "kind": KIND_SCENES,
+    "items": [
+        {
+            "id": "S2-1",
+            "title": "Le projet passion",
+            "subtitle": "La liberté d'un projet sans contrainte",
+            "narrative": [
+                "On t'a confié un projet. Carte blanche sur la façon de le mener.",
+                "Personne ne regarde par-dessus ton épaule. Résultat dans 3 mois.",
+            ],
+            "question": "Comment tu fonctionnes, toi ? Avant la raison, avant la stratégie.",
+            "options": [
+                {"letter": "A", "label": "Structure dès le début",
+                 "text": "Tu structures tout dès le premier jour. Planning, jalons, deadlines. "
+                         "Tu sais où tu vas.",
+                 "plain": "tu structures tout dès le premier jour",
+                 # manual: "SDT : Sécurité cognitive" — not one of the three SDT
+                 # needs, so only the Schwartz value it also names is carried.
+                 "schwartz": ["conformite"],
+                 "big5": {"conscienciosite": 1}},
+                {"letter": "B", "label": "Explorer d'abord",
+                 "text": "Tu commences par explorer. Tu testes, tu tâtonnes, "
+                         "tu vois ce qui émerge.",
+                 "plain": "tu explores et tu tâtonnes avant de décider",
+                 "sdt": "autonomie", "schwartz": ["autodirection"]},
+                {"letter": "C", "label": "Aller vers les autres",
+                 "text": "Tu vas parler aux gens. Tu échanges, tu construis avec eux. "
+                         "Le collectif te porte.",
+                 "plain": "tu vas parler aux gens, le collectif te porte",
+                 "sdt": "appartenance", "schwartz": ["bienveillance"]},
+                {"letter": "D", "label": "Fond et qualité",
+                 "text": "Tu te concentres sur le fond. Tu veux que ce soit parfait, "
+                         "que ça tienne la route.",
+                 "plain": "tu veux que ça tienne vraiment la route",
+                 "sdt": "competence", "schwartz": ["reussite"]},
+            ],
+        },
+        {
+            "id": "S2-2",
+            "title": "La proposition qu'on t'a faite",
+            "subtitle": "Quitter la sécurité pour l'aventure",
+            "narrative": [
+                "Tu es bien là où tu es. L'équipe sympa, rien à redire.",
+                "Et là, on te propose autre chose. Différent, un peu risqué — "
+                "mais si ça marche, ça peut être grand.",
+            ],
+            "question": "Écoute ton premier réflexe. Avant la raison. Qu'est-ce qui se passe en toi ?",
+            "options": [
+                {"letter": "A", "label": "Rester — sécurité",
+                 "text": "Tu réfléchis, tu pèses le pour et le contre, et tu restes. "
+                         "La sécurité, c'est trop important.",
+                 "plain": "tu restes, la sécurité compte trop",
+                 "schwartz": ["conservation", "securite"]},
+                {"letter": "B", "label": "Foncer — aventure",
+                 "text": "Ton cœur s'emballe. Le risque, l'aventure — c'est ça qui te fait "
+                         "sentir vivant(e). Tu te lances.",
+                 "plain": "tu te lances, le risque te fait te sentir vivant",
+                 "schwartz": ["stimulation"], "big5": {"ouverture": 1}},
+                {"letter": "C", "label": "Consulter — lien",
+                 "text": "Tu demandes conseil autour de toi. Tu ne prendras pas cette "
+                         "décision seul(e).",
+                 "plain": "tu ne décides pas seul, tu demandes conseil",
+                 "schwartz": ["bienveillance"], "sdt": "appartenance"},
+                {"letter": "D", "label": "Questionner le sens",
+                 "text": "Tu te demandes : « est-ce que ça a du sens ? » "
+                         "Si c'est juste pour gagner plus, ça ne t'intéresse pas.",
+                 "plain": "tu demandes d'abord si ça a du sens",
+                 "schwartz": ["universalisme"]},
+            ],
+        },
+        {
+            "id": "S2-3",
+            "title": "La reconnaissance",
+            "subtitle": "Ce qui te touche vraiment après un succès",
+            "narrative": [
+                "Tu viens de finir un gros projet. Ça a marché. Vraiment bien marché.",
+                "Le lendemain, plusieurs choses se passent. "
+                "Laquelle te touche le PLUS profondément ?",
+            ],
+            "question": "Laquelle fait vibrer quelque chose en toi, là, maintenant ?",
+            "options": [
+                {"letter": "A", "label": "Validation du chef",
+                 "text": "Ton responsable te prend à part : « Franchement, super boulot. "
+                         "J'ai vu tout ce que t'as mis là-dedans. »",
+                 "plain": "que ton responsable voie ce que tu y as mis",
+                 # manual: "Besoin de feedback hiérarchique" — nearest closed value.
+                 "schwartz": ["reussite"]},
+                {"letter": "B", "label": "Verre en équipe",
+                 "text": "Ton équipe t'emmène boire un verre. Personne ne fait de discours, "
+                         "mais tout le monde est là.",
+                 "plain": "que toute l'équipe soit là, sans discours",
+                 "sdt": "appartenance", "schwartz": ["bienveillance"]},
+                {"letter": "C", "label": "Reconnaissance publique",
+                 "text": "On annonce les résultats en réunion. Ton nom est cité devant tout le monde.",
+                 "plain": "que ton nom soit cité devant tout le monde",
+                 "schwartz": ["reussite", "pouvoir"]},
+                {"letter": "D", "label": "Satisfaction intérieure",
+                 "text": "Personne ne dit rien. Mais toi, tu sais que t'as fait du bon boulot. "
+                         "La satisfaction intérieure te suffit.",
+                 "plain": "savoir toi-même que c'était du bon travail te suffit",
+                 "sdt": "competence", "schwartz": ["autodirection"]},
+            ],
+        },
+        {
+            "id": "S2-4",
+            "title": "Le conflit d'équipe",
+            "subtitle": "Valeurs en tension",
+            "narrative": [
+                "Dans ton équipe, il y a des tensions. Deux personnes ne sont pas d'accord.",
+                "L'un veut livrer vite. L'autre veut prendre le temps, faire solide. "
+                "Toi, tu te situes où ?",
+            ],
+            "question": "Instinctivement, tu fais quoi dans ce genre de situation ?",
+            "options": [
+                {"letter": "A", "label": "Compromis",
+                 "text": "Tu écoutes les deux, tu proposes une synthèse, tu cherches le compromis. "
+                         "L'harmonie du groupe est primordiale.",
+                 "plain": "tu cherches le compromis, l'harmonie du groupe compte",
+                 "big5": {"agreabilite": 1}, "schwartz": ["bienveillance"]},
+                {"letter": "B", "label": "Prendre position",
+                 "text": "Tu prends position. Clairement. Tu dis ce que tu penses, "
+                         "même si ça crée un clash.",
+                 "plain": "tu dis ce que tu penses même si ça crée un clash",
+                 "big5": {"agreabilite": -1}, "schwartz": ["integrite"]},
+                {"letter": "C", "label": "Analyser le fond",
+                 "text": "Tu essaies de comprendre le fond du problème. "
+                         "Tu joues le médiateur analytique.",
+                 "plain": "tu cherches le fond du problème avant de trancher",
+                 "big5": {"ouverture": 1}},
+                {"letter": "D", "label": "Procédure collective",
+                 "text": "Tu proposes qu'on vote en réunion, qu'on décide collectivement "
+                         "et qu'on avance. La procédure rassure.",
+                 "plain": "tu proposes qu'on décide collectivement et qu'on avance",
+                 "schwartz": ["conformite"]},
+            ],
+        },
+        {
+            "id": "S2-5",
+            "title": "Le moment difficile",
+            "subtitle": "Pourquoi on tient quand c'est dur",
+            "narrative": [
+                "Ça fait plusieurs mois que ça ne va pas. Le travail est devenu difficile.",
+                "Pas intéressant. Parfois même un peu absurde. "
+                "Mais il y a une raison pour laquelle tu restes.",
+            ],
+            "question": "La raison profonde. Celle qui est honnête. Laquelle te ressemble ?",
+            "options": [
+                {"letter": "A", "label": "Les autres comptent",
+                 "text": "Tu as des gens qui comptent sur toi. Tu ne peux pas les laisser tomber.",
+                 "plain": "des gens comptent sur toi et tu ne les lâches pas",
+                 "schwartz": ["bienveillance"]},
+                {"letter": "B", "label": "Je me suis engagé(e)",
+                 "text": "Tu t'es engagé(e). Tu as promis que tu finirais. "
+                         "Tu n'es pas du genre à lâcher.",
+                 "plain": "tu as promis de finir et tu finis",
+                 "schwartz": ["conformite", "integrite"]},
+                {"letter": "C", "label": "Ça a de l'impact",
+                 "text": "Tu sais que ce que tu fais a un impact. Quelque part, ça aide des gens.",
+                 "plain": "ce que tu fais aide des gens quelque part",
+                 "schwartz": ["universalisme"]},
+                {"letter": "D", "label": "Je dois prouver",
+                 "text": "Tu veux prouver que tu peux le faire. À toi-même, d'abord. "
+                         "Abandonner = reconnaître l'échec.",
+                 "plain": "tu veux te prouver à toi-même que tu peux le faire",
+                 "schwartz": ["reussite"]},
+            ],
+        },
+        {
+            "id": "S2-6",
+            "title": "Le chef idéal",
+            "subtitle": "Besoins relationnels au travail",
+            "narrative": [
+                "Si tu devais décrire le chef idéal pour toi,",
+                "celui avec qui tu donnerais le meilleur de toi-même, ce serait lequel ?",
+            ],
+            "question": "Le chef avec lequel tu t'épanouirais vraiment. Sans compromis. C'est lequel ?",
+            "options": [
+                {"letter": "A", "label": "Confiance + autonomie",
+                 "text": "Celui qui te fait confiance, qui te laisse de l'autonomie. "
+                         "« Débrouille-toi, je te fais confiance. »",
+                 "plain": "celui qui te laisse de l'autonomie",
+                 "sdt": "autonomie", "schwartz": ["autodirection"]},
+                {"letter": "B", "label": "Exigence + défi",
+                 "text": "Celui qui est exigeant. Qui te pousse à te dépasser, "
+                         "qui attend le meilleur de toi.",
+                 "plain": "celui qui est exigeant et te pousse à te dépasser",
+                 "schwartz": ["hedonisme", "reussite"]},
+                {"letter": "C", "label": "Lien + présence",
+                 "text": "Celui qui est présent. Qui prend des nouvelles, "
+                         "crée une vraie relation humaine.",
+                 "plain": "celui qui est présent et prend des nouvelles",
+                 "sdt": "appartenance"},
+                {"letter": "D", "label": "Vision + sécurité",
+                 "text": "Celui qui sait où il va. Vision claire, décisions difficiles. "
+                         "« On va par là, suis-moi. »",
+                 "plain": "celui qui sait où il va et l'annonce clairement",
+                 "schwartz": ["securite", "pouvoir"]},
+            ],
+        },
+        {
+            "id": "S2-7",
+            "title": "Dans 20 ans",
+            "subtitle": "La projection existentielle",
+            "narrative": [
+                "Ultime scène pour aujourd'hui. On se projette loin. Très loin. Dans 20 ans.",
+                "Quand tu regardes ta vie professionnelle en arrière, qu'est-ce qui te fera "
+                "dire : « voilà, ça valait le coup, je ne regrette rien » ?",
+            ],
+            "question": "Sans filtre. La réponse qui vient du ventre. Dans 20 ans, qu'est-ce qui compte ?",
+            "options": [
+                {"letter": "A", "label": "Construire / Héritage",
+                 "text": "« J'ai construit des choses qui durent. Des réalisations dont je suis "
+                         "fier(e), quelque chose qui restera. »",
+                 "plain": "tu veux avoir construit des choses qui durent",
+                 "schwartz": ["reussite"]},
+                {"letter": "B", "label": "Aventure / Intensité",
+                 "text": "« J'ai vécu des aventures incroyables. Des projets fous, "
+                         "des moments où mon cœur battait fort. »",
+                 "plain": "tu veux avoir vécu des projets fous",
+                 "schwartz": ["hedonisme", "stimulation"]},
+                {"letter": "C", "label": "Utilité / Sens",
+                 "text": "« J'ai été utile. J'ai aidé des gens, j'ai changé des vies. "
+                         "Le monde est un peu meilleur grâce à moi. »",
+                 "plain": "tu veux avoir été utile et avoir changé des vies",
+                 "schwartz": ["universalisme"]},
+                {"letter": "D", "label": "Liens / Collectif",
+                 "text": "« J'étais entouré(e). Des équipes formidables, des liens forts. "
+                         "Je n'étais pas seul(e). »",
+                 "plain": "tu veux avoir été entouré de liens forts",
+                 "schwartz": ["bienveillance"], "sdt": "appartenance"},
+                {"letter": "E", "label": "Compétence / Maîtrise",
+                 "text": "« J'ai grandi. Je suis devenu(e) meilleur(e), plus compétent(e), "
+                         "plus sage. »",
+                 "plain": "tu veux être devenu meilleur et plus sage",
+                 "sdt": "competence"},
+                {"letter": "F", "label": "Liberté / Indépendance",
+                 "text": "« J'étais libre. J'ai fait ce que je voulais, quand je voulais. "
+                         "Ma vie m'appartenait. »",
+                 "plain": "tu veux que ta vie t'appartienne",
+                 "schwartz": ["autodirection"], "sdt": "autonomie"},
+            ],
+        },
+    ],
+    "billet": [
+        {"key": "vibrer", "label": "Ce qui me fait vibrer, c'est quand :"},
+        {"key": "vide", "label": "Ce qui me vide, c'est quand :"},
+        {"key": "vingt_ans", "label": "Dans 20 ans, je veux pouvoir dire que :"},
+    ],
+}
+
+
+SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2]
 
 
 def riasec_maxima() -> dict[str, int]:

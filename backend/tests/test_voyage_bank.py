@@ -194,3 +194,42 @@ def test_riasec_maxima_are_computed_not_copied():
     """The manual prints E 10 / C 10. Summing the best option per scene gives
     E 11 / C 9 — the manual's two transcription slips (spec errata 17b)."""
     assert bank.riasec_maxima() == {"R": 12, "I": 11, "A": 10, "S": 10, "E": 11, "C": 9}
+
+
+def test_session_2_header():
+    s2 = _session("2")
+    assert s2["title"] == "Ce qui compte vraiment pour toi"
+    assert s2["subtitle"] == "Ce qui te donne envie de te lever le matin · 7 situations"
+    assert s2["duration"] == "20 min"
+    assert [i["id"] for i in s2["items"]] == [f"S2-{k}" for k in range(1, 8)]
+    assert [b["key"] for b in s2["billet"]] == ["vibrer", "vide", "vingt_ans"]
+
+
+def test_tag_values_are_in_vocabulary():
+    """Every sdt / schwartz / big5 / style value across the whole bank."""
+    for session in bank.SESSIONS:
+        if session["kind"] != bank.KIND_SCENES:
+            continue
+        for scene in session["items"]:
+            for option in scene["options"]:
+                where = f"{scene['id']}{option['letter']}"
+                if "sdt" in option:
+                    assert option["sdt"] in bank.SDT, where
+                if "schwartz" in option:
+                    assert isinstance(option["schwartz"], list) and option["schwartz"], where
+                    for value in option["schwartz"]:
+                        assert value in bank.SCHWARTZ, f"{where}: {value}"
+                if "big5" in option:
+                    assert option["big5"], where
+                    for trait, sign in option["big5"].items():
+                        assert trait in bank.BIG5, f"{where}: {trait}"
+                        assert sign in (1, -1), f"{where}: {trait}={sign}"
+                if "style" in option:
+                    assert option["style"] in bank.STYLES, where
+
+
+def test_session_2_seventh_scene_is_the_ambivalence_probe():
+    """score_s2 reports S2-7 as `ambivalences`; it must have six options."""
+    scene = next(s for s in _session("2")["items"] if s["id"] == "S2-7")
+    assert len(scene["options"]) == 6
+    assert [o["letter"] for o in scene["options"]] == list("ABCDEF")
