@@ -456,8 +456,19 @@ def counselor_edit_portrait(token):
 
     errors = [f"Section inconnue : {key}." for key in sorted(sections)
               if key not in PORTRAIT_KEYS]
-    errors += [f"Section manquante ou vide : {key}." for key in PORTRAIT_KEYS
-               if not str(sections.get(key) or "").strip()]
+    # A dict or a list is truthy and survives str(value or "").strip() as
+    # non-empty, so the "manquante ou vide" check alone would let it through
+    # -- and the assignment below would then store str({'nested': 'x'}) and
+    # serve it to the candidate as their own portrait text. Unlike
+    # put_responses's billets (:209-216), which only feed a prompt, this is
+    # rendered straight to the person, so a non-string value is refused
+    # outright rather than dropped or stringified.
+    for key in PORTRAIT_KEYS:
+        value = sections.get(key)
+        if key in sections and not isinstance(value, str):
+            errors.append(f"Section invalide : {key}.")
+        elif not (value or "").strip():
+            errors.append(f"Section manquante ou vide : {key}.")
     if errors:
         return jsonify({"errors": errors}), 400
 
@@ -550,11 +561,18 @@ def upsert_voyage_note(token):
     if not isinstance(data, dict):
         return jsonify({"error": "Note invalide."}), 400
 
-    # "" is the one falsy value that is a deliberate, explicit clear (§ E15).
+    # "" is the one falsy value that is a deliberate, explicit clear (§ E15) --
+    # but only when the key is actually present. data.get("body", "") made an
+    # absent "body" key indistinguishable from an explicit "", so a malformed
+    # {} or a {"autre": "x"} silently wiped the note under a 200. Require the
+    # key outright.
+    if "body" not in data:
+        return jsonify({"error": "Note invalide."}), 400
+
     # A "body" field present but not a string (an int, a list, a dict) is
     # refused the same way -- accepting it would either crash the Text
     # column or, if coerced, destroy the stored note under bad input.
-    raw_body = data.get("body", "")
+    raw_body = data.get("body")
     if not isinstance(raw_body, str):
         return jsonify({"error": "Note invalide."}), 400
 

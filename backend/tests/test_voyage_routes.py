@@ -497,6 +497,21 @@ def test_erasing_nothing_is_not_an_error(client, auth):
     assert res.get_json()["message"] == "Aucun voyage à supprimer."
 
 
+def test_delete_erases_only_the_callers_own_voyage(client, auth, candidate):
+    """delete_voyage has no ownership test of its own beyond _current() —
+    final-review finding 1. The neighbour's voyage is created first: a
+    handler that always resolved to the oldest row in the table would erase
+    the neighbour's voyage instead of the caller's."""
+    neighbour_user = _user("voisin-delete@test.fr")
+    voyage_b = _voyage(neighbour_user)
+    voyage_a = _voyage(candidate)
+
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert Voyage.query.get(voyage_a.id) is None
+    assert Voyage.query.get(voyage_b.id) is not None
+
+
 # ── GET / PUT /api/voyage/responses ──────────────────────────────────────────
 
 def _open_voyage(client, auth):
@@ -509,6 +524,29 @@ def test_responses_start_empty_and_come_back_whole(client, auth):
     res = client.get("/api/voyage/responses", headers=auth)
     assert res.status_code == 200
     assert res.get_json()["responses"] == {"answers": {}, "billets": {}}
+
+
+def test_responses_are_only_ever_the_callers_own(client, auth, candidate):
+    """get_responses serves the raw psychometric answers with no ownership
+    check of its own (final-review finding 1) — the worst of the six missed
+    handlers, since nothing else in the handler would catch a caller getting
+    back someone else's answers. Two candidates, each with distinct stored
+    answers, each GET must return only their own. The neighbour's voyage is
+    created first, so a handler that always resolved to the oldest row in
+    the table would fail this in the caller's direction."""
+    neighbour_user = _user("voisin-responses@test.fr")
+    voyage_b = _voyage(neighbour_user)
+    voyage_b.responses = {"answers": {"S0-01": False}, "billets": {}}
+    voyage_a = _voyage(candidate)
+    voyage_a.responses = {"answers": {"S0-01": True}, "billets": {}}
+    _db.session.commit()
+
+    res = client.get("/api/voyage/responses", headers=auth)
+    assert res.get_json()["responses"]["answers"] == {"S0-01": True}
+
+    neighbour = _headers(neighbour_user)
+    res = client.get("/api/voyage/responses", headers=neighbour)
+    assert res.get_json()["responses"]["answers"] == {"S0-01": False}
 
 
 def test_responses_without_a_voyage_are_a_404(client, auth):
@@ -526,6 +564,23 @@ def test_a_put_merges_rather_than_replaces(client, auth):
     res = client.put("/api/voyage/responses", json={"answers": {"S0-02": False}}, headers=auth)
     assert res.status_code == 200
     assert res.get_json()["responses"]["answers"] == {"S0-01": True, "S0-02": False}
+
+
+def test_put_responses_writes_into_the_callers_own_voyage(client, auth, candidate):
+    """put_responses has no ownership test of its own beyond _current() —
+    final-review finding 1. The neighbour's voyage is created first: a
+    handler that always resolved to the oldest row in the table would write
+    the caller's answer into the neighbour's row instead of leaving it
+    untouched."""
+    neighbour_user = _user("voisin-put@test.fr")
+    voyage_b = _voyage(neighbour_user)
+    voyage_a = _voyage(candidate)
+
+    res = client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
+    assert res.status_code == 200
+
+    assert Voyage.query.get(voyage_a.id).responses["answers"] == {"S0-01": True}
+    assert Voyage.query.get(voyage_b.id).responses["answers"] == {}
 
 
 def test_a_put_returns_the_full_merged_set(client, auth):
@@ -831,6 +886,26 @@ def test_completing_without_a_voyage_is_a_404(client, auth):
     assert res.get_json()["error"] == "Aucun voyage en cours."
 
 
+def test_completing_a_session_closes_only_the_callers_own_voyage(client, auth, candidate):
+    """complete_session has no ownership test of its own beyond _current() —
+    final-review finding 1. The neighbour's voyage is created first, has no
+    session-0 answers on file, and stays untouched: a handler that always
+    resolved to the oldest row in the table would try to close the
+    neighbour's empty session instead and fail with "Réponses manquantes."
+    rather than closing the caller's own, answered one."""
+    neighbour_user = _user("voisin-complete@test.fr")
+    voyage_b = _voyage(neighbour_user)
+    voyage_a = _voyage(candidate)
+
+    client.put("/api/voyage/responses", json={"answers": _answers_for("0")}, headers=auth)
+    with patch("app.routes.voyage._spawn_micro"):
+        res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert res.status_code == 200
+
+    assert Voyage.query.get(voyage_a.id).sessions_completed == ["0"]
+    assert Voyage.query.get(voyage_b.id).sessions_completed == []
+
+
 # ── extra coverage: this phase shipped two production 500s already, so these
 # probes exist specifically to fail loudly if a similar defect creeps back in.
 
@@ -962,6 +1037,23 @@ def test_unlocking_without_a_voyage_is_a_404(client, auth):
     assert res.status_code == 404
 
 
+def test_unlock_redeems_the_code_against_only_the_callers_own_voyage(client, auth, candidate):
+    """unlock_voyage has no ownership test of its own beyond _current() —
+    final-review finding 1. The neighbour's voyage is created first: a
+    handler that always resolved to the oldest row in the table would grant
+    the code to the neighbour's voyage instead of the caller's."""
+    neighbour_user = _user("voisin-unlock@test.fr")
+    voyage_b = _voyage(neighbour_user)
+    voyage_a = _voyage(candidate)
+
+    code = _code()
+    res = client.post("/api/voyage/unlock", json={"code": code.code}, headers=auth)
+    assert res.status_code == 200
+
+    assert Voyage.query.get(voyage_a.id).counselor_code_id == code.id
+    assert Voyage.query.get(voyage_b.id).counselor_code_id is None
+
+
 def test_unlock_rejects_a_json_array_body(client, auth):
     """Same probe as test_a_non_object_body_is_a_400_not_a_500 on /responses:
     request.get_json(silent=True) or {} lets a JSON array through as truthy,
@@ -1036,7 +1128,14 @@ def test_portrait_needs_an_account(client):
 def test_the_portrait_is_only_ever_the_callers_own(client, auth, candidate):
     """No candidate endpoint takes an id from the client. Two candidates each
     have a validated portrait; each caller must see only their own six
-    sections, never the neighbour's."""
+    sections, never the neighbour's.
+
+    Both directions matter: `candidate`'s voyage is created first, so a
+    handler that always resolved to the oldest row in the table (the mutation
+    final review probes for) would still pass the first assertion below by
+    coincidence. The second assertion — the neighbour, whose voyage is
+    created second, seeing their own text — is what actually catches that
+    mutation."""
     voyage_a = _voyage(candidate, status=STATUS_TERMINE, portrait_status="validated",
                        share_token="tok-a")
     voyage_a.portrait = {"sections": {k: "texte A" for k in PORTRAIT_KEYS}}
@@ -1048,6 +1147,10 @@ def test_the_portrait_is_only_ever_the_callers_own(client, auth, candidate):
 
     res = client.get("/api/voyage/portrait", headers=auth)
     assert res.get_json()["portrait"]["sections"]["accroche"] == "texte A"
+
+    neighbour = _headers(neighbour_user)
+    res = client.get("/api/voyage/portrait", headers=neighbour)
+    assert res.get_json()["portrait"]["sections"]["accroche"] == "texte B"
 
 
 # ── counselor: role AND token ────────────────────────────────────────────────
@@ -1218,6 +1321,30 @@ def test_editing_refuses_a_missing_blank_or_unknown_section(client, sheet, couns
     errors = res.get_json()["errors"]
     assert "Section inconnue : intro." in errors
     assert "Section manquante ou vide : chemins." in errors
+
+
+def test_editing_refuses_a_non_string_section_value(client, sheet, counselor_auth):
+    """Final-review finding 4: `str(sections.get(key) or "").strip()` makes a
+    dict or a list non-empty, so it passed the "manquante ou vide" check and
+    was then stored as str({'nested': 'x'}) — reaching the candidate as their
+    own portrait text. Both shapes must be refused, and the portrait already
+    on file must be left exactly as it was."""
+    _, counselor_auth = counselor_auth
+    before = dict(Voyage.query.one().portrait["sections"])
+
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json={"sections": _sections(accroche={"nested": "x"})},
+                     headers=counselor_auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == ["Section invalide : accroche."]
+
+    res = client.put("/api/voyage/c/tok-conseiller/portrait",
+                     json={"sections": _sections(qui_tu_es=[1, 2])},
+                     headers=counselor_auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == ["Section invalide : qui_tu_es."]
+
+    assert Voyage.query.one().portrait["sections"] == before
 
 
 def test_editing_rejects_a_json_array_body(client, sheet, counselor_auth):
@@ -1396,16 +1523,18 @@ def test_a_malformed_note_body_is_refused_without_destroying_the_existing_note(
         client, sheet, counselor_auth):
     """Task 12 review, finding 1: coercing a malformed body to "" wiped an
     existing note under a 200 — a rejected input became destroyed data
-    reported as success. A JSON array, a bare number, a bare string and a
-    non-string "body" field must all be refused outright, and the note
-    already on file must survive every one of them untouched."""
+    reported as success. A JSON array, a bare number, a bare string, a
+    non-string "body" field, and — final-review finding 3 — a dict with no
+    "body" key at all (data.get("body", "") made an absent key
+    indistinguishable from an explicit "") must all be refused outright, and
+    the note already on file must survive every one of them untouched."""
     _, counselor_auth = counselor_auth
     res = client.put("/api/voyage/c/tok-conseiller/notes",
                      json={"body": "note importante"}, headers=counselor_auth)
     assert res.status_code == 200
     assert res.get_json()["note"]["body"] == "note importante"
 
-    for body in ([1, 2, 3], 42, "a string", {"body": 42}):
+    for body in ([1, 2, 3], 42, "a string", {"body": 42}, {}, {"autre": "x"}):
         res = client.put("/api/voyage/c/tok-conseiller/notes", json=body, headers=counselor_auth)
         assert res.status_code == 400
         assert res.get_json()["error"] == "Note invalide."
