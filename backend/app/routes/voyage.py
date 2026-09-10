@@ -542,20 +542,27 @@ def upsert_voyage_note(token):
     if voyage is None:
         return jsonify({"error": NOT_FOUND}), 404
 
-    # Same non-dict guard as counselor_edit_portrait above: a JSON array body
-    # must fall through to "" rather than crash .get("body") into a 500.
+    # A non-dict body (a JSON array, a bare string/number) must not crash
+    # .get("body") into a 500 -- but it also must not be silently coerced to
+    # "", which would wipe an existing note under a malformed request and
+    # report it as a 200 success. Refuse it outright instead.
     data = request.get_json(silent=True)
-    data = data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Note invalide."}), 400
+
+    # "" is the one falsy value that is a deliberate, explicit clear (§ E15).
+    # A "body" field present but not a string (an int, a list, a dict) is
+    # refused the same way -- accepting it would either crash the Text
+    # column or, if coerced, destroy the stored note under bad input.
+    raw_body = data.get("body", "")
+    if not isinstance(raw_body, str):
+        return jsonify({"error": "Note invalide."}), 400
 
     counselor_id = get_jwt_identity()
     note = VoyageNote.query.filter_by(voyage_id=voyage.id, counselor_id=counselor_id).first()
     if note is None:
         note = VoyageNote(voyage_id=voyage.id, counselor_id=counselor_id)
         db.session.add(note)
-    # "" is a valid body: it clears the note without deleting the row. A
-    # "body" field that parsed but is not a string (an int, a list) must not
-    # reach the Text column as-is — same guard as unlock_voyage's raw_code.
-    raw_body = data.get("body", "")
-    note.body = raw_body if isinstance(raw_body, str) else ""
+    note.body = raw_body
     db.session.commit()
     return jsonify({"note": note.to_dict()}), 200
