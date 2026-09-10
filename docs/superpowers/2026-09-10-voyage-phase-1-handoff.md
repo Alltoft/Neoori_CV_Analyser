@@ -62,3 +62,61 @@ Every claim below was produced by running code, not reading it.
 - **Reviewers must exercise HTTP endpoints, not just read diffs.** Every one of the three production defects found in this phase — the silent prompt overwrite, the JSON-body 500, the note wipe — was invisible to reading and found in minutes by sending hostile input. Five reading-based audit lenses missed the first one.
 - **A green suite can conceal an untested security property.** Mutating `by_token` left 97/97 green because every test ran in a single-voyage database. Ask of each access-control test: would it fail if the check were removed? Then check by mutating.
 - **Only one implementer may hold the working tree at a time.** Two concurrent implementers caused one agent's commit to absorb another's uncommitted work. Reviewers may overlap — they never commit, and carry a read-only-git ban.
+
+---
+
+## Addendum — the two open items, closed (2026-09-10)
+
+Both items the phase-1 review left open have been fixed and verified. Suite 374 → **591 passed**.
+
+### 1. `analyses.voyage_id` FK and the erasure 500
+
+- `ondelete="SET NULL"` on the model, migration `a3b4c5d6e7f8` (head).
+- `delete_voyage` guards `IntegrityError` → French 409 with a rollback, so a database-level
+  failure can never leave a failed transaction on the session.
+- `tests/conftest.py` now enables SQLite foreign keys via a connect listener. **This was not
+  free**: it exposed six tests asserting behaviour against a `Voyage` row whose
+  `counselor_code_id` pointed at a code that never existed — a row MySQL would reject. Fixed to
+  create real codes.
+- Verified by mutation: reverting `ondelete` makes
+  `test_deleting_a_voyage_still_referenced_by_an_analysis_sets_it_null` fail.
+
+Still open, same shape, no delete path touches it today: `Voyage.counselor_code_id`.
+
+### 2. The unhandled-500 class — nine vectors, not one
+
+The 12 `get_json(...) or {}` sites were the visible part. Fuzzing every body-reading route with
+hostile field values found the class was wider:
+
+| Site | Vector |
+|---|---|
+| `auth` register/login | non-string `password` — a list reached **bcrypt** before failing |
+| `analyses` | non-dict `inputs` (`dict(5)`); hostile values inside `inputs.*`; `draft_id` into a raw `filter_by()`; hostile `tier` into `tiers.normalize`; unhashable `_path` into `section_registry.normalize` |
+| `profile` | non-string fields into `.strip()` |
+| `payments` | non-scalar `analysis_id` into `get_or_404()` — **masked in tests** by the 503 that fires when `STRIPE_SECRET_KEY` is unset |
+| `prompts` | non-bool `activate` into a strict Boolean column |
+| `counselor` | a malformed PUT wiped a private note behind a 200 (data loss, not a 500) |
+
+`backend/app/utils/request_body.py` holds `json_object()`, `text_field()` (trimmed),
+`raw_text_field()` (verbatim — passwords, where whitespace is significant) and `dict_field()`.
+
+**`backend/tests/test_no_500_on_hostile_input.py` is the durable part**: a table-driven fuzz over
+every body-reading route asserting no 5xx and no escaped exception. Adding a route means adding a
+row. It fails on 33 cases against the pre-fix code.
+
+Verified independently of the implementer: 215 probes, 0 crashes; valid flows unchanged; and a
+password of `"  motdepasse  "` still authenticates while `"motdepasse"` does not, proving
+`raw_text_field` does not strip.
+
+One vector on my list was **wrong** and the implementer corrected it: `verify`'s `session_id`
+never crashed, because `payments.py` already wraps `Session.retrieve()` in `try/except Exception`.
+Guarded anyway for symmetry with `checkout`.
+
+### Found while fuzzing — relevant to phase 2, not fixed
+
+`anthropic_service._run_analysis` builds its prompt message **outside** its `try/except`. A hostile
+profile-merged field could therefore kill the background generation thread silently — the request
+already returned 201, so nothing surfaces as an HTTP error and the analysis just never completes.
+Different bug class from the above, and that file's connection-lifecycle code is delicate, so it
+was deliberately left alone. **Phase 2 adds two more background generation threads on this exact
+pattern — fix it there.**
