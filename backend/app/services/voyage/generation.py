@@ -203,3 +203,120 @@ def _micro_user_message(synthesis: dict, prenom: str | None) -> str:
         blocks.append([HEADER_SESSION_0] + session_0)
 
     return "\n\n".join("\n".join(block) for block in blocks)
+
+
+_PROFILE_LABELS = (
+    ("prenom", "Prénom"),
+    ("tranche_age", "Tranche d'âge"),
+    ("situation", "Situation actuelle"),
+    ("projet", "Projet"),
+)
+
+
+def _profile_lines(profile_fields: dict) -> list[str]:
+    """The four Profil de base fields, each omitted when empty.
+
+    « une information, une seule fois » (Parcours doc §1): the portrait reuses
+    the prénom, the age bracket and the situation the profile already holds, so
+    the voyage never asks for them again.
+    """
+    lines = []
+    for key, label in _PROFILE_LABELS:
+        value = str((profile_fields or {}).get(key) or "").strip()
+        if value:
+            lines.append(f"{label} : {value}")
+    return lines
+
+
+def _choice_lines(responses: dict) -> list[str]:
+    """One line per scene: the scene's own title, then the person's own words.
+
+    `plain` is the short plain-French descriptor authored beside each option;
+    the scoring tag on that option never leaves the server (spec decision 6).
+    Session 0 contributes nothing here — it reaches the model through the
+    synthesis block only.
+    """
+    lines = []
+    for n in ("1", "2", "3", "4", "5"):
+        for item in bank.items(n):
+            chosen = scoring.chosen_option(responses, item["id"]) or {}
+            plain = chosen.get("plain")
+            if plain:
+                lines.append(f"{item['title']} : {plain}")
+    return lines
+
+
+def _synthesis_lines(synthesis: dict) -> list[str]:
+    """The counselor's page-18 sheet, reduced to plain French.
+
+    Nothing numeric survives: no axis score, no RIASEC point, no level word. The
+    universe names (Réaliste, Investigateur…) and the three need words
+    (autonomie, appartenance, competence) are the deliberate exceptions — they
+    are ordinary French and the restitution guide says them out loud.
+
+    The counselor-only fields (s4["vendredi"], s5["rapport_echec"],
+    s5["rapport_flou"], the Big Five levels, Schwartz) are not here on purpose:
+    they belong to the synthesis sheet, not to the portrait's raw material.
+    """
+    synthesis = synthesis or {}
+    s0 = synthesis.get("s0") or {}
+    riasec = synthesis.get("riasec") or {}
+    s2 = synthesis.get("s2") or {}
+    s3 = synthesis.get("s3") or {}
+    s4 = synthesis.get("s4") or {}
+    s5 = synthesis.get("s5") or {}
+
+    lines = []
+
+    univers = [t.get("univers") for t in riasec.get("top3") or [] if t.get("univers")]
+    if univers:
+        lines.append(f"Univers dominants : {', '.join(univers)}")
+
+    attractions = [a.get("plain") for a in s0.get("top3") or [] if a.get("plain")]
+    if attractions:
+        lines.append(f"Ce qui l'attire le plus dans dix ans : {', '.join(attractions)}")
+
+    tensions = [t.get("tension") for t in s0.get("tensions") or [] if t.get("tension")]
+    if tensions:
+        lines.append(
+            f"Autant coché des deux côtés sur : {' · '.join(tensions)}{WEIGHT_NOTE}")
+
+    besoins = [b for b in s2.get("sdt_dominant") or [] if b]
+    if besoins:
+        lines.append(f"Besoin dominant : {', '.join(besoins)}")
+
+    # The tag itself never travels — bank.STYLE_PLAIN is what the model reads.
+    styles = [bank.STYLE_PLAIN[s] for s in s3.get("style_dominant") or []
+              if s in bank.STYLE_PLAIN]
+    if styles:
+        lines.append(f"Façon de fonctionner : {' · '.join(styles)}")
+
+    cadre = [s4.get(k) for k in ("espace", "rythme", "equipe", "manager") if s4.get(k)]
+    if cadre:
+        lines.append(f"Cadre : {' · '.join(cadre)}")
+    if s4.get("irritant"):
+        lines.append(f"Ce qui l'épuise : {s4['irritant']}")
+
+    for key, label in (("risque", "Rapport au risque"),
+                       ("valeur_centrale", "Ce qui la met en colère"),
+                       ("trace", "La trace voulue"),
+                       ("sacrifice", "Prête à sacrifier"),
+                       ("vivant", "Se sent vivant(e) quand")):
+        if s5.get(key):
+            lines.append(f"{label} : {s5[key]}")
+
+    return lines
+
+
+def _portrait_user_message(synthesis: dict, responses: dict, profile_fields: dict) -> str:
+    """Everything the portrait call is allowed to know, in three blocks.
+
+    A block whose lines are all empty is omitted with its header.
+    """
+    blocks = []
+    for header, lines in ((HEADER_PROFIL, _profile_lines(profile_fields)),
+                          (HEADER_CHOISI, _choice_lines(responses)),
+                          (HEADER_SYNTHESE, _synthesis_lines(synthesis))):
+        if lines:
+            blocks.append([header] + lines)
+    return "\n\n".join("\n".join(block) for block in blocks)

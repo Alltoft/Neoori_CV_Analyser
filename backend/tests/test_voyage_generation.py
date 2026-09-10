@@ -317,3 +317,138 @@ def test_the_micro_message_carries_no_number_and_no_framework_word():
     for word in ("Élevé", "Moyen", "Faible", "ouverture", "conscienciosite",
                  "A1", "A9", "A10", "Réaliste"):
         assert word not in msg
+
+
+# ── _portrait_user_message ───────────────────────────────────────────────────
+
+def _own_words(block: str) -> str:
+    """The right-hand side of every « Titre : ce que la personne a choisi » line.
+
+    The scene title is cahier text and S2-7's is « Dans 20 ans », so the digit
+    rule can only apply to what comes after the colon.
+    """
+    return "\n".join(ln.split(" : ", 1)[1] for ln in block.splitlines() if " : " in ln)
+
+
+def test_the_three_headers_appear_in_order():
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    assert (msg.index(gen.HEADER_PROFIL)
+            < msg.index(gen.HEADER_CHOISI)
+            < msg.index(gen.HEADER_SYNTHESE))
+
+
+def test_the_profile_block_carries_the_four_fields_it_is_given():
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    assert "Prénom : Marie" in msg
+    assert "Tranche d'âge : 25_34" in msg
+    assert "Situation actuelle : en_recherche" in msg
+    assert "Projet : reprendre un travail au contact des gens" in msg
+
+
+def test_an_empty_profile_field_never_leaves_a_naked_label():
+    msg = gen._portrait_user_message(
+        SYNTHESIS, _full_responses(),
+        {"prenom": "Marie", "tranche_age": None, "situation": "", "projet": None})
+    assert "Prénom : Marie" in msg
+    assert "Tranche d'âge" not in msg
+    assert "Situation actuelle" not in msg
+    assert "Projet" not in msg
+
+
+def test_the_choices_block_has_one_line_per_scene():
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    lines = [ln for ln in _block(msg, gen.HEADER_CHOISI).splitlines() if ln.strip()]
+    scenes = [i for n in ("1", "2", "3", "4", "5") for i in bank.item_ids(n)]
+    assert len(scenes) == 33
+    assert len(lines) == 33
+
+
+def test_each_choice_line_is_the_scene_title_then_the_persons_own_words():
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    scene = bank.item("S1-1")
+    assert f"{scene['title']} : {scene['options'][0]['plain']}" in msg
+
+
+def test_a_scene_title_may_carry_a_digit_because_the_cahier_does():
+    """S2-7 is « Dans 20 ans ». The digit rule covers the person's words, not
+    the cahier's own scene titles."""
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    choisi = _block(msg, gen.HEADER_CHOISI)
+    assert "Dans 20 ans : " in choisi
+    assert not re.search(r"\d", _own_words(choisi))
+
+
+def test_session_zero_contributes_nothing_to_the_choices_block():
+    """S0 reaches the model through the synthesis block only — its twenty
+    statements are checkboxes, not scenes."""
+    block = _block(
+        gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS),
+        gen.HEADER_CHOISI)
+    for item_id in bank.item_ids("0"):
+        assert bank.item(item_id)["text"] not in block
+
+
+def test_the_synthese_block_is_the_twelve_pinned_lines():
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    lines = [ln for ln in _block(msg, gen.HEADER_SYNTHESE).splitlines() if ln.strip()]
+    assert lines == [
+        "Univers dominants : Réaliste, Conventionnel, Entreprenant",
+        "Ce qui l'attire le plus dans dix ans : le lien avec les gens, un impact "
+        "visible, le terrain et l'action",
+        "Autant coché des deux côtés sur : discrétion vs reconnaissance · solo vs "
+        "collectif · impact local vs impact global · sécurité vs risque · méthode vs "
+        "expression libre · impact différé vs impact immédiat · bureau vs terrain · "
+        "expertise vs transmission (à pondérer ×1,5)",
+        "Besoin dominant : autonomie",
+        "Façon de fonctionner : s'appuie sur les autres pour décider",
+        "Cadre : bureau fermé et calme · cycles courts · petite équipe soudée · "
+        "confiance et droit à l'essai",
+        "Ce qui l'épuise : les interruptions constantes",
+        "Rapport au risque : Calculé",
+        "Ce qui la met en colère : l'injustice",
+        "La trace voulue : une trace dans les gens",
+        "Prête à sacrifier : le temps",
+        "Se sent vivant(e) quand : elle crée",
+    ]
+
+
+def test_an_incomplete_voyage_only_emits_the_lines_it_can_fill():
+    synthesis = copy.deepcopy(SYNTHESIS)
+    for key in ("riasec", "s2", "s3", "s4", "s5"):
+        synthesis[key] = None
+    msg = gen._portrait_user_message(synthesis, _s0_only_responses(), PROFILE_FIELDS)
+    block = _block(msg, gen.HEADER_SYNTHESE)
+    assert "Univers dominants" not in block
+    assert "Ce qui l'attire le plus dans dix ans" in block
+    assert gen.HEADER_CHOISI not in msg      # no scene answered yet
+
+
+def test_the_portrait_message_carries_no_score_and_no_framework_word():
+    """The profile block is exempt from the digit rule: `25_34` is the age
+    bracket the Profil de base already holds, and the contracts doc pins that
+    literal shape. Everything derived from the scoring must be digit-free apart
+    from the manual's own x1,5 weighting note."""
+    msg = gen._portrait_user_message(SYNTHESIS, _full_responses(), PROFILE_FIELDS)
+    synth = _block(msg, gen.HEADER_SYNTHESE).replace(gen.WEIGHT_NOTE, "")
+    assert not re.search(r"\d", synth)
+    assert not re.search(r"\d", _own_words(_block(msg, gen.HEADER_CHOISI)))
+    assert gen.leak_check({"message": msg}) == []
+    for word in ("Élevé", "Moyen", "ouverture", "conscienciosite",
+                 "A1", "A9", "A10", "consultatif", "bienveillance"):
+        assert word not in msg
+
+
+def test_a_real_synthesis_feeds_both_builders_without_a_gap(app):
+    """The literal fixture above pins the wording; this one proves the shape
+    scoring.synthesize() actually produces is the shape the builders read."""
+    responses = _full_responses()
+    synthesis = scoring.synthesize(responses)
+    micro = gen._micro_user_message(synthesis, "Marie")
+    portrait = gen._portrait_user_message(synthesis, responses, PROFILE_FIELDS)
+    assert gen.HEADER_SESSION_0 in micro
+    assert gen.HEADER_CHOISI in portrait
+    assert gen.HEADER_SYNTHESE in portrait
+    assert gen.leak_check({"a": micro, "b": portrait}) == []
+    assert not re.search(r"\d", _own_words(_block(portrait, gen.HEADER_CHOISI)))
+    assert not re.search(
+        r"\d", _block(portrait, gen.HEADER_SYNTHESE).replace(gen.WEIGHT_NOTE, ""))
