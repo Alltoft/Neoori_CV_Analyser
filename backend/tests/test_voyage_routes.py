@@ -26,6 +26,7 @@ from app.models.voyage import (
     session_lock,
 )
 from app.services.voyage import bank
+from app.utils import crypto
 
 
 # ── helpers, used by every task in this file ─────────────────────────────────
@@ -133,6 +134,19 @@ def test_columns_hold_ciphertext_not_plaintext(app, candidate):
     assert "endroits" not in row[1]
 
 
+def test_an_unreadable_payload_raises_rather_than_reading_as_empty(app, candidate):
+    """Precedent: test_profile.py:41-43. A silently swallowed DecryptionError
+    would make a key-rotation incident look like "never answered" — every
+    voyage reads as empty, session_complete goes False everywhere, and no
+    test fails."""
+    voyage = _voyage(candidate)
+    for column in ("responses_encrypted", "micro_encrypted", "portrait_encrypted"):
+        setattr(voyage, column, "not-a-fernet-token")
+    for prop in ("responses", "micro", "portrait"):
+        with pytest.raises(crypto.DecryptionError):
+            getattr(voyage, prop)
+
+
 def test_portrait_sections_needs_all_six_keys(app, candidate):
     voyage = _voyage(candidate)
     voyage.portrait = {"sections": {"accroche": "une phrase"}}
@@ -141,7 +155,26 @@ def test_portrait_sections_needs_all_six_keys(app, candidate):
 
     voyage.portrait = {"sections": {k: f"texte {k}" for k in PORTRAIT_KEYS}}
     _db.session.commit()
-    assert set(voyage.portrait_sections) == set(PORTRAIT_KEYS)
+    assert voyage.portrait_sections == {k: f"texte {k}" for k in PORTRAIT_KEYS}
+
+
+# ── scoring ──────────────────────────────────────────────────────────────────
+
+def test_synthesis_reads_the_answers_the_model_stores(app, candidate):
+    """The bug this catches: passing responses["answers"] instead of responses
+    to scoring.synthesize — every score would then read as None/False without
+    the suite noticing, because nothing else exercises synthesis()."""
+    voyage = _voyage(candidate)
+    voyage.responses = {"answers": _answers_for("0"), "billets": {}}
+    _db.session.commit()
+
+    sheet = voyage.synthesis()
+    assert set(sheet) == {"completeness", "riasec", "s0", "s2", "s3",
+                          "s4", "s5", "scoring_version"}
+    assert sheet["completeness"]["0"] is True
+    assert sheet["completeness"]["1"] is False
+    assert sheet["scoring_version"] == bank.SCORING_VERSION
+    assert sheet["s0"] is not None and sheet["riasec"] is None
 
 
 # ── to_dict: the only thing a candidate ever sees of the row ─────────────────
@@ -165,6 +198,22 @@ def test_to_dict_carries_exactly_twelve_keys(app, candidate):
     flat = str(payload)
     for forbidden in ("S0-01", "snapshot", "vocabulaire", "edited", "user_id"):
         assert forbidden not in flat
+
+
+def test_to_dict_survives_an_unflushed_row(app, candidate):
+    """created_at's default is Python-side, applied at flush — a caller that
+    serialises before commit() must not get an AttributeError on None."""
+    voyage = Voyage(
+        user_id=candidate.id,
+        status=STATUS_EN_COURS,
+        sessions_completed=[],
+        consent_at=datetime.utcnow(),
+        consent_version=CONSENT_VERSION,
+        age_attested=True,
+    )
+    payload = voyage.to_dict()
+    assert payload["created_at"] is None
+    assert set(payload) == TO_DICT_KEYS
 
 
 def test_the_phrase_is_the_one_derived_thing_a_candidate_may_see(app, candidate):

@@ -170,6 +170,10 @@ class Voyage(db.Model):
 
     @property
     def has_code(self) -> bool:
+        # Deliberately permanent: unlock is checked once, at POST
+        # /api/voyage/unlock (an inactive code is refused there). This
+        # property does not re-check CounselorCode.is_active, so revoking a
+        # code later never strands a candidate mid-voyage (contract § C.5).
         return bool(self.counselor_code_id)
 
     # ── scoring ──────────────────────────────────────────────────────────────
@@ -256,7 +260,7 @@ class Voyage(db.Model):
             "micro_phrase": self.micro_phrase,
             "portrait_status": self.portrait_status,
             "share_token": self.share_token if self.status == STATUS_TERMINE else None,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
