@@ -119,10 +119,17 @@ def normalize(parcours) -> str:
     """Coerce a parcours id to a known value.
 
     Accepts the legacy 'A'/'B' path codes so rows written before the
-    3-parcours migration keep rendering.
+    3-parcours migration keep rendering. `parcours in PARCOURS` needs a
+    hashable value; a hostile request body can hand this a list or a dict
+    for inputs._path (analyses.create_analysis reads it before any
+    validation runs), which raised TypeError -- an unhandled 500. Any other
+    value falls through to the str()-based fallback exactly as before.
     """
-    if parcours in PARCOURS:
-        return parcours
+    try:
+        if parcours in PARCOURS:
+            return parcours
+    except TypeError:
+        pass  # unhashable (a list, a dict) -- never a valid parcours id
     legacy = {"A": "1", "B": "3"}
     return legacy.get(str(parcours).upper(), DEFAULT_PARCOURS)
 

@@ -21,3 +21,20 @@ def text_field(data: dict, key: str, default: str = "") -> str:
     instead of crashing on .strip()."""
     value = data.get(key, default)
     return value.strip() if isinstance(value, str) else default
+
+
+def raw_text_field(data: dict, key: str, default: str = "") -> str:
+    """A string field taken verbatim, without trimming. For values where
+    surrounding whitespace is significant -- a password, notably."""
+    value = data.get(key, default)
+    return value if isinstance(value, str) else default
+
+
+def dict_field(data: dict, key: str) -> dict:
+    """A dict-valued field, copied. `dict(data.get(key, {}))` looks
+    equivalent but isn't: handed a JSON array or a scalar, `dict()` either
+    misreads it as key/value pairs or raises TypeError. A non-dict value here
+    yields {} instead, so the route's own validation rejects the payload with
+    its own French message instead of crashing."""
+    value = data.get(key, {})
+    return dict(value) if isinstance(value, dict) else {}

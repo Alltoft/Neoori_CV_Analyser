@@ -9,7 +9,7 @@ from ..models.counselor_code import CounselorCode
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..utils.tokens import generate_share_token
-from ..utils.request_body import json_object, text_field
+from ..utils.request_body import json_object, text_field, dict_field
 from ..services import section_registry as registry
 from ..services import tiers
 from ..services.anthropic_service import start_analysis
@@ -56,7 +56,7 @@ def _normalize_chemin(value) -> str:
 def create_analysis():
     user_id = _optional_user_id()
     data = json_object()
-    inputs = dict(data.get("inputs", {}))
+    inputs = dict_field(data, "inputs")
     # normalize() maps the legacy 'A'/'B' codes onto parcours ids and falls
     # back to parcours 1 for anything unrecognised.
     path = registry.normalize(inputs.get("_path"))
@@ -112,8 +112,16 @@ def save_draft():
     orphaned (no user_id) and never visible in the user's space."""
     user_id = get_jwt_identity()
     data = json_object()
-    inputs = data.get("inputs", {})
-    draft_id = data.get("draft_id")
+    # dict_field, not a bare data.get(): a non-dict "inputs" would be stored
+    # as-is on the model, then crash Analysis.parcours -- called from
+    # to_dict() a few lines below -- via (self.inputs or {}).get("_path").
+    inputs = dict_field(data, "inputs")
+    # text_field, not a bare data.get(): a non-string draft_id (a list, a
+    # dict) reaching filter_by(id=draft_id) as a query parameter raises
+    # sqlalchemy.exc.ProgrammingError ("type 'list' is not supported") --
+    # no id is ever actually a list, so falling back to "no draft_id" (a new
+    # draft) is the right answer, same as an absent one.
+    draft_id = text_field(data, "draft_id")
 
     if draft_id:
         analysis = Analysis.query.filter_by(
@@ -291,12 +299,16 @@ def _validate_inputs(inputs: dict) -> list[str]:
     """
     errors = []
 
-    has_cv = (inputs.get("cv_text") or "").strip()
+    # text_field, not (inputs.get(...) or "").strip(): a hostile inputs.*
+    # sub-field (a list, a dict) is truthy and survived the `or ""` as-is,
+    # crashing on .strip() -- an unhandled 500 from a field one level below
+    # the "inputs" guard in create_analysis.
+    has_cv = text_field(inputs, "cv_text")
     if len(has_cv) < 200:
         errors.append("CV trop court (minimum 200 caractères).")
 
     minimum = CIBLE_MIN[_normalize_chemin(inputs.get("_chemin"))]
-    cible = (inputs.get("cible_visee") or "").strip()
+    cible = text_field(inputs, "cible_visee")
     if len(cible) < minimum:
         errors.append(f"Cible visée trop courte (minimum {minimum} caractères).")
 
@@ -309,7 +321,7 @@ def _validate_inputs(inputs: dict) -> list[str]:
 # new `if` inside three functions.
 
 def _missing(inputs: dict, field: str, label: str, minimum: int = 1) -> str | None:
-    value = (inputs.get(field) or "").strip()
+    value = text_field(inputs, field)
     if len(value) < minimum:
         if minimum > 1:
             return f"{label} — réponse trop courte ({minimum} caractères minimum)."
@@ -325,7 +337,7 @@ def _validate_inputs_p2(inputs: dict) -> list[str]:
     the profile already knew.
     """
     errors = []
-    if len((inputs.get("cv_text") or "").strip()) < 200:
+    if len(text_field(inputs, "cv_text")) < 200:
         errors.append("CV ou liste d'expériences trop courte (200 caractères minimum).")
     for field, label in (
         ("satisfaction", "Ce qui vous a donné le plus de satisfaction"),

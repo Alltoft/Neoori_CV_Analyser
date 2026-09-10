@@ -18,7 +18,7 @@ from ..models.analysis import Analysis
 from ..services import section_registry as registry
 from ..services import tiers
 from ..services.unlock_service import unlock_analysis
-from ..utils.request_body import json_object
+from ..utils.request_body import json_object, text_field
 
 payments_bp = Blueprint("payments", __name__)
 
@@ -79,7 +79,10 @@ def create_checkout():
         return jsonify({"error": "Paiement indisponible pour le moment."}), 503
 
     data = json_object()
-    analysis_id = data.get("analysis_id")
+    # text_field: a non-string analysis_id (a list, a dict) is not a valid id
+    # -- it must land on this "requis" 400, not reach get_or_404() and raise
+    # InvalidRequestError from an unhashable/uncoercible primary key lookup.
+    analysis_id = text_field(data, "analysis_id")
     if not analysis_id:
         return jsonify({"error": "analysis_id requis."}), 400
 
@@ -128,7 +131,8 @@ def verify_session():
         return jsonify({"error": "Paiement indisponible pour le moment."}), 503
 
     data = json_object()
-    session_id = data.get("session_id")
+    # Same guard as checkout's analysis_id -- see the comment there.
+    session_id = text_field(data, "session_id")
     if not session_id:
         return jsonify({"error": "session_id requis."}), 400
 

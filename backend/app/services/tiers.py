@@ -53,8 +53,14 @@ LEGACY = {"haiku": FREE, "sonnet": PAID, "opus": PREMIUM}
 
 
 def normalize(tier) -> str:
-    """Coerce a stored or client-supplied tier to a plan name."""
-    value = (tier or "").strip().lower()
+    """Coerce a stored or client-supplied tier to a plan name.
+
+    `tier` can be a hostile request-body value (payments.create_checkout and
+    analyses.create_analysis both pass data.get(...) straight through). A
+    truthy non-string -- a list, a dict -- survived `(tier or "").strip()`
+    as truthy and crashed on .strip(); isinstance guards it the same way
+    None and "" already fell back to "free"."""
+    value = tier.strip().lower() if isinstance(tier, str) else ""
     if value in TIER_CONFIG:
         return value
     return LEGACY.get(value, FREE)

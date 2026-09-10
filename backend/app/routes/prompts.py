@@ -78,7 +78,11 @@ def create_prompt():
 
     version_label = text_field(data, "version_label")
     system_prompt_text = text_field(data, "system_prompt_text")
-    activate = data.get("activate", False)
+    # bool(), not the raw value: is_active is a strict SQLite Boolean column,
+    # and a hostile non-bool (an int, a list) reaching it as-is raised
+    # ValueError at commit -- an unhandled 500. Same coercion already used
+    # for "useful" (analyses.py) and "point_fort"/"oeth" (profile).
+    activate = bool(data.get("activate", False))
     path, error = _read_path(data.get("path"))
     if error:
         return error

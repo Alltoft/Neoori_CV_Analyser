@@ -11,7 +11,7 @@ from flask_jwt_extended import (
 )
 from ..extensions import db, bcrypt
 from ..models.user import User
-from ..utils.request_body import json_object, text_field
+from ..utils.request_body import json_object, text_field, raw_text_field
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -20,7 +20,7 @@ auth_bp = Blueprint("auth", __name__)
 def register():
     data = json_object()
     email = text_field(data, "email").lower()
-    password = data.get("password") or ""
+    password = raw_text_field(data, "password")
 
     if not email or not password:
         return jsonify({"error": "Email et mot de passe requis."}), 400
@@ -45,7 +45,7 @@ def register():
 def login():
     data = json_object()
     email = text_field(data, "email").lower()
-    password = data.get("password") or ""
+    password = raw_text_field(data, "password")
 
     user = User.query.filter_by(email=email).first()
     if not user or not bcrypt.check_password_hash(user.password_hash, password):

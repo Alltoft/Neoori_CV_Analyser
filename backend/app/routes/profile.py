@@ -19,7 +19,7 @@ from ..models.profile import (
     SensitiveProfile,
     normalize_conditions,
 )
-from ..utils.request_body import json_object
+from ..utils.request_body import json_object, text_field
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -138,8 +138,10 @@ def upsert_profile():
 
     for field in _TEXT_FIELDS:
         if field in data:
-            value = data.get(field)
-            setattr(profile, field, (value or "").strip() or None)
+            # text_field: a non-string value (bool, list, dict, number) must
+            # not reach .strip() -- it now clears the field instead of
+            # crashing, same as an explicit "".
+            setattr(profile, field, text_field(data, field) or None)
 
     for field in _ENUMS:
         if field in data:
