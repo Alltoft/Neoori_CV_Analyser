@@ -36,6 +36,59 @@ def reap_stale_running(cutoff_minutes: int | None = None) -> int:
     return stale
 
 
+def reap_stale_generating(cutoff_minutes: int | None = None) -> int:
+    """Reset voyages orphaned mid-generation by a previous process.
+
+    Same rationale as reap_stale_running() and the same cutoff: create_app()
+    runs in every process that opens this database, so resetting all
+    'generating' rows would reach voyages that are still streaming.
+
+    updated_at is the right clock: the route commits the 'generating' status
+    before spawning the thread, which bumps it.
+
+    Both statuses are swept in ONE statement, each rewritten only where it
+    actually reads 'generating'. Two successive UPDATEs would not do: the first
+    bumps updated_at through the column's own onupdate, pushing the row past
+    the cutoff, so the second would no longer match it — and a voyage that was
+    generating both a phrase and a portrait would stay stranded on the second
+    status, which is the exact failure this reaps.
+
+    Nothing writes an `error` payload here. No thread was alive to observe the
+    failure, so the status is the whole signal; inventing a message would claim
+    knowledge of something nobody saw.
+    """
+    from .models.voyage import Voyage
+
+    cutoff = datetime.utcnow() - timedelta(
+        minutes=STALE_RUN_CUTOFF_MINUTES if cutoff_minutes is None else cutoff_minutes
+    )
+    stale = (
+        Voyage.query
+        .filter(
+            db.or_(
+                Voyage.micro_status == "generating",
+                Voyage.portrait_status == "generating",
+            ),
+            Voyage.updated_at < cutoff,
+        )
+        .update(
+            {
+                Voyage.micro_status: db.case(
+                    (Voyage.micro_status == "generating", "error"),
+                    else_=Voyage.micro_status,
+                ),
+                Voyage.portrait_status: db.case(
+                    (Voyage.portrait_status == "generating", "error"),
+                    else_=Voyage.portrait_status,
+                ),
+            },
+            synchronize_session=False,
+        )
+    )
+    db.session.commit()
+    return stale
+
+
 def create_app(env: str | None = None) -> Flask:
     env = env or os.environ.get("FLASK_ENV", "development")
     app = Flask(__name__)
@@ -111,12 +164,16 @@ def create_app(env: str | None = None) -> Flask:
     def revoked_token(_jwt_header, _jwt_data):
         return _cors_error_response({"error": "Token révoqué."}, 401)
 
-    # Reset analyses that were mid-stream when the server last shut down
+    # Reset analyses and voyages that were mid-generation when the server last
+    # shut down
     with app.app_context():
         try:
             stale = reap_stale_running()
             if stale:
                 app.logger.info(f"Startup: reset {stale} stale running analysis/analyses to error.")
+            stranded = reap_stale_generating()
+            if stranded:
+                app.logger.info(f"Startup: reset {stranded} stale generating voyage(s) to error.")
         except Exception:
             pass  # DB not yet migrated on first boot
 
