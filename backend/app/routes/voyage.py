@@ -17,7 +17,7 @@ session needs the one before it.
 """
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
@@ -26,6 +26,7 @@ from ..models.voyage import (
     CONSENT_VERSION,
     STATUS_EN_COURS,
     Voyage,
+    session_lock,
 )
 from ..services.voyage import bank
 
@@ -76,7 +77,8 @@ def create_voyage():
     French digital-consent floor; under-15 parental consent is out of scope for
     v1 (spec decision 13).
     """
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
     errors = []
     if data.get("consent") is not True:
         errors.append("Le consentement est requis.")
@@ -117,3 +119,84 @@ def delete_voyage():
     db.session.delete(voyage)
     db.session.commit()
     return jsonify({"message": "Voyage supprimé."}), 200
+
+
+def _session_of(item_id: str) -> str:
+    """"S0-01" -> "0", "S3-7" -> "3". Every bank id is S<n>-<k>."""
+    return item_id[1]
+
+
+@voyage_bp.get("/responses")
+@jwt_required()
+def get_responses():
+    """The person's own answers, for resuming a session or re-rendering it."""
+    voyage = _current()
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+    return jsonify({"responses": voyage.responses}), 200
+
+
+@voyage_bp.put("/responses")
+@jwt_required()
+def put_responses():
+    """Merge answers and exit tickets into the voyage.
+
+    Merge, not replace: the player saves on every « Suivant », so a lost
+    connection costs one scene rather than a session. Unknown ids are dropped
+    silently — a client one deploy behind must not lose a whole save over an
+    item that moved — but a known id carrying a value the bank rejects is a
+    400, because that means the two have genuinely drifted.
+    """
+    voyage = _current()
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+
+    data = request.get_json(silent=True)
+    if data is not None and not isinstance(data, dict):
+        # A body that parsed as valid JSON but the wrong top-level shape (an
+        # array, a bare string, a number) is refused outright — treating it
+        # like {} here would hide a client bug behind a silent no-op. An
+        # absent or unparseable body stays a no-op (data is None -> {}),
+        # matching the "empty PUT" contract the tests rely on.
+        return jsonify({"error": "Corps de requête invalide."}), 400
+    data = data or {}
+    raw_answers = data.get("answers")
+    raw_billets = data.get("billets")
+    answers = raw_answers if isinstance(raw_answers, dict) else {}
+    billets = raw_billets if isinstance(raw_billets, dict) else {}
+
+    known = {i: v for i, v in answers.items() if bank.item(i) is not None}
+
+    # Locks are checked over every session the request touches, before any
+    # merge — a refusal must leave the row exactly as it was.
+    touched = {_session_of(i) for i in known}
+    touched |= {n for n in billets if n in bank.SESSION_IDS}
+    profile = _profile()
+    for n in sorted(touched):
+        lock = session_lock(voyage, profile, n)
+        if lock:
+            return jsonify({"error": lock}), 403
+
+    invalid = [
+        f"Réponse invalide pour {i}."
+        for i, value in sorted(known.items())
+        if not bank.validate_answer(i, value)
+    ]
+    if invalid:
+        return jsonify({"errors": invalid}), 400
+
+    merged = voyage.responses
+    merged["answers"].update(known)
+    for n, fields in billets.items():
+        if n not in bank.SESSION_IDS or not isinstance(fields, dict):
+            continue
+        allowed = set(bank.billet_keys(n))
+        target = dict(merged["billets"].get(n) or {})
+        for key, value in fields.items():
+            if key in allowed:
+                target[key] = "" if value is None else str(value)
+        merged["billets"][n] = target
+
+    voyage.responses = merged
+    db.session.commit()
+    return jsonify({"responses": voyage.responses}), 200

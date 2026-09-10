@@ -441,10 +441,36 @@ def test_a_retake_is_allowed_once_the_previous_one_is_finished(client, auth, can
 
 def test_a_voyage_is_only_ever_the_callers_own(client, auth, candidate):
     """No candidate endpoint takes an id from the client, so there is nothing
-    to enumerate — but the neighbour must still see their own state."""
-    _voyage(candidate, status=STATUS_S0)
-    neighbour = _headers(_user("voisin@test.fr"))
-    assert client.get("/api/voyage", headers=neighbour).get_json()["voyage"] is None
+    to enumerate — but each caller must see their own row and never the
+    other's. Both users have a voyage, so this fails if the ownership filter
+    is ever dropped (a "most recent row" bug would pass the earlier version
+    of this test but not this one)."""
+    voyage_a = _voyage(candidate, status=STATUS_S0)
+    neighbour_user = _user("voisin@test.fr")
+    voyage_b = _voyage(neighbour_user, status=STATUS_S0)
+    neighbour = _headers(neighbour_user)
+    assert client.get("/api/voyage", headers=neighbour).get_json()["voyage"]["id"] == voyage_b.id
+    assert client.get("/api/voyage", headers=auth).get_json()["voyage"]["id"] == voyage_a.id
+
+
+def test_creation_rejects_a_json_array_body(client, auth):
+    """A JSON array is valid, truthy JSON — it must not survive past the
+    dict check and crash data.get() into an unhandled 500."""
+    res = client.post("/api/voyage", json=[1, 2, 3], headers=auth)
+    assert res.status_code == 400
+    errors = res.get_json()["errors"]
+    assert "Le consentement est requis." in errors
+    assert "Vous devez attester avoir 15 ans ou plus." in errors
+
+
+def test_creation_rejects_a_json_string_body(client, auth):
+    """Same probe, a JSON string this time — both are truthy and both must
+    fall back to the same 400, not a 500."""
+    res = client.post("/api/voyage", json="just a string", headers=auth)
+    assert res.status_code == 400
+    errors = res.get_json()["errors"]
+    assert "Le consentement est requis." in errors
+    assert "Vous devez attester avoir 15 ans ou plus." in errors
 
 
 # ── DELETE /api/voyage ───────────────────────────────────────────────────────
@@ -469,3 +495,163 @@ def test_erasing_nothing_is_not_an_error(client, auth):
     res = client.delete("/api/voyage", headers=auth)
     assert res.status_code == 200
     assert res.get_json()["message"] == "Aucun voyage à supprimer."
+
+
+# ── GET / PUT /api/voyage/responses ──────────────────────────────────────────
+
+def _open_voyage(client, auth):
+    client.post("/api/voyage", json={"consent": True, "age_attested": True}, headers=auth)
+    return Voyage.query.one()
+
+
+def test_responses_start_empty_and_come_back_whole(client, auth):
+    _open_voyage(client, auth)
+    res = client.get("/api/voyage/responses", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["responses"] == {"answers": {}, "billets": {}}
+
+
+def test_responses_without_a_voyage_are_a_404(client, auth):
+    assert client.get("/api/voyage/responses", headers=auth).status_code == 404
+    res = client.put("/api/voyage/responses", json={"answers": {}}, headers=auth)
+    assert res.status_code == 404
+    assert res.get_json()["error"] == "Aucun voyage en cours."
+
+
+def test_a_put_merges_rather_than_replaces(client, auth):
+    """Every « Suivant » saves; a lost connection must cost one scene, not the
+    whole session."""
+    _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
+    res = client.put("/api/voyage/responses", json={"answers": {"S0-02": False}}, headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["responses"]["answers"] == {"S0-01": True, "S0-02": False}
+
+
+def test_a_put_returns_the_full_merged_set(client, auth):
+    """So the player can reconcile after a reconnection without a second call."""
+    _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={"answers": _answers_for("0")}, headers=auth)
+    res = client.put("/api/voyage/responses",
+                     json={"billets": {"0": {"surprise": "je n'aime pas le bureau"}}},
+                     headers=auth)
+    body = res.get_json()["responses"]
+    assert len(body["answers"]) == len(bank.items("0"))
+    assert body["billets"]["0"]["surprise"] == "je n'aime pas le bureau"
+
+
+def test_an_unknown_item_id_is_dropped_not_rejected(client, auth):
+    _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S0-01": True, "S9-99": "Z"}}, headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["responses"]["answers"] == {"S0-01": True}
+
+
+def test_a_known_item_with_a_bad_value_is_rejected(client, auth):
+    """A checklist row is a boolean and a scene is one of its own letters;
+    anything else means the client and the bank have drifted."""
+    _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses", json={"answers": {"S0-01": "oui"}}, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == ["Réponse invalide pour S0-01."]
+    assert Voyage.query.one().responses["answers"] == {}
+
+
+def test_billet_fields_outside_the_session_are_dropped(client, auth):
+    _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses", json={
+        "billets": {"0": {"surprise": "ok", "inventé": "x"}, "9": {"a": "b"}},
+    }, headers=auth)
+    assert res.status_code == 200
+    billets = res.get_json()["responses"]["billets"]
+    assert billets == {"0": {"surprise": "ok"}}
+
+
+def test_an_empty_put_is_a_no_op(client, auth):
+    _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses", json={}, headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["responses"] == {"answers": {}, "billets": {}}
+
+
+def test_answers_for_a_locked_session_are_refused_before_anything_is_written(client, auth):
+    _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S0-01": True, "S1-1": "A"}}, headers=auth)
+    assert res.status_code == 403
+    assert res.get_json()["error"] == LOCK_CODE
+    assert Voyage.query.one().responses["answers"] == {}
+
+
+def test_the_answers_column_holds_ciphertext_after_a_real_save(client, auth):
+    """The route-level half of the guarantee: what the API writes is what the
+    DB export cannot read."""
+    _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={
+        "answers": {"S0-01": True},
+        "billets": {"0": {"surprise": "je déteste le bureau"}},
+    }, headers=auth)
+    row = _db.session.execute(_db.text("SELECT responses_encrypted FROM voyages")).first()
+    assert "S0-01" not in row[0]
+    assert "bureau" not in row[0]
+    assert Voyage.query.one().responses["answers"]["S0-01"] is True
+
+
+def test_a_partial_save_merges_at_the_persistence_layer(client, auth):
+    """Two separate PUTs — one carrying only answers, one only billets — must
+    both survive in the row scoring reads. The proof lives in a fresh query
+    against the (decrypted) column, not just in what the second response
+    echoes back, so a merge bug that only fooled the response body would still
+    be caught here."""
+    voyage = _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
+    client.put("/api/voyage/responses",
+               json={"billets": {"0": {"surprise": "je n'aime pas le bureau"}}},
+               headers=auth)
+
+    stored = Voyage.query.get(voyage.id).responses
+    assert stored["answers"] == {"S0-01": True}
+    assert stored["billets"]["0"]["surprise"] == "je n'aime pas le bureau"
+
+
+def test_malformed_answers_shapes_are_ignored_not_stored(client, auth):
+    """Phase-0 trap: scoring._answers() fail-softs to {} on a wrongly-shaped
+    payload, so a route that ever writes something other than a dict under
+    "answers" silently erases the person's work with no error anywhere. A
+    list, and a literal JSON null body, must both be treated like an absent
+    key rather than corrupting what is already saved."""
+    voyage = _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
+
+    res = client.put("/api/voyage/responses", json={"answers": ["S0-02"]}, headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["responses"]["answers"] == {"S0-01": True}
+
+    res = client.put("/api/voyage/responses", data="null",
+                     content_type="application/json", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["responses"]["answers"] == {"S0-01": True}
+
+    stored = Voyage.query.get(voyage.id).responses
+    assert stored["answers"] == {"S0-01": True}
+
+
+def test_a_non_object_body_is_a_400_not_a_500(client, auth):
+    """The exact regression a reviewer caught in Task 8: request.get_json()
+    can return a list or a string when the client sends well-formed JSON of
+    the wrong shape. `or {}` lets both through as truthy, and the next
+    `data.get(...)` call then raises AttributeError — an unhandled 500 in
+    production, since app/__init__.py registers no error handler for it.
+    A JSON array and a JSON string must both be refused as ordinary bad
+    input, with the route's own French message, and must not touch the row."""
+    voyage = _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
+
+    for body in ([1, 2, 3], "just a string"):
+        res = client.put("/api/voyage/responses", json=body, headers=auth)
+        assert res.status_code == 400
+        assert res.get_json()["error"] == "Corps de requête invalide."
+
+    stored = Voyage.query.get(voyage.id).responses
+    assert stored["answers"] == {"S0-01": True}
