@@ -54,8 +54,16 @@ def reap_stale_generating(cutoff_minutes: int | None = None) -> int:
     micro_status = 'generating' at session 0, on a voyage the person keeps
     playing. Every answer they save bumps updated_at past the cutoff, so the
     sweep never reaches that row for as long as they stay active. Verified, not
-    theorised. A portrait is not exposed the same way — it is spawned at S5,
-    when the voyage is finished and nothing writes to it again.
+    theorised.
+
+    A portrait is exposed the same way, though it takes a stranger path to get
+    there. It is spawned at S5, when the voyage is finished — but a finished
+    voyage is still writable: current_for() falls back to the last one played,
+    PUT /api/voyage/responses has no status guard, and session 0 carries no
+    counselor-code gate and no order lock. So a person who re-saves an S0
+    answer on a completed voyage refreshes the clock and their stranded
+    portrait stops being reachable too. Measured, not assumed: that request
+    returns 200 and moves updated_at.
 
     Fixing that properly needs a per-run timestamp (micro_started_at /
     portrait_started_at) rather than a shared last-write column, and that is a

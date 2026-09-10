@@ -21,6 +21,8 @@ from app import create_app, reap_stale_generating, STALE_RUN_CUTOFF_MINUTES
 from app.extensions import db
 from app.models.user import User
 from app.models.voyage import Voyage
+from app.services.voyage import bank
+from flask_jwt_extended import create_access_token
 
 OLD = STALE_RUN_CUTOFF_MINUTES + 5
 YOUNG = 1
@@ -242,3 +244,48 @@ def test_a_failing_analyses_sweep_does_not_skip_the_voyage_sweep():
         assert create_app("testing") is not None
 
     reaper.assert_called_once_with()
+
+
+def test_a_finished_voyage_can_still_refresh_its_own_clock(app, client):
+    """Documents the blind spot rather than asserting a guarantee.
+
+    reap_stale_generating() filters on updated_at, which is a last-write clock.
+    A voyage that is `termine` is still writable — current_for() falls back to
+    the last one played, PUT /responses has no status guard, and session 0 has
+    neither a counselor-code gate nor an order lock. So a stranded portrait can
+    be pushed out of the sweep's reach by re-saving a session-0 answer.
+
+    This test exists so the limitation is a measured fact in the suite rather
+    than a sentence in a docstring. When per-run timestamps land, it should
+    start failing on the last assertion — that is the signal to delete it.
+    """
+    user = User(email="clock@test.com", password_hash="x", role="candidate", plan="free")
+    db.session.add(user)
+    db.session.commit()
+
+    voyage = Voyage(user_id=user.id, consent_at=datetime.utcnow(), age_attested=True,
+                    status="termine", portrait_status="generating",
+                    sessions_completed=["0", "1", "2", "3", "4", "5"])
+    voyage.responses = {"answers": {}, "billets": {}}
+    db.session.add(voyage)
+    db.session.commit()
+    voyage_id = voyage.id
+
+    stale = datetime.utcnow() - timedelta(minutes=STALE_RUN_CUTOFF_MINUTES + 45)
+    db.session.query(Voyage).filter_by(id=voyage_id).update(
+        {"updated_at": stale}, synchronize_session=False)
+    db.session.commit()
+
+    token = create_access_token(identity=user.id)
+    item = bank.items("0")[0]
+    res = client.put("/api/voyage/responses",
+                     headers={"Authorization": f"Bearer {token}"},
+                     json={"answers": {item["id"]: True}})
+    assert res.status_code == 200
+
+    db.session.expire_all()
+    assert db.session.get(Voyage, voyage_id).updated_at > stale
+
+    # And so the sweep no longer sees it.
+    assert reap_stale_generating() == 0
+    assert db.session.get(Voyage, voyage_id).portrait_status == "generating"
