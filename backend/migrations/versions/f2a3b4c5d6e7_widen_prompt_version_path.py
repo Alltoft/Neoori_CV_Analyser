@@ -6,6 +6,11 @@ Using '4'/'5' for the two voyage prompts would make them show up as parcours
 everywhere the section registry is iterated. 'voyage_portrait' is 15 characters,
 so 16 is the exact fit.
 
+DOWNGRADE LOSES DATA. Narrowing back to String(1) cannot keep a slot name, so
+downgrade() first folds every multi-character path onto '1'. A voyage_micro or
+voyage_portrait row silently becomes a parcours 1 prompt, and which voyage prompt
+it was is unrecoverable. Dump prompt_versions before rolling back past this.
+
 Revision ID: f2a3b4c5d6e7
 Revises: e1f2a3b4c5d6
 Create Date: 2026-09-09
