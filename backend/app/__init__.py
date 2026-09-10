@@ -43,8 +43,24 @@ def reap_stale_generating(cutoff_minutes: int | None = None) -> int:
     runs in every process that opens this database, so resetting all
     'generating' rows would reach voyages that are still streaming.
 
-    updated_at is the right clock: the route commits the 'generating' status
-    before spawning the thread, which bumps it.
+    updated_at is the clock this uses because it is the only one the schema
+    has: the route commits the 'generating' status before spawning the thread,
+    which bumps it.
+
+    Know what that clock is NOT. updated_at carries onupdate=datetime.utcnow,
+    so *any* write to the row refreshes it — it is the row's last-write time,
+    not the run's start time. The two coincide only while nothing else touches
+    the voyage. The case this therefore misses: a phrase stranded on
+    micro_status = 'generating' at session 0, on a voyage the person keeps
+    playing. Every answer they save bumps updated_at past the cutoff, so the
+    sweep never reaches that row for as long as they stay active. Verified, not
+    theorised. A portrait is not exposed the same way — it is spawned at S5,
+    when the voyage is finished and nothing writes to it again.
+
+    Fixing that properly needs a per-run timestamp (micro_started_at /
+    portrait_started_at) rather than a shared last-write column, and that is a
+    migration; this phase adds none by design. Do the columns when a migration
+    is next on the table, and this function's filter moves to them unchanged.
 
     Both statuses are swept in ONE statement, each rewritten only where it
     actually reads 'generating'. Two successive UPDATEs would not do: the first
@@ -175,12 +191,18 @@ def create_app(env: str | None = None) -> Flask:
             if stale:
                 app.logger.info(f"Startup: reset {stale} stale running analysis/analyses to error.")
         except Exception:
-            pass  # DB not yet migrated on first boot
+            # DB not yet migrated on first boot -- the expected case, but not the
+            # only one, and a transient failure here would otherwise leave no
+            # trace at all. Logged, never raised: booting must not depend on a
+            # sweep, and the next restart runs it again.
+            app.logger.debug("Startup: the analyses sweep failed.", exc_info=True)
         try:
             stranded = reap_stale_generating()
             if stranded:
                 app.logger.info(f"Startup: reset {stranded} stale generating voyage(s) to error.")
         except Exception:
-            pass  # DB not yet migrated on first boot
+            # Same rule as above: DB not yet migrated on first boot is expected,
+            # anything else is worth a trace, and neither may stop the boot.
+            app.logger.debug("Startup: the voyages sweep failed.", exc_info=True)
 
     return app

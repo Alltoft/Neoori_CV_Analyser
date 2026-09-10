@@ -11,6 +11,7 @@ covers analyses and is not touched here: create_app() runs in every process
 that opens this database, so an unfiltered sweep reaches voyages that are still
 streaming.
 """
+import logging
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
@@ -167,14 +168,17 @@ def test_create_app_sweeps_the_voyages_on_startup():
     being dropped from create_app().
 
     Patched rather than seeded: TestingConfig is sqlite:///:memory:, so the app
-    this builds gets its own empty database and could never see a row.
-    reap_stale_running is patched too, and not for tidiness — it shares this
-    try block and runs first, so against that empty database it raises "no such
-    table: analyses" and the sweep under test is never reached. Without this
-    line the assertion below fails on correct code.
+    this builds gets its own empty database and could never see a row. What
+    carries the test is the trailing assert_called_once_with() — the body would
+    pass just as happily if create_app() never called the sweep at all.
+
+    reap_stale_running is deliberately NOT stubbed. It runs for real against
+    that empty database, raises "no such table: analyses", and its own except
+    swallows it; the sweep under test still has to be reached. That is the
+    behaviour b2a6089 bought by giving each reaper its own try, so leaving it
+    unstubbed keeps this test honest about the arrangement it runs in.
     """
-    with patch.object(app_module, "reap_stale_running", return_value=0), \
-            patch.object(app_module, "reap_stale_generating", return_value=0) as reaper:
+    with patch.object(app_module, "reap_stale_generating", return_value=0) as reaper:
         create_app("testing")
 
     reaper.assert_called_once_with()
@@ -184,16 +188,35 @@ def test_a_failed_sweep_never_stops_the_server_coming_up():
     """First boot runs create_app() before `flask db upgrade` has made the
     voyages table — the same reason reap_stale_running() is wrapped.
 
-    reap_stale_running is stubbed to succeed so that the raise below is what
-    the except clause actually catches; letting it fail first would make this
-    test pass without ever calling the function it names.
+    Two assertions, and both are needed: create_app() returning an app proves
+    the exception was swallowed, and assert_called_once_with() proves there was
+    an exception to swallow. Without the second, a create_app() that had
+    silently stopped calling the sweep would sail through this.
     """
-    with patch.object(app_module, "reap_stale_running", return_value=0), \
-            patch.object(app_module, "reap_stale_generating",
-                         side_effect=RuntimeError("no such table: voyages")) as reaper:
+    with patch.object(app_module, "reap_stale_generating",
+                      side_effect=RuntimeError("no such table: voyages")) as reaper:
         assert create_app("testing") is not None
 
     reaper.assert_called_once_with()
+
+
+def test_a_failed_sweep_leaves_a_trace_in_the_log(caplog):
+    """The swallow stays — booting must never depend on a sweep — but "DB not
+    yet migrated on first boot" is the expected cause, not the only one, and a
+    transient failure that logged nothing anywhere would be invisible.
+
+    exc_info is the half that matters: the sentence alone says something went
+    wrong, the exception says what, and only the second is diagnosable.
+    """
+    with caplog.at_level(logging.DEBUG):
+        with patch.object(app_module, "reap_stale_generating",
+                          side_effect=RuntimeError("no such table: voyages")):
+            create_app("testing")
+
+    hits = [r for r in caplog.records if "voyages sweep" in r.message]
+    assert len(hits) == 1
+    assert hits[0].levelno == logging.DEBUG
+    assert hits[0].exc_info is not None
 
 
 def test_the_cutoff_is_overridable_for_a_caller_that_knows_better(app):

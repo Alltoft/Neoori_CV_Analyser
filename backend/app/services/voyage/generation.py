@@ -530,7 +530,7 @@ def start_micro(voyage_id: str, app) -> None:
 # ── the portrait ─────────────────────────────────────────────────────────────
 
 
-def _parse_sections(raw: str) -> dict:
+def _parse_sections(raw: str) -> dict[str, str]:
     """The six sections out of the model's answer.
 
     Structured output makes this a plain JSON object; the degraded path
@@ -538,6 +538,12 @@ def _parse_sections(raw: str) -> dict:
     extract-then-repair ladder the analysis parser uses runs here too. Missing
     keys come back as empty strings rather than absent, so the counselor editor
     always has its six boxes.
+
+    The repair rung is not decoration. Six prose sections against a 3000-token
+    cap makes truncation the realistic failure, and a payload cut off mid-string
+    is unparseable by json.loads but still holds every section that arrived —
+    repair_json is what turns it into a mostly-complete draft a counselor can
+    finish, instead of an "error" row that throws the finished sections away.
     """
     candidate = _extract_json_candidate(str(raw or ""))
     parsed = None
@@ -639,13 +645,22 @@ def _run_portrait(voyage_id: str, app) -> None:
                      "content": json.dumps(sections, ensure_ascii=False)},
                     {"role": "user", "content": _leak_retry_message(leaks)},
                 ]
-                raw, t_in, t_out = _stream_text(model, system_prompt, retry,
-                                                PORTRAIT_MAX_TOKENS, schema)
-                tokens_in += t_in or 0
-                tokens_out += t_out or 0
-                sections = _parse_sections(raw)
-                if leak_check(sections):
+                try:
+                    raw, t_in, t_out = _stream_text(model, system_prompt, retry,
+                                                    PORTRAIT_MAX_TOKENS, schema)
+                except Exception:       # noqa: BLE001 — the first draft still stands
+                    # The retry is an improvement, not a precondition. Losing it
+                    # costs the wording, not the portrait: keep the leaking draft
+                    # and flag it, exactly as we would if the retry had returned
+                    # and still leaked. Letting this reach the outer handler
+                    # would send a usable draft to "error" over a timeout.
                     flags = [FLAG_VOCABULAIRE]
+                else:
+                    tokens_in += t_in or 0
+                    tokens_out += t_out or 0
+                    sections = _parse_sections(raw)
+                    if leak_check(sections):
+                        flags = [FLAG_VOCABULAIRE]
         except Exception as exc:            # noqa: BLE001 — recorded on the row
             # The stream ran with no connection held, so whatever session is in
             # the registry may be stale. remove() forces a fresh, pre-pinged

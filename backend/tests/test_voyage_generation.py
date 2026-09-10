@@ -1023,10 +1023,57 @@ def test_the_error_write_back_does_not_inherit_the_streams_session(app):
     assert row.tokens_in == 5
 
 
-# ── _run_portrait ────────────────────────────────────────────────────────────
+# ── _parse_sections ──────────────────────────────────────────────────────────
 
 def _portrait_json(sections):
     return json.dumps(sections, ensure_ascii=False)
+
+
+def test_a_well_formed_answer_parses_into_the_six_sections():
+    assert gen._parse_sections(_portrait_json(CLEAN_SECTIONS)) == CLEAN_SECTIONS
+
+
+def test_a_portrait_truncated_at_the_token_cap_keeps_what_arrived():
+    """The realistic failure: six prose sections against PORTRAIT_MAX_TOKENS =
+    3000, the answer cut off mid-sentence with no closing quote or brace.
+
+    json.loads cannot read that at all, so without the repair rung the whole
+    draft becomes "" × 6 and the empty-result guard turns a nearly finished
+    portrait into an error row. The five complete sections have to survive, and
+    the partial sixth is left for the counselor to finish.
+    """
+    whole = _portrait_json(CLEAN_SECTIONS)
+    cut = whole.index(CLEAN_SECTIONS["pas_encore"]) + 17
+    sections = gen._parse_sections(whole[:cut])
+
+    assert set(sections) == set(gen.PORTRAIT_KEYS)
+    for key in ("accroche", "qui_tu_es", "vibrer", "besoins", "chemins"):
+        assert sections[key] == CLEAN_SECTIONS[key], key
+    assert sections["pas_encore"] == CLEAN_SECTIONS["pas_encore"][:17]
+
+
+def test_single_quoted_json_is_repaired_rather_than_lost():
+    """A degraded (schema-less) call can come back as a Python-style dict. Rung
+    one rejects it outright — only the repair rung reads it."""
+    sections = gen._parse_sections(str(CLEAN_SECTIONS))
+    assert sections == CLEAN_SECTIONS
+
+
+def test_a_trailing_comma_is_repaired_rather_than_lost():
+    sections = gen._parse_sections(_portrait_json(CLEAN_SECTIONS)[:-1] + ",}")
+    assert sections == CLEAN_SECTIONS
+
+
+def test_an_answer_that_is_not_json_at_all_yields_six_empty_sections():
+    """Neither rung can read prose, and that is what the runner's empty-result
+    guard is for. The six keys still come back, so nothing downstream has to
+    guard for a missing one."""
+    sections = gen._parse_sections("Je ne peux pas répondre à cette demande.")
+    assert set(sections) == set(gen.PORTRAIT_KEYS)
+    assert not any(sections.values())
+
+
+# ── _run_portrait ────────────────────────────────────────────────────────────
 
 
 def test_the_portrait_run_stores_six_sections_a_snapshot_and_a_draft_status(app):
@@ -1167,6 +1214,89 @@ def test_an_api_failure_puts_the_portrait_in_error(app):
     row = _reload(voyage_id)
     assert row.portrait_status == "error"
     assert "upstream timeout" in row.portrait["error"]
+
+
+def test_a_retry_that_never_answers_keeps_the_first_draft_and_flags_it(app):
+    """A timeout on the corrective turn must not cost the portrait.
+
+    The retry is an improvement, not a precondition: the module's rule is that a
+    still-leaking draft is kept and flagged, because a flagged draft is more
+    useful than none. A draft that leaked once and then lost its retry to a 500
+    is in exactly that position — letting the exception reach the outer handler
+    would send it to "error" instead, throwing away six usable sections over a
+    transient upstream failure.
+    """
+    voyage = _voyage(_full_responses(), status="termine", portrait_status="generating")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = _client(_portrait_json(LEAKY_SECTIONS), RuntimeError("upstream timeout"))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2
+    row = _reload(voyage_id)
+    assert row.portrait_status == "draft"
+    assert row.portrait["flags"] == [gen.FLAG_VOCABULAIRE]
+    assert row.portrait["error"] is None
+    assert row.portrait_sections["qui_tu_es"] == LEAKY_SECTIONS["qui_tu_es"]
+    # Only the first call ever returned, so only the first call is billed.
+    assert row.portrait["tokens_in"] == 300
+    assert row.portrait["tokens_out"] == 900
+
+
+def test_a_first_call_that_never_answers_is_still_an_error(app):
+    """The other half of the rule, and the reason the outer handler stays: when
+    the FIRST call fails there is no draft to keep, so "error" is the only
+    honest status. A blanket "keep what we have" would commit six empty
+    sections as a draft."""
+    voyage = _voyage(_full_responses(), status="termine", portrait_status="generating")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+
+    client = _client(RuntimeError("upstream timeout"), _portrait_json(CLEAN_SECTIONS))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    assert client.messages.stream.call_count == 1
+    row = _reload(voyage_id)
+    assert row.portrait_status == "error"
+    assert "upstream timeout" in row.portrait["error"]
+    assert row.portrait_sections == {}
+
+
+def test_the_snapshot_is_the_synthesis_the_portrait_was_written_from(app):
+    """Provenance, not a copy of whatever the row says later.
+
+    The snapshot exists so that a corrected scoring table can never make an
+    existing portrait a lie: it has to be the synthesis that went INTO the
+    prompt, captured before the stream, not a fresh synthesis() read at
+    write-back. Here the answers change while the model is streaming, so the
+    two values genuinely differ — re-reading at write-back stores a sheet this
+    portrait was never written from.
+    """
+    voyage = _voyage(_full_responses(), status="termine")
+    _seed("voyage_portrait")
+    voyage_id = voyage.id
+    before = scoring.synthesize(_full_responses())
+
+    def streaming(**_kwargs):
+        # The person retakes a session mid-generation (or a scoring fix lands).
+        row = db.session.get(Voyage, voyage_id)
+        row.responses = _s0_only_responses()
+        db.session.commit()
+        return _stream_of(_portrait_json(CLEAN_SECTIONS))
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_portrait(voyage_id, app)
+
+    row = _reload(voyage_id)
+    after = row.synthesis()
+    assert after != before, "the fixture must actually change the synthesis"
+    assert row.portrait["snapshot"] == before
+    assert row.portrait["snapshot"] != after
 
 
 def test_a_missing_key_comes_back_as_an_empty_section_not_a_crash(app):
