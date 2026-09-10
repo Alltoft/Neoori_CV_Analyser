@@ -302,8 +302,13 @@ def _synthesis_lines(synthesis: dict) -> list[str]:
     if styles:
         lines.append(f"Façon de fonctionner : {' · '.join(styles)}")
 
-    # s4 and s5 are free text the person typed, so they strip before the
-    # emptiness test exactly the way _profile_lines does.
+    # s4 and s5 strip before the emptiness test, exactly the way _profile_lines
+    # does. Not because they are free text -- they are not: score_s4/score_s5
+    # read bank-authored option labels off chosen_option(), the same as S1-S3,
+    # and the one channel the person actually composes (responses["billets"])
+    # never reaches either builder. They strip because they are the two blocks
+    # whose values a counselor may one day edit, and because one strip rule in
+    # one place beats two rules that agree today.
     cadre = [v for v in (_clean(s4.get(k))
                          for k in ("espace", "rythme", "equipe", "manager")) if v]
     if cadre:
