@@ -1163,6 +1163,45 @@ def test_a_corrective_call_that_raises_keeps_nothing(app):
     assert (row.tokens_in, row.tokens_out) == (105, 37)
 
 
+def test_a_corrective_call_that_raises_with_no_message_is_still_an_error(app):
+    """TimeoutError() stringifies to "". A failure recorded as "" is falsy, so
+    a write-back that branched on the message would commit "success" with an
+    empty phrase: for_prompt would hand the row to an analysis, and the retry
+    route refuses a success, so the person could never get out."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id, user_id = voyage.id, voyage.user_id
+
+    client = _client_with_usages((LEAKY_PHRASE, (100, 30)), TimeoutError())
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro_phrase is None
+    assert Voyage.for_prompt(user_id) is None
+    assert row.micro["error"] == "TimeoutError"
+    assert LEAKY_PHRASE not in _payload_text(row)
+
+
+def test_the_write_back_never_commits_an_empty_phrase_whatever_the_reason(app):
+    """The second half of the defence above, proven on its own: the write-back
+    branches on the phrase, so an empty phrase arriving with an empty reason
+    still ends in "error" with the stock message, never in "success"."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id, user_id = voyage.id, voyage.user_id
+
+    with patch.object(gen, "_generate_phrase", return_value=("", "", 100, 30)):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro_phrase is None
+    assert Voyage.for_prompt(user_id) is None
+    assert row.micro["error"] == "Le modèle n'a renvoyé aucune phrase lisible."
+
+
 def test_a_rewrite_that_comes_back_empty_is_an_error_and_keeps_nothing(app):
     voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
     _seed("voyage_micro")

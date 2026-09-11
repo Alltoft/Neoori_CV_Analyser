@@ -470,7 +470,9 @@ def _generate_phrase(model: str, system_prompt: str,
     try:
         raw, t_in, t_out = _stream_text(model, system_prompt, retry, MICRO_MAX_TOKENS, None)
     except Exception as exc:        # noqa: BLE001 — becomes the row's error
-        return "", str(exc), tokens_in, tokens_out
+        # TimeoutError() stringifies to "": fall back to the class name so the
+        # row never records an empty reason.
+        return "", str(exc) or type(exc).__name__, tokens_in, tokens_out
     tokens_in += t_in or 0
     tokens_out += t_out or 0
 
@@ -562,9 +564,11 @@ def _run_micro(voyage_id: str, app) -> None:
         # the S0-phrase carrier with no phrase in it. portrait_sections takes
         # the same convention one property up: incomplete means empty. A
         # refused phrase takes the same path, and only the words it leaked
-        # reach the payload — never the sentence.
-        if failure:
-            _fail_micro(voyage, failure)
+        # reach the payload — never the sentence. The branch is on the phrase,
+        # not on the failure message: a message can be empty, and an empty
+        # phrase must never be committed as a success.
+        if not phrase:
+            _fail_micro(voyage, failure or EMPTY_PHRASE_ERROR)
             return
 
         voyage.micro = {
