@@ -52,8 +52,10 @@ docker login ghcr.io -u alltoft
 cd /srv/neoori
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-# one prompt per parcours; v1.0-P2 lands inactive, the PM activates it in /admin/prompts
-for s in seed_prompt_v18.py seed_prompt_v11_p3.py seed_prompt_v10_p2.py; do
+# one prompt per parcours plus the two voyage slots; v1.0-P2 lands inactive,
+# the PM activates it in /admin/prompts
+for s in seed_prompt_v18.py seed_prompt_v11_p3.py seed_prompt_v10_p2.py \
+         seed_prompt_v10_voyage_micro.py seed_prompt_v10_voyage_portrait.py; do
   docker compose -f docker-compose.prod.yml exec backend python $s
 done
 curl -s http://localhost/api/health        # {"status":"ok"}

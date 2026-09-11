@@ -9,10 +9,12 @@ The voyage widened the column from a parcours id to a slot id, so the literal
 regex reads a whole word now, not a single character.
 """
 import ast
+import json
 import re
 from pathlib import Path
 
 from app.services import prompt_slots
+from app.services.voyage import generation
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -22,10 +24,13 @@ SEEDS = {
     "seed_prompt_v11_p3.py": "3",                   # ex-path B, « Je pars de zéro »
     "seed_prompt_v10_p2.py": "2",                   # authored after the migration
     "seed_prompt_v10_voyage_micro.py": "voyage_micro",
+    "seed_prompt_v10_voyage_portrait.py": "voyage_portrait",
 }
 
 # (\w+), not (\w): a slot id is a name now, not a single character.
 _LITERAL = re.compile(r"""(?:path\s*=|^PATH\s*=)\s*["'](\w+)["']""", re.MULTILINE)
+# The ```json ... ``` response example inside the portrait prompt text.
+_JSON_BLOCK = re.compile(r"```json\s*\n(\{.*?\n\})\s*\n```", re.DOTALL)
 
 
 def test_seed_scripts_write_valid_slot_ids():
@@ -103,3 +108,20 @@ def test_the_voyage_seeds_are_idempotent():
             isinstance(kwargs.get("version_label"), ast.Name) and kwargs["version_label"].id == "VERSION_LABEL"
             for kwargs in calls
         ), f"{name}: must look the version up before inserting (filter_by(version_label=VERSION_LABEL))"
+
+
+def test_there_is_a_seed_script_for_every_voyage_slot():
+    """Without an active prompt the voyage errors on first use: session 0 ends
+    with micro_status='error' and nothing to show for it."""
+    covered = {slot for slot in SEEDS.values() if prompt_slots.is_voyage(slot)}
+    assert covered == set(prompt_slots.VOYAGE_SLOTS)
+
+
+def test_the_portrait_seed_declares_the_six_keys_the_schema_asks_for():
+    """The same drift test test_prompt_section_keys.py runs for the parcours:
+    the ```json example in the prompt is the only place the prompt and the
+    output schema are supposed to agree."""
+    source = (BACKEND / "seed_prompt_v10_voyage_portrait.py").read_text(encoding="utf-8")
+    block = _JSON_BLOCK.search(source)
+    assert block, "the portrait seed must show its six-key JSON example"
+    assert list(json.loads(block.group(1))) == list(generation.PORTRAIT_KEYS)
