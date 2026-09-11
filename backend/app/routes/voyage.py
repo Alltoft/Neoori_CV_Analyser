@@ -402,12 +402,18 @@ NOT_FOUND = "Voyage introuvable."
 def _counselor_portrait(voyage: Voyage) -> dict:
     """The five-key shape every counselor portrait response returns.
 
-    Deliberately narrow: the snapshot, the token counts, the prompt version and
-    the stored error stay inside the ciphertext where they were written.
+    Deliberately narrow: the snapshot, the token counts and the prompt version
+    stay inside the ciphertext where they were written.
+
+    `error` is the exception, and only when the status is 'error': the
+    counselor is the person who decides whether to regenerate, and a failure
+    they cannot see is a failure they cannot act on. It is never sent for a
+    healthy row, so a stale reason from an earlier failed run cannot surface
+    beside a good draft.
     """
     payload = voyage.portrait or {}
     sections = payload.get("sections") or {}
-    return {
+    body = {
         "status": voyage.portrait_status,
         "sections": {k: v for k, v in sections.items() if k in PORTRAIT_KEYS},
         "flags": list(payload.get("flags") or []),
@@ -417,6 +423,12 @@ def _counselor_portrait(voyage: Voyage) -> dict:
             if voyage.portrait_validated_at else None
         ),
     }
+    if voyage.portrait_status == "error":
+        # Added, not always present: the contract pins the healthy shape at
+        # exactly five keys, and a null `error` on every good draft would be
+        # noise the client has to ignore.
+        body["error"] = payload.get("error")
+    return body
 
 
 @voyage_bp.get("/c/<token>")
@@ -495,12 +507,22 @@ def counselor_edit_portrait(token):
 @voyage_bp.post("/c/<token>/portrait/regenerate")
 @role_required("counselor", "admin")
 def counselor_regenerate_portrait(token):
-    """Re-run the portrait call. Draft only: a validated portrait has been
-    restituted and must not change under the person's feet."""
+    """Re-run the portrait call.
+
+    Draft or error, never validated: a validated portrait has been restituted
+    and must not change under the person's feet.
+
+    'error' is here because without it the status is a dead end. Nothing else
+    in the backend moves a row out of 'error' -- edit and validate both 409,
+    S5 cannot be completed twice, and the startup reaper *creates* error rows
+    from runs a restart orphaned. One transient upstream failure would then
+    destroy a finished six-session voyage with no way back. A counselor
+    pressing « régénérer » is that way back.
+    """
     voyage = Voyage.by_token(token)
     if voyage is None:
         return jsonify({"error": NOT_FOUND}), 404
-    if voyage.portrait_status != "draft":
+    if voyage.portrait_status not in ("draft", "error"):
         return jsonify({"error": "Le portrait ne peut plus être régénéré."}), 409
 
     voyage.portrait_status = "generating"

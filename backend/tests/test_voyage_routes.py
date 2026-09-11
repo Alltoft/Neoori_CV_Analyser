@@ -1622,3 +1622,66 @@ def test_an_unknown_token_404s_every_counselor_route(client, counselor_auth):
     assert client.get("/api/voyage/c/nope/notes", headers=counselor_auth).get_json() == msg
     assert client.put("/api/voyage/c/nope/notes", json={"body": "x"},
                       headers=counselor_auth).get_json() == msg
+
+
+# ── an errored portrait must not be a dead end ───────────────────────────────
+
+
+def _to_error(voyage, message="upstream timeout"):
+    """Put the sheet's portrait in the state the reaper and a failed run leave."""
+    voyage.portrait = {**(voyage.portrait or {}), "error": message}
+    voyage.portrait_status = "error"
+    _db.session.commit()
+
+
+def test_a_counselor_can_regenerate_a_portrait_that_errored(client, sheet, counselor_auth):
+    """Nothing else in the backend moves a row out of 'error': edit and validate
+    both 409, S5 cannot be completed twice, and the startup reaper *creates*
+    error rows from runs a restart orphaned. Without this, one transient
+    upstream failure destroys a finished six-session voyage for good.
+    """
+    _, counselor_auth = counselor_auth
+    _to_error(sheet)
+
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        res = client.post("/api/voyage/c/tok-conseiller/portrait/regenerate",
+                          headers=counselor_auth)
+
+    assert res.status_code == 202
+    spawn.assert_called_once()
+    assert res.get_json()["portrait"]["status"] == "generating"
+    _db.session.expire_all()
+    assert _db.session.get(Voyage, sheet.id).portrait_status == "generating"
+
+
+def test_a_validated_portrait_still_refuses_to_regenerate(client, sheet, counselor_auth):
+    """The widening is 'draft or error', not 'anything'. A validated portrait
+    has been restituted and must not change under the person's feet."""
+    _, counselor_auth = counselor_auth
+    sheet.portrait_status = "validated"
+    _db.session.commit()
+
+    res = client.post("/api/voyage/c/tok-conseiller/portrait/regenerate",
+                      headers=counselor_auth)
+    assert res.status_code == 409
+
+
+def test_the_failure_reason_reaches_the_counselor_who_must_act_on_it(client, sheet,
+                                                                     counselor_auth):
+    """A failure the counselor cannot see is a failure they cannot act on."""
+    _, counselor_auth = counselor_auth
+    _to_error(sheet, "Aucun prompt actif pour le slot voyage_portrait.")
+
+    body = client.get("/api/voyage/c/tok-conseiller",
+                      headers=counselor_auth).get_json()["voyage"]["portrait"]
+    assert body["status"] == "error"
+    assert body["error"] == "Aucun prompt actif pour le slot voyage_portrait."
+
+
+def test_a_healthy_draft_carries_no_error_key(client, sheet, counselor_auth):
+    """The contract pins the healthy shape at exactly five keys; `error` is
+    added only on an error row, never as a null beside a good draft."""
+    _, counselor_auth = counselor_auth
+    body = client.get("/api/voyage/c/tok-conseiller",
+                      headers=counselor_auth).get_json()["voyage"]["portrait"]
+    assert set(body) == {"status", "sections", "flags", "edited", "validated_at"}
