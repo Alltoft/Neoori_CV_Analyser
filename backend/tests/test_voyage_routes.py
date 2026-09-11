@@ -5,7 +5,7 @@ encryption, its validation and its endpoints together: each guarantee only
 means something end to end — a route writes, the column holds ciphertext, and
 the payload never carries it back.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -1023,6 +1023,169 @@ def test_the_response_carries_no_scoring_or_framework_vocabulary(client, auth):
         "completeness", "resultant", "tension", "score",
     ):
         assert forbidden not in flat
+
+
+# ── POST /api/voyage/micro/retry ─────────────────────────────────────────────
+
+RETRY_URL = "/api/voyage/micro/retry"
+NOT_RETRYABLE = "La phrase ne peut pas être relancée."
+
+
+def _age(voyage, minutes):
+    """Push updated_at `minutes` into the past.
+
+    A bulk UPDATE that names the column writes the value given; changing any
+    other attribute through the ORM would stamp updated_at back to now through
+    its onupdate. Call it last, after every other write to the row.
+    """
+    voyage_id = voyage.id
+    _db.session.query(Voyage).filter_by(id=voyage_id).update(
+        {"updated_at": datetime.utcnow() - timedelta(minutes=minutes)},
+        synchronize_session=False)
+    _db.session.commit()
+    _db.session.expire_all()
+    return _db.session.get(Voyage, voyage_id)
+
+
+def _after_session_zero(user, **overrides):
+    fields = {"status": STATUS_S0, "sessions_completed": ["0"]}
+    fields.update(overrides)
+    return _voyage(user, **fields)
+
+
+def test_the_stall_threshold_is_the_hubs_three_minutes():
+    from app.routes import voyage as voyage_routes
+    assert voyage_routes.MICRO_RETRY_STALE_MINUTES == 3
+
+
+def test_retrying_the_phrase_needs_an_account(client):
+    assert client.post(RETRY_URL).status_code == 401
+
+
+def test_retrying_the_phrase_without_a_voyage_is_a_404(client, auth):
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "Aucun voyage en cours."}
+    spawn.assert_not_called()
+
+
+def test_the_phrase_cannot_be_retried_before_session_zero_is_complete(client, auth, candidate):
+    """micro_status is "error" here on purpose, so the only thing refusing the
+    retry is the missing session 0."""
+    voyage = _voyage(candidate, micro_status="error")
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+    assert res.status_code == 409
+    assert res.get_json() == {"error": "Terminez d'abord la session 0."}
+    spawn.assert_not_called()
+    assert Voyage.query.get(voyage.id).micro_status == "error"
+
+
+@pytest.mark.parametrize("status, minutes", [
+    ("none", 60),           # old enough to pass the stall test if status were ignored
+    ("success", 60),
+    ("generating", 0),      # a live run
+])
+def test_a_phrase_that_is_neither_failed_nor_stalled_is_not_relaunched(
+        client, auth, candidate, status, minutes):
+    voyage = _age(_after_session_zero(candidate, micro_status=status), minutes)
+    before = voyage.updated_at
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+    assert res.status_code == 409
+    assert res.get_json() == {"error": NOT_RETRYABLE}
+    spawn.assert_not_called()
+    _db.session.expire_all()
+    row = Voyage.query.get(voyage.id)
+    assert row.micro_status == status
+    assert row.updated_at == before
+
+
+def test_a_failed_phrase_is_relaunched_once_its_status_is_committed(client, auth, candidate):
+    """The spawned run re-reads the row on its own connection, so the status
+    must already be committed when the spawn happens. The fake spawn reads it
+    through a session of its own: an uncommitted "generating" is invisible
+    there."""
+    from sqlalchemy.orm import Session
+
+    voyage_id = _after_session_zero(candidate, micro_status="error").id
+    seen = []
+
+    def spawn_reads_the_row(spawned_id):
+        with Session(_db.engine) as fresh:
+            seen.append((spawned_id, fresh.get(Voyage, spawned_id).micro_status))
+
+    with patch("app.routes.voyage._spawn_micro", side_effect=spawn_reads_the_row) as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+
+    assert res.status_code == 202
+    payload = res.get_json()["voyage"]
+    assert set(payload) == TO_DICT_KEYS
+    assert payload["micro_status"] == "generating"
+    spawn.assert_called_once_with(voyage_id)
+    assert seen == [(voyage_id, "generating")]
+
+
+def test_a_phrase_stalled_for_four_minutes_is_relaunched(client, auth, candidate):
+    voyage = _age(_after_session_zero(candidate, micro_status="generating"), 4)
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+    assert res.status_code == 202
+    assert res.get_json()["voyage"]["micro_status"] == "generating"
+    spawn.assert_called_once_with(voyage.id)
+
+
+def test_a_phrase_generating_for_two_minutes_is_left_alone(client, auth, candidate):
+    voyage = _age(_after_session_zero(candidate, micro_status="generating"), 2)
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+    assert res.status_code == 409
+    assert res.get_json() == {"error": NOT_RETRYABLE}
+    spawn.assert_not_called()
+    assert Voyage.query.get(voyage.id).micro_status == "generating"
+
+
+def test_relaunching_a_stalled_phrase_restarts_its_clock(client, auth, candidate):
+    """A stalled row already reads "generating", so the status assignment alone
+    writes nothing and leaves the row looking stalled: a second click would be
+    accepted and spawn a second run beside the first."""
+    _age(_after_session_zero(candidate, micro_status="generating"), 4)
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        first = client.post(RETRY_URL, headers=auth)
+        second = client.post(RETRY_URL, headers=auth)
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert second.get_json() == {"error": NOT_RETRYABLE}
+    spawn.assert_called_once()
+
+
+def test_a_finished_voyage_with_a_failed_phrase_is_still_retryable(client, auth, candidate):
+    """The voyage's own status is irrelevant: the phrase is what failed."""
+    voyage = _voyage(candidate, status=STATUS_TERMINE,
+                     sessions_completed=["0", "1", "2", "3", "4", "5"],
+                     micro_status="error", portrait_status="validated")
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+    assert res.status_code == 202
+    spawn.assert_called_once_with(voyage.id)
+
+
+def test_a_retry_only_ever_reaches_the_callers_own_voyage(client, auth, candidate):
+    """The neighbour's failed phrase is created first, so a handler resolving
+    the oldest row in the table would relaunch it; the caller's own phrase
+    succeeded and is not retryable."""
+    neighbour = _after_session_zero(_user("voisin-retry@test.fr"), micro_status="error")
+    _after_session_zero(candidate, micro_status="success")
+
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post(RETRY_URL, headers=auth)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": NOT_RETRYABLE}
+    spawn.assert_not_called()
+    _db.session.expire_all()
+    assert Voyage.query.get(neighbour.id).micro_status == "error"
 
 
 # ── POST /api/voyage/unlock ──────────────────────────────────────────────────

@@ -16,7 +16,7 @@ counselor code and a Profil de base with prénom + tranche d'âge, and every
 session needs the one before it.
 """
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
@@ -45,6 +45,13 @@ voyage_bp = Blueprint("voyage", __name__)
 # The API's fixed French strings. app.url_map.strict_slashes is False globally,
 # so "" also answers "/" — do not add per-route slash handling.
 NO_VOYAGE = "Aucun voyage en cours."
+
+# How long a phrase may sit on "generating" before the candidate may relaunch
+# it. The hub gives up polling after the same three minutes. Measured on
+# updated_at, which is the row's last-write clock rather than the run's start
+# (see reap_stale_generating's docstring): a person who is actively saving
+# pushes it forward and defers the retry.
+MICRO_RETRY_STALE_MINUTES = 3
 
 
 def _current() -> Voyage | None:
@@ -259,6 +266,16 @@ def _spawn_portrait(voyage_id: str) -> None:
     generation.start_portrait(voyage_id, current_app._get_current_object())
 
 
+def _stalled(status: str, updated_at: datetime | None, minutes: int) -> bool:
+    """A run that has sat on "generating" with no write to its row for
+    `minutes`. The daemon thread that owned it may be dead or merely slow;
+    nothing on the row can tell the two apart, which is why the thresholds are
+    well above a normal run."""
+    if status != "generating" or updated_at is None:
+        return False
+    return updated_at < datetime.utcnow() - timedelta(minutes=minutes)
+
+
 @voyage_bp.post("/sessions/<n>/complete")
 @jwt_required()
 def complete_session(n):
@@ -317,6 +334,41 @@ def complete_session(n):
         _spawn_portrait(voyage.id)
 
     return jsonify({"voyage": voyage.to_dict()}), 200
+
+
+@voyage_bp.post("/micro/retry")
+@jwt_required()
+def retry_micro():
+    """Relaunch the session-0 phrase — the hub's « Réessayer ».
+
+    Accepted when the last run failed, or when it has sat on "generating" past
+    MICRO_RETRY_STALE_MINUTES. Anything else is a 409: there is no phrase to
+    replace a success with, and a live run must not get a twin. The voyage's
+    own status does not matter; a finished voyage whose phrase failed is as
+    retryable as an open one.
+    """
+    voyage = _current()
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+    if "0" not in (voyage.sessions_completed or []):
+        return jsonify({"error": "Terminez d'abord la session 0."}), 409
+
+    stalled = _stalled(voyage.micro_status, voyage.updated_at, MICRO_RETRY_STALE_MINUTES)
+    if voyage.micro_status != "error" and not stalled:
+        return jsonify({"error": "La phrase ne peut pas être relancée."}), 409
+
+    voyage.micro_status = "generating"
+    # A stalled row already reads "generating", so the line above changes
+    # nothing and the commit would write nothing: the row would still look
+    # stalled and a second click would spawn a second run. Stamping the clock
+    # makes this relaunch the row's last write.
+    voyage.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    # After the commit: the background run re-queries the row on its own
+    # connection, so it must already be there to find.
+    _spawn_micro(voyage.id)
+    return jsonify({"voyage": voyage.to_dict()}), 202
 
 
 @voyage_bp.post("/unlock")
