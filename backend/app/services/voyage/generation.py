@@ -12,8 +12,11 @@ text is the PM's to rewrite at any moment from /admin/prompts:
   * structure — the portrait's six keys come from a JSON-schema output_config
     passed via extra_body, exactly as the analysis runner does it;
   * vocabulary — leak_check() scans the returned prose for the framework words
-    the person must never read, retries once with a corrective turn, then keeps
-    the draft and flags it for the counselor.
+    the person must never read and retries once with a corrective turn. What
+    happens next depends on who reads the text first: a portrait that still
+    leaks is kept and flagged for the counselor who validates it; a session-0
+    phrase that still leaks is refused, because nobody reads it before the
+    person does.
 
 Nothing here writes an answer, a score or a portrait sentence to a log.
 """
@@ -430,6 +433,57 @@ def _fail_micro(voyage: Voyage, message: str) -> None:
     db.session.commit()
 
 
+EMPTY_PHRASE_ERROR = "Le modèle n'a renvoyé aucune phrase lisible."
+
+
+def _generate_phrase(model: str, system_prompt: str,
+                     messages: list) -> tuple[str, str | None, int, int]:
+    """Both of the phrase's calls: the first, and at most one corrective turn.
+
+    Returns (phrase, failure, tokens_in, tokens_out) — exactly one of phrase
+    and failure is non-empty. Pure with respect to the database: the caller
+    runs it with no connection held and writes the outcome back afterwards.
+    The first call's exception propagates; the caller records it.
+
+    The portrait keeps a draft that still leaks and flags it, because a
+    counselor edits it before the person reads a word. Nobody stands between
+    this phrase and the person, so a sentence that still leaks after the
+    correction — or whose correction never answered — is refused outright
+    and never leaves this function. « Réessayer » on the hub is the way back.
+    """
+    raw, tokens_in, tokens_out = _stream_text(model, system_prompt, messages,
+                                              MICRO_MAX_TOKENS, None)
+    tokens_in, tokens_out = tokens_in or 0, tokens_out or 0
+
+    phrase = _one_sentence(raw)
+    if not phrase:
+        return "", EMPTY_PHRASE_ERROR, tokens_in, tokens_out
+
+    leaks = leak_check({"phrase": phrase})
+    if not leaks:
+        return phrase, None, tokens_in, tokens_out
+
+    retry = messages + [
+        {"role": "assistant", "content": phrase},
+        {"role": "user", "content": _micro_leak_retry_message(leaks)},
+    ]
+    try:
+        raw, t_in, t_out = _stream_text(model, system_prompt, retry, MICRO_MAX_TOKENS, None)
+    except Exception as exc:        # noqa: BLE001 — becomes the row's error
+        return "", str(exc), tokens_in, tokens_out
+    tokens_in += t_in or 0
+    tokens_out += t_out or 0
+
+    phrase = _one_sentence(raw)
+    if not phrase:
+        return "", EMPTY_PHRASE_ERROR, tokens_in, tokens_out
+    still = leak_check({"phrase": phrase})
+    if still:
+        return ("", "Vocabulaire interdit dans la phrase : " + ", ".join(still) + ".",
+                tokens_in, tokens_out)
+    return phrase, None, tokens_in, tokens_out
+
+
 def _run_micro(voyage_id: str, app) -> None:
     """Write the session-0 phrase onto the voyage row.
 
@@ -476,10 +530,8 @@ def _run_micro(voyage_id: str, app) -> None:
         db.session.remove()
 
         try:
-            raw, tokens_in, tokens_out = _stream_text(
-                model, system_prompt,
-                [{"role": "user", "content": user_message}],
-                MICRO_MAX_TOKENS, None)
+            phrase, failure, tokens_in, tokens_out = _generate_phrase(
+                model, system_prompt, [{"role": "user", "content": user_message}])
         except Exception as exc:            # noqa: BLE001 — recorded on the row
             # The stream ran with no connection held, so whatever session is in
             # the registry may be stale. remove() forces a fresh, pre-pinged
@@ -499,14 +551,20 @@ def _run_micro(voyage_id: str, app) -> None:
         if voyage is None:
             return
 
+        # Every call that returned was paid for, whether or not it produced a
+        # phrase worth keeping, so a refusal is billed like a success.
+        voyage.tokens_in = (voyage.tokens_in or 0) + tokens_in
+        voyage.tokens_out = (voyage.tokens_out or 0) + tokens_out
+
         # An empty phrase is a failure, not a success. micro_phrase would read
         # back as None while micro_status said "success", and Voyage.for_prompt
         # selects on that status — it would hand this voyage to an analysis as
         # the S0-phrase carrier with no phrase in it. portrait_sections takes
-        # the same convention one property up: incomplete means empty.
-        phrase = _one_sentence(raw)
-        if not phrase:
-            _fail_micro(voyage, "Le modèle n'a renvoyé aucune phrase lisible.")
+        # the same convention one property up: incomplete means empty. A
+        # refused phrase takes the same path, and only the words it leaked
+        # reach the payload — never the sentence.
+        if failure:
+            _fail_micro(voyage, failure)
             return
 
         voyage.micro = {
@@ -517,8 +575,6 @@ def _run_micro(voyage_id: str, app) -> None:
             "error": None,
         }
         voyage.micro_status = "success"
-        voyage.tokens_in = (voyage.tokens_in or 0) + (tokens_in or 0)
-        voyage.tokens_out = (voyage.tokens_out or 0) + (tokens_out or 0)
         db.session.commit()
 
 
@@ -567,6 +623,18 @@ def _leak_retry_message(leaks: list) -> str:
         "technique de psychologie ou de ressources humaines. Garde les six mêmes "
         "sections, le même fond et la même longueur. Réponds uniquement avec le "
         "JSON des six sections."
+    )
+
+
+def _micro_leak_retry_message(leaks: list) -> str:
+    """The session-0 phrase's corrective turn, in French like the portrait's.
+    The word range is MICRO_WORDS, the counselor manual's rule."""
+    low, high = MICRO_WORDS
+    return (
+        "Cette phrase contient des mots interdits : " + ", ".join(leaks) + ". "
+        "Réécris-la sans ces mots et sans aucun autre terme technique de "
+        "psychologie ou de ressources humaines. Une seule phrase, "
+        f"de {low} à {high} mots. Réponds uniquement avec la phrase."
     )
 
 

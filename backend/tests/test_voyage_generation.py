@@ -1023,6 +1023,219 @@ def test_the_error_write_back_does_not_inherit_the_streams_session(app):
     assert row.tokens_in == 5
 
 
+# ── _run_micro: the phrase's leak check ──────────────────────────────────────
+# The portrait's scan, with the one difference that decides everything below:
+# no counselor reads the phrase before the person does. A phrase that still
+# leaks after one corrective turn is refused, never kept.
+
+CLEAN_PHRASE = "Tu cherches des endroits où ce que tu fabriques sert à quelqu'un."
+LEAKY_PHRASE = "Ton score de névrotisme est bas et tu cherches des endroits calmes."
+# ASCII on purpose: a second leaking sentence whose absence from the payload
+# cannot be hidden by json.dumps escaping its accents.
+OTHER_LEAKY_PHRASE = "Ton profil RIASEC montre que tu aimes le terrain et les gens."
+
+
+def _client_with_usages(*answers):
+    """Like _client(), but every answer carries its own usage, so a sum can be
+    told apart from any single call's figure. An answer is (text, (in, out)),
+    or an Exception to raise."""
+    client = MagicMock()
+    client.messages.stream.side_effect = [
+        a if isinstance(a, BaseException) else _stream_of(a[0], a[1]) for a in answers
+    ]
+    return client
+
+
+def _payload_text(row) -> str:
+    """The decrypted micro payload as one string. ensure_ascii=False, because
+    the default escapes « é » as \\u00e9 and would make every « not in » below
+    vacuous for an accented sentence."""
+    return json.dumps(row.micro, ensure_ascii=False)
+
+
+def test_the_phrase_fixtures_are_what_their_names_say():
+    assert gen.leak_check({"p": CLEAN_PHRASE}) == []
+    assert gen.leak_check({"p": LEAKY_PHRASE}) == ["névrotisme", "score"]
+    assert gen.leak_check({"p": OTHER_LEAKY_PHRASE}) == ["riasec"]
+    assert OTHER_LEAKY_PHRASE.isascii()
+
+
+def test_the_phrase_corrective_turn_quotes_the_words_and_asks_for_one_short_sentence():
+    message = gen._micro_leak_retry_message(["névrotisme", "score"])
+    assert "névrotisme, score" in message
+    assert "Une seule phrase" in message
+    assert f"de {gen.MICRO_WORDS[0]} à {gen.MICRO_WORDS[1]} mots" in message
+    assert "de 15 à 25 mots" in message
+
+
+def test_a_clean_phrase_costs_one_call_and_is_kept(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client(CLEAN_PHRASE)
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 1
+    row = _reload(voyage_id)
+    assert row.micro_status == "success"
+    assert row.micro_phrase == CLEAN_PHRASE
+
+
+def test_a_leaking_phrase_is_rewritten_once_with_the_words_quoted(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating",
+                     tokens_in=5, tokens_out=7)
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client_with_usages((f"« {LEAKY_PHRASE} »", (100, 30)),
+                                 (CLEAN_PHRASE, (110, 35)))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2
+    first, second = (c.kwargs["messages"] for c in client.messages.stream.call_args_list)
+    # The original user turn, then the normalised phrase as the model's own
+    # turn, then the correction quoting the words it must drop.
+    assert len(first) == 1
+    assert len(second) == 3
+    assert second[0] == first[0]
+    assert second[1] == {"role": "assistant", "content": LEAKY_PHRASE}
+    assert second[2]["role"] == "user"
+    assert second[2]["content"] == gen._micro_leak_retry_message(["névrotisme", "score"])
+    assert "névrotisme, score" in second[2]["content"]
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "success"
+    assert row.micro_phrase == CLEAN_PHRASE
+    assert LEAKY_PHRASE not in _payload_text(row)
+    # Both calls are billed: the payload carries their sum, the row adds it.
+    assert (row.micro["tokens_in"], row.micro["tokens_out"]) == (210, 65)
+    assert (row.tokens_in, row.tokens_out) == (215, 72)
+
+
+def test_a_phrase_that_still_leaks_is_refused_and_never_stored(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating",
+                     tokens_in=5, tokens_out=7)
+    _seed("voyage_micro")
+    voyage_id, user_id = voyage.id, voyage.user_id
+
+    client = _client_with_usages((LEAKY_PHRASE, (100, 30)),
+                                 (OTHER_LEAKY_PHRASE, (110, 35)))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2      # one retry, never two
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro_phrase is None
+    assert row.to_dict()["micro_phrase"] is None
+    assert Voyage.for_prompt(user_id) is None
+    assert row.micro["error"] == "Vocabulaire interdit dans la phrase : riasec."
+    assert LEAKY_PHRASE not in _payload_text(row)
+    assert OTHER_LEAKY_PHRASE not in _payload_text(row)
+    assert OTHER_LEAKY_PHRASE not in json.dumps(row.micro)
+    # Refused, but both calls were paid for.
+    assert (row.tokens_in, row.tokens_out) == (215, 72)
+
+
+def test_a_corrective_call_that_raises_keeps_nothing(app):
+    """Unlike the portrait, there is no draft worth keeping: nobody stands
+    between this phrase and the person, so the leaking one is dropped too."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating",
+                     tokens_in=5, tokens_out=7)
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client_with_usages((LEAKY_PHRASE, (100, 30)), RuntimeError("upstream timeout"))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro["error"] == "upstream timeout"
+    assert row.micro_phrase is None
+    assert row.to_dict()["micro_phrase"] is None
+    assert LEAKY_PHRASE not in _payload_text(row)
+    # The call that answered is billed; the one that raised cost nothing.
+    assert (row.tokens_in, row.tokens_out) == (105, 37)
+
+
+def test_a_rewrite_that_comes_back_empty_is_an_error_and_keeps_nothing(app):
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client_with_usages((LEAKY_PHRASE, (100, 30)), ("  « »  ", (110, 35)))
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro["error"] == "Le modèle n'a renvoyé aucune phrase lisible."
+    assert row.micro_phrase is None
+    assert LEAKY_PHRASE not in _payload_text(row)
+    assert (row.tokens_in, row.tokens_out) == (210, 65)
+
+
+def test_an_inflected_leak_is_enough_to_trigger_the_rewrite(app):
+    """« tes traits » only matches through phase 2's widened matcher (the
+    optional trailing s). A narrower check written for the phrase would let
+    this sentence through on the first call."""
+    inflected = "Tes traits de caractère te poussent vers les endroits où l'on fabrique."
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    client = _client(inflected, CLEAN_PHRASE)
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2
+    retry = client.messages.stream.call_args_list[1].kwargs["messages"]
+    assert retry[-1]["content"] == gen._micro_leak_retry_message(["trait"])
+    assert _reload(voyage_id).micro_phrase == CLEAN_PHRASE
+
+
+def test_no_connection_is_held_across_either_call(app):
+    """Both calls run between the pre-stream remove() and the write-back."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    seen = []
+    answers = iter([LEAKY_PHRASE, CLEAN_PHRASE])
+
+    def streaming(**_kwargs):
+        seen.append(not db.session.registry.has())
+        return _stream_of(next(answers))
+
+    client = MagicMock()
+    client.messages.stream.side_effect = streaming
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert seen == [True, True]
+    assert _reload(voyage_id).micro_phrase == CLEAN_PHRASE
+
+
+def test_an_empty_phrase_is_still_billed(app):
+    """Every call that returned was paid for, whatever it produced."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating",
+                     tokens_in=5, tokens_out=7)
+    _seed("voyage_micro")
+    voyage_id = voyage.id
+
+    with patch.object(gen, "_get_client", return_value=_client("  « »  ", usage=(120, 40))):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert (row.tokens_in, row.tokens_out) == (125, 47)
+
+
 # ── _parse_sections ──────────────────────────────────────────────────────────
 
 def _portrait_json(sections):
