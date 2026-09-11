@@ -134,6 +134,15 @@ const PARCOURS = [
   },
 ]
 
+/* Le voyage — described by its shape, never by the cahier's session titles:
+   this page is public and cannot read /api/voyage/bank, and restating the
+   bank's French here is exactly the drift types/voyage.ts avoids. */
+const VOYAGE_STEPS = [
+  { n: "01", t: "Session 0, en autonomie", d: "20 affirmations, 5 minutes. Vous repartez avec une phrase." },
+  { n: "02", t: "Sessions 1 à 5, avec un conseiller", d: "Cinq séances courtes, ouvertes par le code de votre conseiller." },
+  { n: "03", t: "Votre portrait", d: "Six sections, relues et validées par votre conseiller avant que vous les receviez." },
+]
+
 const PERSONAS = [
   {
     img: "/img/persona-candidat.jpg",
@@ -228,6 +237,62 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* ───────────────────── Le voyage ───────────────────── */}
+      <section id="voyage" className="mx-auto max-w-6xl px-5 pt-16 sm:px-8 lg:pt-20">
+        <Reveal>
+          <div className="overflow-hidden rounded-3xl bg-navy shadow-float">
+            <div className="voyage-rule" />
+            <div className="grid gap-8 p-8 sm:p-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <div>
+                <p className="eyebrow inline-flex items-center gap-2 text-peach">
+                  <InfinityMark tone="light" className="text-[1.05em]" /> Le voyage
+                </p>
+                <h2 className="mt-4 font-display text-3xl font-bold text-white sm:text-4xl">
+                  Avant de parler de poste, parlons de vous.
+                </h2>
+                <p className="mt-4 max-w-[34rem] leading-relaxed text-white/80">
+                  Six sessions courtes pour poser ce que vous savez déjà de vous : ce qui vous met
+                  en mouvement, le cadre où vous travaillez bien, ce que vous ne voulez plus.
+                  Ce que vous y répondez enrichit ensuite chacune de vos analyses.
+                </p>
+                <div className="mt-7">
+                  <Button
+                    render={<Link href="/voyage" />}
+                    size="xl"
+                    className="bg-white text-navy hover:bg-white/90"
+                  >
+                    Commencer le voyage <ArrowRight />
+                  </Button>
+                </div>
+                <ul className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/70">
+                  {[
+                    "5 minutes pour la première session",
+                    "Vos réponses sont chiffrées",
+                    "Supprimables à tout moment",
+                  ].map((t) => (
+                    <li key={t} className="inline-flex items-center gap-1.5">
+                      <Check className="size-4 text-peach" /> {t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <ul className="space-y-2.5">
+                {VOYAGE_STEPS.map((s) => (
+                  <li key={s.n} className="flex gap-3 rounded-xl bg-white/5 px-4 py-3.5">
+                    <span className="mt-0.5 font-mono text-xs font-bold text-peach">{s.n}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-white">{s.t}</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-white/70">{s.d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       {/* ───────────────────── Choose your scenario ───────────────────── */}
