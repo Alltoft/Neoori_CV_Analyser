@@ -103,7 +103,11 @@ export default function EspacePage() {
                   {voyage.sessions_completed.length} session
                   {voyage.sessions_completed.length > 1 ? "s" : ""} sur 6
                 </p>
-                {voyage.micro_phrase ? (
+                {/* F6: the invariant "success" pairs with a phrase has two known
+                    holes server-side (the twin-run merge and the reaper, which
+                    flip status but leave the payload) — gate on the status
+                    itself rather than trusting a non-null phrase alone. */}
+                {voyage.micro_status === "success" && voyage.micro_phrase ? (
                   <p className="mt-1.5 line-clamp-2 text-sm italic text-white/80">
                     « {voyage.micro_phrase} »
                   </p>

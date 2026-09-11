@@ -184,15 +184,16 @@ export default function SessionPlayerPage() {
    *  R13: a completed session is read-only — guarded here too, not only by
    *  the row's own `disabled` prop, so nothing can write through it.
    *
-   *  NOT frozen by `busy`, unlike SceneCard: a row's own toggle IS its save
-   *  (chained through `save` above, so two rapid toggles of the same row
-   *  still land in click order) — there is no separate "confirm" step for
-   *  `busy` to protect against picking a different value before. The only
-   *  moment `busy` is true while these rows are still on screen is the
-   *  ~one network round trip of `next()`'s reconcile save, once every row
-   *  already has an answer and the screen is about to be replaced by the
-   *  billet screen anyway; freezing all 20 rows for that window would only
-   *  block a last-second correction with no matching correctness gain. */
+   *  ALSO frozen by `busy`, via ChecklistRow's `disabled={done || busy}`
+   *  below (K6): the one moment `busy` is true while these rows are still on
+   *  screen is `next()`'s reconcile save, which resends every row's current
+   *  answer once all twenty are filled in. A toggle made during that window
+   *  races the reconcile's own patch — if the toggle's own save then fails,
+   *  the row is left scored at the old value on the server even though the
+   *  screen already shows the new one. Freezing the rows for that single
+   *  round trip closes the window; a row's own toggle is still its own save
+   *  the rest of the time (chained through `save` above, so two rapid
+   *  toggles of the same row still land in click order). */
   const toggleRow = useCallback((id: string, value: boolean) => {
     if (done) return
     setAnswer(id, value)
@@ -460,7 +461,7 @@ export default function SessionPlayerPage() {
                   n={i + 1}
                   text={item.text}
                   value={asBool(answers[item.id])}
-                  disabled={done}
+                  disabled={done || busy}
                   onChange={(v) => toggleRow(item.id, v)}
                 />
               </div>

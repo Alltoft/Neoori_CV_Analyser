@@ -125,7 +125,11 @@ export default function VoyagePage() {
   // prevent. This also has no leading synchronous setState, so the mount
   // effect can call it directly (see below) without tripping
   // react-hooks/set-state-in-effect.
-  const load = useCallback(() => {
+  //
+  // F7: resolves to the freshly-read voyage (or null on a load failure) so a
+  // caller — retryPhrase below — can inspect the fresh micro_status instead
+  // of reasoning about `voyage` state that has not re-rendered yet.
+  const load = useCallback((): Promise<Voyage | null> => {
     return Promise.all([
       getBank(),
       getVoyage(),
@@ -138,12 +142,13 @@ export default function VoyagePage() {
         setProfile(p)
         if (!v) {
           setResponses(null)
-          return undefined
+          return v
         }
-        return getResponses().then((r) => { setResponses(r) })
+        return getResponses().then((r) => { setResponses(r); return v })
       })
       .catch((e) => {
         setLoadError(e instanceof ApiError ? e.message : "Erreur inattendue.")
+        return null
       })
       .finally(() => {
         setLoaded(true)
@@ -297,7 +302,19 @@ export default function VoyagePage() {
         lastPairRef.current = null
         delayRef.current = POLL_MS
         setStalled(false)
-        return load()
+        // F7: a 409 here ("La phrase ne peut pas être relancée.") often means
+        // the phrase actually finished between this tab's last read and the
+        // retry attempt — the poll loop's own clearing (above) never runs for
+        // a row that is not "generating", so it never catches this. Clear the
+        // retry error once the re-read shows the phrase already succeeded;
+        // leave it alone otherwise (never clear an unrelated error, e.g. one
+        // set by redeem() or start() while this re-read is still in flight).
+        return load().then((v) => {
+          if (retryErrorRef.current && v?.micro_status === "success") {
+            retryErrorRef.current = false
+            setError(null)
+          }
+        })
       })
       .finally(() => {
         setRetryingMicro(false)
