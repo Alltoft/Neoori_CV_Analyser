@@ -78,11 +78,18 @@ export default function SessionPlayerPage() {
   // reports success as a boolean, because the caller has to know whether it is
   // allowed to advance.
   const chain = useRef<Promise<unknown>>(Promise.resolve())
+  // The most recent save rejection, kept alongside the boolean `save`
+  // resolves with — state (`error`) is not safe to read back synchronously
+  // right after an await in the same closure, so `finish` below reads this
+  // ref instead of the `error` state to recognise the one 409 it must route
+  // on rather than just display.
+  const lastSaveErrorRef = useRef<ApiError | null>(null)
   const save = useCallback((patch: Partial<VoyageResponses>): Promise<boolean> => {
     const next = chain.current
       .then(() => putResponses(patch))
-      .then(() => { setError(null); return true })
+      .then(() => { setError(null); lastSaveErrorRef.current = null; return true })
       .catch((e: unknown) => {
+        lastSaveErrorRef.current = e instanceof ApiError ? e : null
         setError(e instanceof ApiError
           ? e.message
           : "Enregistrement impossible. Vérifiez votre connexion.")
@@ -175,7 +182,17 @@ export default function SessionPlayerPage() {
   /** Session 0 only: persist the row the moment it is toggled, so a dropped
    *  connection costs one affirmation and not the whole twenty-row screen.
    *  R13: a completed session is read-only — guarded here too, not only by
-   *  the row's own `disabled` prop, so nothing can write through it. */
+   *  the row's own `disabled` prop, so nothing can write through it.
+   *
+   *  NOT frozen by `busy`, unlike SceneCard: a row's own toggle IS its save
+   *  (chained through `save` above, so two rapid toggles of the same row
+   *  still land in click order) — there is no separate "confirm" step for
+   *  `busy` to protect against picking a different value before. The only
+   *  moment `busy` is true while these rows are still on screen is the
+   *  ~one network round trip of `next()`'s reconcile save, once every row
+   *  already has an answer and the screen is about to be replaced by the
+   *  billet screen anyway; freezing all 20 rows for that window would only
+   *  block a last-second correction with no matching correctness gain. */
   const toggleRow = useCallback((id: string, value: boolean) => {
     if (done) return
     setAnswer(id, value)
@@ -245,7 +262,21 @@ export default function SessionPlayerPage() {
     // save() swallows its own rejection and reports a boolean, so the billet
     // write is checked here rather than by the try/catch below.
     const saved = await save({ billets: { [session.n]: billets } })
-    if (!saved) { setBusy(false); return }
+    if (!saved) {
+      // Same dead end as the completeSession 409 below, reached from the
+      // billet write instead: the session was completed in another tab
+      // between opening this screen and pressing "Terminer". Any other save
+      // error (network, a too-long billet, …) keeps today's behaviour —
+      // the message from `save` is already on screen via `error`.
+      if (lastSaveErrorRef.current?.status === 409
+        && lastSaveErrorRef.current.message
+          === "Cette session est terminée : ses réponses ne sont plus modifiables.") {
+        router.push("/voyage")
+        return
+      }
+      setBusy(false)
+      return
+    }
     try {
       await completeSession(session.n)
       router.push("/voyage")
@@ -352,6 +383,13 @@ export default function SessionPlayerPage() {
             <Lock className="size-5" aria-hidden />
           </span>
           <p className="mt-4 font-display text-lg font-bold text-navy">{lock}</p>
+          {/* Restores the spec's first sentence only — the second half
+              ("Revenez au voyage pour voir ce qu'il manque.") assumed every
+              remedy points back to /voyage, which is wrong once LOCK_PROFILE
+              points to /profil instead. */}
+          <p className="mt-2 text-sm text-muted-foreground">
+            Cette session n&apos;est pas encore ouverte.
+          </p>
           <Button render={<Link href={remedy.href} />} size="lg" className="mt-5">
             {remedy.label}
           </Button>
@@ -436,7 +474,12 @@ export default function SessionPlayerPage() {
             <SceneCard
               scene={scene}
               value={asLetter(answers[scene.id])}
-              disabled={done}
+              // Frozen while `next()`'s save is in flight, not only once
+              // `done` — without this a person can pick A, press "Suivant",
+              // then pick B before the save replies: the server keeps A
+              // while "Précédent" shows B. ChecklistRow does NOT get the same
+              // freeze — see the comment on toggleRow above.
+              disabled={done || busy}
               onSelect={(letter) => setAnswer(scene.id, letter)}
             />
           </div>
