@@ -900,6 +900,101 @@ def test_answers_too_large_for_the_column_are_refused_whole(client, auth, candid
     assert after.responses == responses
 
 
+# ── a completed session is read-only ─────────────────────────────────────────
+
+SESSION_CLOSED = "Cette session est terminée : ses réponses ne sont plus modifiables."
+
+
+def _closed_session_zero(user, with_code=True):
+    """S0 answered and completed. With a code and a profile, S1 is open."""
+    fields = {"status": STATUS_S0, "sessions_completed": ["0"]}
+    if with_code:
+        fields["counselor_code_id"] = _code().id
+        _db.session.add(Profile(user_id=user.id, prenom="Marie", tranche_age="25_34"))
+    voyage = _voyage(user, **fields)
+    voyage.responses = {"answers": _answers_for("0"), "billets": {"0": {"surprise": "avant"}}}
+    _db.session.commit()
+    return voyage.id
+
+
+def _unchanged(voyage_id):
+    row = _stored(voyage_id)
+    return row.responses_encrypted, row.updated_at
+
+
+def test_answers_to_a_completed_session_are_refused_and_nothing_is_written(
+        client, auth, candidate):
+    voyage_id = _closed_session_zero(candidate)
+    before = _unchanged(voyage_id)
+
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S0-01": False}}, headers=auth)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": SESSION_CLOSED}
+    assert _unchanged(voyage_id) == before
+
+
+def test_billets_to_a_completed_session_are_refused(client, auth, candidate):
+    voyage_id = _closed_session_zero(candidate)
+    before = _unchanged(voyage_id)
+
+    res = client.put("/api/voyage/responses",
+                     json={"billets": {"0": {"surprise": "après"}}}, headers=auth)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": SESSION_CLOSED}
+    assert _unchanged(voyage_id) == before
+    assert _stored(voyage_id).responses["billets"]["0"] == {"surprise": "avant"}
+
+
+def test_a_request_touching_a_completed_and_an_open_session_merges_neither(
+        client, auth, candidate):
+    """S1 is open here; naming S0 beside it refuses the whole request, so the
+    S1 answer and the S1 billet are not saved either."""
+    voyage_id = _closed_session_zero(candidate)
+    before = _unchanged(voyage_id)
+
+    for body in ({"answers": {"S0-01": False, "S1-1": "A"}},
+                 {"answers": {"S1-1": "A"}, "billets": {"0": {"surprise": "après"}}},
+                 {"billets": {"0": {"surprise": "après"}, "1": {"cabane": "oui"}}}):
+        res = client.put("/api/voyage/responses", json=body, headers=auth)
+        assert res.status_code == 409
+        assert res.get_json() == {"error": SESSION_CLOSED}
+
+    assert _unchanged(voyage_id) == before
+    stored = _stored(voyage_id).responses
+    assert "S1-1" not in stored["answers"]
+    assert "1" not in stored["billets"]
+
+
+def test_the_open_session_after_a_completed_one_is_still_saved(client, auth, candidate):
+    voyage_id = _closed_session_zero(candidate)
+
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S1-1": "A"}, "billets": {"1": {"cabane": "oui"}}},
+                     headers=auth)
+
+    assert res.status_code == 200
+    stored = _stored(voyage_id).responses
+    assert stored["answers"]["S1-1"] == "A"
+    assert stored["billets"]["1"] == {"cabane": "oui"}
+
+
+def test_a_completed_session_is_refused_before_the_lock_is_consulted(client, auth, candidate):
+    """No code, so S1 is locked (403 on its own). Naming the completed S0
+    beside it is a 409: the read-only rule is checked first."""
+    voyage_id = _closed_session_zero(candidate, with_code=False)
+    before = _unchanged(voyage_id)
+
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S0-01": False, "S1-1": "A"}}, headers=auth)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": SESSION_CLOSED}
+    assert _unchanged(voyage_id) == before
+
+
 # ── POST /api/voyage/sessions/<n>/complete ───────────────────────────────────
 
 from unittest.mock import patch  # noqa: E402  (kept beside the tests that use it)

@@ -19,6 +19,8 @@ from uuid import uuid4
 import app as app_module
 from app import create_app, reap_stale_generating, STALE_RUN_CUTOFF_MINUTES
 from app.extensions import db
+from app.models.counselor_code import CounselorCode
+from app.models.profile import Profile
 from app.models.user import User
 from app.models.voyage import Voyage
 from app.services.voyage import bank
@@ -246,27 +248,24 @@ def test_a_failing_analyses_sweep_does_not_skip_the_voyage_sweep():
     reaper.assert_called_once_with()
 
 
-def test_a_finished_voyage_can_still_refresh_its_own_clock(app, client):
-    """Documents the blind spot rather than asserting a guarantee.
+ALL_SESSIONS = ["0", "1", "2", "3", "4", "5"]
 
-    reap_stale_generating() filters on updated_at, which is a last-write clock.
-    A voyage that is `termine` is still writable — current_for() falls back to
-    the last one played, PUT /responses has no status guard, and session 0 has
-    neither a counselor-code gate nor an order lock. So a stranded portrait can
-    be pushed out of the sweep's reach by re-saving a session-0 answer.
 
-    This test exists so the limitation is a measured fact in the suite rather
-    than a sentence in a docstring. When per-run timestamps land, it should
-    start failing on the last assertion — that is the signal to delete it.
+def _aged_player(email: str, **columns) -> tuple[str, dict, datetime]:
+    """A candidate's voyage whose updated_at is well past the sweep's cutoff.
+
+    Returns (voyage_id, auth headers, the stale timestamp). The age is written
+    last, by a bulk UPDATE naming the column, so no later ORM write stamps it
+    back to now.
     """
-    user = User(email="clock@test.com", password_hash="x", role="candidate", plan="free")
+    user = User(email=email, password_hash="x", role="candidate", plan="free")
     db.session.add(user)
     db.session.commit()
 
+    responses = columns.pop("responses", {"answers": {}, "billets": {}})
     voyage = Voyage(user_id=user.id, consent_at=datetime.utcnow(), age_attested=True,
-                    status="termine", portrait_status="generating",
-                    sessions_completed=["0", "1", "2", "3", "4", "5"])
-    voyage.responses = {"answers": {}, "billets": {}}
+                    **columns)
+    voyage.responses = responses
     db.session.add(voyage)
     db.session.commit()
     voyage_id = voyage.id
@@ -277,10 +276,65 @@ def test_a_finished_voyage_can_still_refresh_its_own_clock(app, client):
     db.session.commit()
 
     token = create_access_token(identity=user.id)
+    return voyage_id, {"Authorization": f"Bearer {token}"}, stale
+
+
+def test_a_finished_voyage_can_no_longer_hide_its_portrait_by_re_saving_an_answer(app, client):
+    """The phase-2 blind spot, narrowed.
+
+    A `termine` voyage used to accept a re-saved session-0 answer: 200,
+    updated_at moved past the cutoff, and a portrait stranded on "generating"
+    left the sweep's reach. Every session of a finished voyage is complete and
+    a completed session now refuses writes, so the same request is a 409, the
+    clock stays where it was, and the sweep reaches the portrait.
+    """
+    voyage_id, headers, stale = _aged_player(
+        "clock@test.com", status="termine", portrait_status="generating",
+        sessions_completed=ALL_SESSIONS)
+
     item = bank.items("0")[0]
-    res = client.put("/api/voyage/responses",
-                     headers={"Authorization": f"Bearer {token}"},
+    res = client.put("/api/voyage/responses", headers=headers,
                      json={"answers": {item["id"]: True}})
+    assert res.status_code == 409
+
+    db.session.expire_all()
+    assert db.session.get(Voyage, voyage_id).updated_at == stale
+
+    assert reap_stale_generating() == 1
+    db.session.expire_all()
+    assert db.session.get(Voyage, voyage_id).portrait_status == "error"
+
+
+def test_an_open_voyage_can_still_refresh_a_stranded_phrases_clock(app, client):
+    """What remains of the blind spot. Documents it rather than asserting a
+    guarantee.
+
+    The phrase stranded on "generating" at session 0; the person has a code and
+    a profile, so session 1 is open, and saving an S1 answer is a legitimate
+    write. It moves updated_at, and the sweep stops seeing the row for as long
+    as they keep playing. Their own way out meanwhile is
+    POST /api/voyage/micro/retry.
+
+    When per-run timestamps land, this should start failing on the last
+    assertion — that is the signal to delete it.
+    """
+    code = CounselorCode(label="Cap Emploi test")
+    db.session.add(code)
+    db.session.commit()
+    s0 = {item["id"]: True for item in bank.items("0")}
+    voyage_id, headers, stale = _aged_player(
+        "clock-open@test.com", status="s0_termine", micro_status="generating",
+        sessions_completed=["0"], counselor_code_id=code.id,
+        responses={"answers": s0, "billets": {}})
+    user_id = db.session.get(Voyage, voyage_id).user_id
+    db.session.add(Profile(user_id=user_id, prenom="Marie", tranche_age="25_34"))
+    db.session.commit()
+    db.session.expire_all()
+    assert db.session.get(Voyage, voyage_id).updated_at == stale     # setup left the clock
+
+    item = bank.items("1")[0]
+    res = client.put("/api/voyage/responses", headers=headers,
+                     json={"answers": {item["id"]: item["options"][0]["letter"]}})
     assert res.status_code == 200
 
     db.session.expire_all()
@@ -288,4 +342,30 @@ def test_a_finished_voyage_can_still_refresh_its_own_clock(app, client):
 
     # And so the sweep no longer sees it.
     assert reap_stale_generating() == 0
-    assert db.session.get(Voyage, voyage_id).portrait_status == "generating"
+    assert db.session.get(Voyage, voyage_id).micro_status == "generating"
+
+
+def test_a_save_that_names_no_session_still_refreshes_a_finished_voyages_clock(app, client):
+    """The narrowing's own edge, pinned so the docstring's claim is a measured
+    fact. Documents it rather than asserting a guarantee.
+
+    The completed-session refusal fires for the sessions a request names. An
+    empty body names none, and neither does one carrying only unknown ids, so
+    the route still re-encrypts the unchanged answers and commits: 200,
+    updated_at moves, and a finished voyage's stranded portrait leaves the
+    sweep's reach exactly as before. The player never sends such a request; a
+    stale or hand-written client can. The counselor's regenerate reaches the
+    portrait after ten minutes either way.
+    """
+    for n, body in enumerate(({}, {"answers": {"S9-99": "Z"}})):
+        voyage_id, headers, stale = _aged_player(
+            f"clock-empty-{n}@test.com", status="termine", portrait_status="generating",
+            sessions_completed=ALL_SESSIONS)
+
+        res = client.put("/api/voyage/responses", headers=headers, json=body)
+        assert res.status_code == 200
+
+        db.session.expire_all()
+        assert db.session.get(Voyage, voyage_id).updated_at > stale
+        assert reap_stale_generating() == 0
+        assert db.session.get(Voyage, voyage_id).portrait_status == "generating"

@@ -56,14 +56,26 @@ def reap_stale_generating(cutoff_minutes: int | None = None) -> int:
     sweep never reaches that row for as long as they stay active. Verified, not
     theorised.
 
-    A portrait is exposed the same way, though it takes a stranger path to get
-    there. It is spawned at S5, when the voyage is finished — but a finished
-    voyage is still writable: current_for() falls back to the last one played,
-    PUT /api/voyage/responses has no status guard, and session 0 carries no
-    counselor-code gate and no order lock. So a person who re-saves an S0
-    answer on a completed voyage refreshes the clock and their stranded
-    portrait stops being reachable too. Measured, not assumed: that request
-    returns 200 and moves updated_at.
+    A portrait used to be exposed the same way by a stranger path: it is
+    spawned at S5, on a finished voyage, and re-saving a session-0 answer there
+    returned 200 and moved updated_at. That path is closed. Every session of a
+    finished voyage is complete, and PUT /api/voyage/responses refuses a
+    request naming a completed session with a 409 before it writes anything.
+
+    What remains, each case pinned in tests/test_voyage_reaper.py:
+
+      * the phrase case above — an open voyage whose person is saving answers
+        to the session they are playing;
+      * a PUT /api/voyage/responses that names no session at all (an empty
+        body, or only unknown ids). The refusal has nothing to refuse, so the
+        route still re-encrypts the unchanged answers and commits — on a
+        finished voyage too. The player never sends one.
+
+    Neither case waits on this sweep alone any more. Both routes below read
+    the same clock, but with far shorter thresholds and no restart: the
+    candidate can relaunch a phrase once its row has gone three minutes
+    without a write (POST /api/voyage/micro/retry), and a counselor a portrait
+    after ten (POST /api/voyage/c/<token>/portrait/regenerate).
 
     Fixing that properly needs a per-run timestamp (micro_started_at /
     portrait_started_at) rather than a shared last-write column, and that is a

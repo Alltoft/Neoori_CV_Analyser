@@ -50,7 +50,8 @@ NO_VOYAGE = "Aucun voyage en cours."
 # it. The hub gives up polling after the same three minutes. Measured on
 # updated_at, which is the row's last-write clock rather than the run's start
 # (see reap_stale_generating's docstring): a person who is actively saving
-# pushes it forward and defers the retry.
+# pushes it forward and defers the retry. A completed session refuses writes,
+# so that person has to be playing the session after it.
 MICRO_RETRY_STALE_MINUTES = 3
 
 # The same rule for the counselor's « régénérer » on a portrait, on the same
@@ -189,6 +190,9 @@ def put_responses():
     silently — a client one deploy behind must not lose a whole save over an
     item that moved — but a known id carrying a value the bank rejects is a
     400, because that means the two have genuinely drifted.
+
+    Only open sessions are writable: a request naming a session already
+    completed is refused whole, with nothing merged.
     """
     voyage = _current()
     if voyage is None:
@@ -214,6 +218,17 @@ def put_responses():
     # merge — a refusal must leave the row exactly as it was.
     touched = {_session_of(i) for i in known}
     touched |= {n for n in billets if n in bank.SESSION_IDS}
+
+    # A completed session is read-only. Its answers have already been scored
+    # into a status, a phrase or a portrait, and a write here would also move
+    # updated_at, the clock both stall rules and the startup sweep read. Checked
+    # before the locks, so naming a completed session is a 409 whatever else
+    # the request names.
+    if touched & set(voyage.sessions_completed or []):
+        return jsonify({
+            "error": "Cette session est terminée : ses réponses ne sont plus modifiables."
+        }), 409
+
     profile = _profile()
     for n in sorted(touched):
         lock = session_lock(voyage, profile, n)
