@@ -216,6 +216,113 @@ Generation is blocked (no prompt). Test the form itself.
 
 ---
 
+## 12 · Le voyage
+
+**You need to be logged in.** Sessions 1 to 5 additionally need a counselor code
+and a Profil de base with at least a prénom and a tranche d'âge — that is the
+gate, not a bug.
+
+Text that comes from the paper cahier — session titles, scenes, the portrait —
+says *tu* wherever it appears. Everything the app adds — buttons, cards,
+banners, error messages — says *vous*. If you find a *tu* on a button or a
+*vous* inside a session, that is a bug.
+
+### 12.1 Entry points
+
+| # | Do | Expect |
+|---|---|---|
+| 12.1.1 | Open the landing page and scroll past the hero | A navy band, eyebrow "Le voyage", heading « Avant de parler de poste, parlons de vous. », **above** the three scenario cards |
+| 12.1.2 | Click « Commencer le voyage » while logged out | `/connexion?redirect=/voyage`, and after logging in you land on `/voyage` |
+| 12.1.3 | Open `/analyse` | A full-width navy card, "Le voyage" / « Mon cahier d'exploration », **above** the three parcours cards. The three cards themselves are unchanged |
+| 12.1.4 | Open `/espace` with no voyage started | A navy strip at the very top offering to start, reading "Six sessions pour poser ce que vous savez déjà de vous." It never blocks the analyses below it |
+| 12.1.5 | Open the account dropdown in the top bar | « Mon espace », then **« Mon voyage »**, then « Déconnexion » (plus « Administration » if you are admin) |
+| 12.1.6 | Log out and open `/voyage` directly | Bounced to `/connexion?redirect=/voyage`. You should never see the consent form logged out |
+
+### 12.2 Consent and the age gate
+
+| # | Do | Expect |
+|---|---|---|
+| 12.2.1 | Open `/voyage` for the first time | Two checkboxes: a consent line about encrypted answers, and « J'ai 15 ans ou plus. » |
+| 12.2.2 | Leave both unticked | « Commencer le voyage » is **greyed out and unclickable** |
+| 12.2.3 | Tick only the age box | Still greyed out — both are required |
+| 12.2.4 | Tick both, click the button | The six session rows appear |
+| 12.2.5 | Read the intro | It says in as many words that no session is required and that your analyses work without one |
+| 12.2.6 | Check how session 0 is described in that same intro | It « se fait en autonomie » — never « seul » |
+
+### 12.3 Locked sessions
+
+| # | Do | Expect |
+|---|---|---|
+| 12.3.1 | Look at rows 1 to 5 with no counselor code | Each shows a grey pill reading « Avec un conseiller ». There is **no button at all** — not a greyed-out one |
+| 12.3.2 | Enter a valid counselor code, click « Activer » | The code field disappears; the rows now read « Complétez votre profil » if your profile is empty |
+| 12.3.3 | Fill prénom + tranche d'âge at `/profil`, return to `/voyage` | Rows 1 to 5 **all** still read « Terminez la session précédente » — session 0 is not finished yet, and that is the order lock working correctly, not a bug |
+| 12.3.4 | Enter a wrong or disabled code | "Code invalide ou désactivé." in red. Nothing else changes |
+| 12.3.5 | Go to `/voyage/session/4` by typing the URL, with session 3 unfinished | A lock screen: the reason, then the sentence « Cette session n'est pas encore ouverte. », then a remedy button. No questions, no dead « Suivant » |
+
+### 12.4 Session 0 — the 5-minute one
+
+| # | Do | Expect |
+|---|---|---|
+| 12.4.1 | Click « Commencer » on session 0 | One scrolling list of **20** affirmations, each with a ✓ and a ✗ button. Not one question per screen |
+| 12.4.2 | Answer five rows, then reload the page | The five answers are still there — each row saves the moment you press it |
+| 12.4.3 | Answer all 20, click « Suivant » | The « Billet de sortie » screen: two free-text boxes, each marked « Facultatif » |
+| 12.4.4 | Click « Terminer » with the billet empty | Accepted. Back on `/voyage`, session 0 stamped with a check |
+| 12.4.5 | Watch the top of the hub | « Votre phrase » shows a spinner and "Nous la rédigeons. Quelques secondes.", then a single sentence a few seconds later. No page reload needed |
+| 12.4.6 | Read that sentence | One sentence about you. No score, no percentage, no psychology or framework word. An age is fine |
+| 12.4.7 | Reopen `/voyage/session/0` | It opens read-only on the **20 rows first** (not the billet screen) — greyed out, a banner reading « Session terminée. », and the last screen's button reading « Retour au voyage » |
+| 12.4.8 | With code + profile already set, look at row 1 now that session 0 is finished | It offers « Commencer » — session 0 was the last lock blocking it |
+| 12.4.9 | Force a failure: in `/admin/prompts`, deactivate "Voyage · phrase (S0)", then finish a fresh session 0 | « Votre phrase » shows "La rédaction de votre phrase n'a pas abouti. Vos réponses sont enregistrées." and a « Réessayer » button |
+| 12.4.10 | Reactivate the prompt in `/admin/prompts`, click « Réessayer » | A sentence appears — no error, no jargon |
+| 12.4.11 | Leave a phrase on "generating" for more than 3 minutes (or simulate it) | « Votre phrase » switches to "La rédaction de votre phrase prend plus de temps que prévu. Vos réponses sont enregistrées." with a « Réessayer » button |
+| 12.4.12 | Try to type more than 1000 characters into a billet de sortie box | The field stops accepting input at 1000 characters |
+
+### 12.5 Sessions 1 to 5 — the player
+
+| # | Do | Expect |
+|---|---|---|
+| 12.5.1 | Open session 1 | The session's own intro paragraphs, then **one scene per screen** |
+| 12.5.2 | Read a scene | A title, a short story, a question, then 6 lettered options (session 1 scene 6 has 8) |
+| 12.5.3 | Click « Suivant » without choosing | « Choisissez une réponse pour continuer. » The screen does not advance |
+| 12.5.4 | Answer scenes 1 and 2, close the tab mid-scene 3, reopen the session | It lands on **scene 3**, with 1 and 2 already answered |
+| 12.5.5 | Answer a scene, click « Suivant », and try to pick a different option before it replies | The options are frozen (disabled) until the save replies — you cannot pick a second answer for the same scene while the first is still saving |
+| 12.5.6 | Answer a scene, then turn off your network, then click « Suivant » | An error appears and the screen does not advance. Turn the network back on, click again — it saves and moves on. You lose at most the current scene |
+| 12.5.7 | Click « Précédent » | Back one scene, answer still selected. No re-save needed |
+| 12.5.8 | Reach the last screen of a session | The session's closing paragraphs, if it has any, then the billet de sortie for that session |
+| 12.5.9 | Finish sessions 1 to 5 | After « Terminer » on session 5 the hub shows all six stamped, and a line saying the portrait is awaiting your counselor's validation |
+| 12.5.10 | Right after that, look below the six stamps | A card « Lien à transmettre à votre conseiller » with a read-only URL field and a « Copier le lien » button; clicking it briefly shows « Lien copié » |
+
+### 12.6 The portrait
+
+| # | Do | Expect |
+|---|---|---|
+| 12.6.1 | Open `/voyage/portrait` before the counselor validates | « Votre portrait est rédigé et attend d'être relu avec votre conseiller. Le lien à lui transmettre se trouve sur la page du voyage. » No sections are shown |
+| 12.6.2 | Have the counselor validate it, then reload | Six sections in this order: Phrase d'accroche · Qui tu es · Ce qui te fait vibrer · Ce dont tu as besoin · Les chemins possibles · Ce que ton portrait ne dit pas encore |
+| 12.6.3 | Read the whole portrait | Prose, tutoiement, **no score, no percentage, no named framework, no "tu es…" verdict, no named métier** |
+| 12.6.4 | Click « PDF » | Print preview: an A4 sheet with no top bar and no buttons, long sections flowing onto page 2 |
+| 12.6.5 | Go back to `/espace` | The voyage strip now says « Voir mon portrait » |
+
+### 12.7 Erasure
+
+| # | Do | Expect |
+|---|---|---|
+| 12.7.1 | On `/voyage`, click « Supprimer mon voyage » | A confirmation naming exactly what goes: réponses, phrase, portrait |
+| 12.7.2 | Confirm | Back to the consent screen, as if you had never started |
+| 12.7.3 | Open `/profil` | **Untouched.** Deleting the voyage must not touch the Profil de base, and deleting the profile must not touch the voyage |
+
+### 12.8 Robustness
+
+| # | Do | Expect |
+|---|---|---|
+| 12.8.1 | Finish a session, then try to change one of its answers (reopen it, or edit responses from another tab) | The server refuses the write; the row/scene stays inert and reopening the session always shows the read-only banner — nothing you do there is saved |
+| 12.8.2 | Stop the backend, then reload `/voyage` | An error message and a « Réessayer » button — **never** the consent form |
+
+> The rule the PM cares about here: **the person never sees a score, a trait
+> name, or a framework name.** Not on the hub, not in the phrase, not in the
+> portrait. Everything numeric stays on the counselor's side of the wall.
+> If a number or a jargon word reaches any of these screens, report it first.
+
+---
+
 ## What to report back
 
 For each failure: the step number, the URL, and what you saw instead.
