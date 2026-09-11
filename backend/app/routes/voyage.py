@@ -53,6 +53,11 @@ NO_VOYAGE = "Aucun voyage en cours."
 # pushes it forward and defers the retry.
 MICRO_RETRY_STALE_MINUTES = 3
 
+# The same rule for the counselor's « régénérer » on a portrait, on the same
+# clock. Longer, because a healthy portrait run is Sonnet at 3000 tokens and
+# possibly two calls (the leak retry).
+PORTRAIT_RETRY_STALE_MINUTES = 10
+
 
 def _current() -> Voyage | None:
     """The caller's own voyage: the open one, else the last one played."""
@@ -561,8 +566,9 @@ def counselor_edit_portrait(token):
 def counselor_regenerate_portrait(token):
     """Re-run the portrait call.
 
-    Draft or error, never validated: a validated portrait has been restituted
-    and must not change under the person's feet.
+    Draft, error, or a run stalled on generating — never validated: a
+    validated portrait has been restituted and must not change under the
+    person's feet.
 
     'error' is here because without it the status is a dead end. Nothing else
     in the backend moves a row out of 'error' -- edit and validate both 409,
@@ -570,14 +576,26 @@ def counselor_regenerate_portrait(token):
     from runs a restart orphaned. One transient upstream failure would then
     destroy a finished six-session voyage with no way back. A counselor
     pressing « régénérer » is that way back.
+
+    A 'generating' row older than PORTRAIT_RETRY_STALE_MINUTES is here for the
+    same reason: a run that died without writing leaves nothing else able to
+    move it until the next restart's reaper, which needs a restart and its own
+    longer cutoff — possibly never, since any write to the row pushes it out
+    of reach. A fresh 'generating' stays a 409, so a live run gets no twin.
     """
     voyage = Voyage.by_token(token)
     if voyage is None:
         return jsonify({"error": NOT_FOUND}), 404
-    if voyage.portrait_status not in ("draft", "error"):
+    stalled = _stalled(voyage.portrait_status, voyage.updated_at,
+                       PORTRAIT_RETRY_STALE_MINUTES)
+    if voyage.portrait_status not in ("draft", "error") and not stalled:
         return jsonify({"error": "Le portrait ne peut plus être régénéré."}), 409
 
     voyage.portrait_status = "generating"
+    # Same reason as retry_micro: a stalled row already reads "generating",
+    # so without a fresh stamp this commit writes nothing and a second press
+    # would spawn a second paid run.
+    voyage.updated_at = datetime.utcnow()
     db.session.commit()
     _spawn_portrait(voyage.id)
     # The stored sections are about to be overwritten, so the response reports

@@ -1848,3 +1848,88 @@ def test_a_healthy_draft_carries_no_error_key(client, sheet, counselor_auth):
     body = client.get("/api/voyage/c/tok-conseiller",
                       headers=counselor_auth).get_json()["voyage"]["portrait"]
     assert set(body) == {"status", "sections", "flags", "edited", "validated_at"}
+
+
+# ── a stalled portrait must not be a dead end either ─────────────────────────
+# A run that died without writing leaves the row on "generating", and the
+# startup reaper only reaches it after a restart and past its own cutoff. The
+# hub tells the person their counselor can relaunch it, so the counselor must
+# be able to.
+
+REGENERATE_URL = "/api/voyage/c/tok-conseiller/portrait/regenerate"
+NOT_REGENERABLE = "Le portrait ne peut plus être régénéré."
+
+
+def _portrait_generating(sheet, minutes):
+    sheet.portrait_status = "generating"
+    _db.session.commit()
+    return _age(sheet, minutes)
+
+
+def test_the_portrait_stall_threshold_is_ten_minutes():
+    from app.routes import voyage as voyage_routes
+    assert voyage_routes.PORTRAIT_RETRY_STALE_MINUTES == 10
+
+
+def test_a_counselor_can_relaunch_a_portrait_that_stalled(client, sheet, counselor_auth):
+    _, counselor_auth = counselor_auth
+    voyage_id = _portrait_generating(sheet, 11).id
+
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        res = client.post(REGENERATE_URL, headers=counselor_auth)
+
+    assert res.status_code == 202
+    assert res.get_json()["portrait"]["status"] == "generating"
+    spawn.assert_called_once_with(voyage_id)
+    _db.session.expire_all()
+    assert _db.session.get(Voyage, voyage_id).portrait_status == "generating"
+
+
+@pytest.mark.parametrize("minutes", [0, 9])
+def test_a_portrait_still_within_its_ten_minutes_is_not_relaunched(
+        client, sheet, counselor_auth, minutes):
+    _, counselor_auth = counselor_auth
+    voyage = _portrait_generating(sheet, minutes)
+    before = voyage.updated_at
+
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        res = client.post(REGENERATE_URL, headers=counselor_auth)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": NOT_REGENERABLE}
+    spawn.assert_not_called()
+    _db.session.expire_all()
+    row = _db.session.get(Voyage, voyage.id)
+    assert row.portrait_status == "generating"
+    assert row.updated_at == before
+
+
+def test_a_validated_portrait_is_never_relaunched_however_old(client, sheet, counselor_auth):
+    """The stall rule widens "generating" only. Old enough to pass the stall
+    test, a validated portrait still has been restituted."""
+    _, counselor_auth = counselor_auth
+    sheet.portrait_status = "validated"
+    _db.session.commit()
+    _age(sheet, 60)
+
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        res = client.post(REGENERATE_URL, headers=counselor_auth)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": NOT_REGENERABLE}
+    spawn.assert_not_called()
+
+
+def test_relaunching_a_stalled_portrait_restarts_its_clock(client, sheet, counselor_auth):
+    """Same trap as the phrase: "generating" -> "generating" writes nothing,
+    so without a fresh stamp a second press would spawn a second paid run."""
+    _, counselor_auth = counselor_auth
+    _portrait_generating(sheet, 11)
+
+    with patch("app.routes.voyage._spawn_portrait") as spawn:
+        first = client.post(REGENERATE_URL, headers=counselor_auth)
+        second = client.post(REGENERATE_URL, headers=counselor_auth)
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+    spawn.assert_called_once()
