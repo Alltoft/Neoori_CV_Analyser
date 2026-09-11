@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRight, Compass, Sprout, Target } from "lucide-react"
+import { ArrowRight, Compass, Map as MapIcon, Sprout, Target } from "lucide-react"
 
 import { AppBar } from "@/components/layout/AppBar"
 
@@ -55,6 +55,34 @@ export default function ChoisirParcoursPage() {
             en lancer une autre plus tard.
           </p>
         </div>
+
+        {/* The voyage is a fourth scenario, not a fourth parcours: full width
+            and on the charter's inverted surface, so the difference reads
+            before any hue does. The three parcours own orange, navy and teal. */}
+        <Link
+          href="/voyage"
+          className="group mb-5 block overflow-hidden rounded-2xl bg-navy shadow-card transition-shadow hover:shadow-float focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-peach"
+        >
+          <span className="voyage-rule block" />
+          <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/10 text-peach">
+              <MapIcon className="size-5" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="eyebrow text-peach">Le voyage</p>
+              <h2 className="mt-1 font-display text-lg font-bold text-white">
+                Mon cahier d&apos;exploration
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-white/80">
+                5 minutes pour commencer. Ce que vous y répondez enrichit toutes vos analyses.
+              </p>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white">
+              Commencer
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+            </span>
+          </div>
+        </Link>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           {PARCOURS.map(({ href, n, icon: Icon, title, lead, detail, needs }) => (

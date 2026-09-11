@@ -15,7 +15,9 @@ import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { copyToClipboard } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
+import { getVoyage } from "@/lib/voyage"
 import type { Analysis } from "@/types"
+import type { Voyage } from "@/types/voyage"
 import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2, ArrowRight } from "lucide-react"
 import { normalizeParcours } from "@/types"
 
@@ -30,6 +32,8 @@ export default function EspacePage() {
   const [loading, setLoading] = useState(true)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
   const [origin, setOrigin] = useState("")
+  const [voyage, setVoyage] = useState<Voyage | null>(null)
+  const [voyageLoaded, setVoyageLoaded] = useState(false)
 
   useEffect(() => setOrigin(window.location.origin), [])
 
@@ -49,6 +53,16 @@ export default function EspacePage() {
       .then((r) => setAnalyses(r.analyses))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [])
+
+  // The voyage is never required (spec decision 11) — this strip is an offer,
+  // so a failed read renders nothing rather than an error (D-S9): voyageLoaded
+  // only ever flips to true on success, so the strip stays absent for good on
+  // a failed read instead of flashing an empty state.
+  useEffect(() => {
+    getVoyage()
+      .then((v) => { setVoyage(v); setVoyageLoaded(true) })
+      .catch(() => {})
   }, [])
 
   const remove = async (id: string) => {
@@ -76,6 +90,72 @@ export default function EspacePage() {
             <PlusCircle /> Nouvelle analyse
           </Button>
         </div>
+
+        {/* Le voyage — the fourth scenario, on the charter's inverted surface so
+            it does not read as a fourth parcours card. */}
+        {voyageLoaded && voyage && (
+          <div className="mb-6 overflow-hidden rounded-2xl bg-navy shadow-card">
+            <div className="voyage-rule" />
+            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="eyebrow text-peach">Le voyage</p>
+                <p className="mt-1 font-display text-base font-bold text-white">
+                  {voyage.sessions_completed.length} session
+                  {voyage.sessions_completed.length > 1 ? "s" : ""} sur 6
+                </p>
+                {voyage.micro_phrase ? (
+                  <p className="mt-1.5 line-clamp-2 text-sm italic text-white/80">
+                    « {voyage.micro_phrase} »
+                  </p>
+                ) : null}
+              </div>
+              {/* R25: the label and target depend on the portrait's state, not
+                  just "has a voyage" — a validated portrait leads straight to
+                  it, an unvalidated one with a share_token surfaces the
+                  counselor link, otherwise it is just "continue the voyage". */}
+              <Button
+                render={
+                  <Link
+                    href={voyage.portrait_status === "validated" ? "/voyage/portrait" : "/voyage"}
+                  />
+                }
+                size="lg"
+                className="shrink-0 bg-white text-navy hover:bg-white/90"
+              >
+                {voyage.portrait_status === "validated"
+                  ? "Voir mon portrait"
+                  : voyage.share_token
+                    ? "Lien pour mon conseiller"
+                    : "Continuer"}
+                <ArrowRight />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {voyageLoaded && !voyage && (
+          <Link
+            href="/voyage"
+            className="group mb-6 block overflow-hidden rounded-2xl bg-navy shadow-card transition-shadow hover:shadow-float"
+          >
+            <span className="voyage-rule block" />
+            <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="eyebrow text-peach">Le voyage</p>
+                <p className="mt-1 font-display text-base font-bold text-white">
+                  Six sessions pour poser ce que vous savez déjà de vous.
+                </p>
+                <p className="mt-1 text-sm text-white/80">
+                  La première prend 5 minutes et se fait en autonomie.
+                </p>
+              </div>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white">
+                Commencer
+                <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </span>
+            </div>
+          </Link>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
