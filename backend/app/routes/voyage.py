@@ -58,6 +58,16 @@ MICRO_RETRY_STALE_MINUTES = 3
 # possibly two calls (the leak retry).
 PORTRAIT_RETRY_STALE_MINUTES = 10
 
+# One exit-ticket box, in characters. The player mirrors it as its maxLength.
+BILLET_MAX_CHARS = 1000
+
+# responses_encrypted is a MySQL TEXT column: 65535 bytes. Past that, strict
+# mode raises error 1406 at commit -- an unhandled 500 -- while SQLite stores
+# anything, so only this guard makes the failure testable locally. The Fernet
+# token is URL-safe base64, pure ASCII, so its length in characters is its
+# length in bytes.
+RESPONSES_MAX_CHARS = 65535
+
 
 def _current() -> Voyage | None:
     """The caller's own voyage: the open one, else the last one played."""
@@ -218,18 +228,20 @@ def put_responses():
     if invalid:
         return jsonify({"errors": invalid}), 400
 
-    merged = voyage.responses
-    merged["answers"].update(known)
+    # The billet values exactly as they will be stored, worked out before the
+    # merge so the length cap measures what would be written and a refusal
+    # still leaves the row untouched.
+    kept_billets: dict[str, dict[str, str]] = {}
     for n, fields in billets.items():
         if n not in bank.SESSION_IDS or not isinstance(fields, dict):
             continue
         allowed = set(bank.billet_keys(n))
-        target = dict(merged["billets"].get(n) or {})
+        kept = {}
         for key, value in fields.items():
             if key not in allowed:
                 continue
             if value is None:
-                target[key] = ""
+                kept[key] = ""
             elif isinstance(value, (str, int, float, bool)):
                 # A scalar is what a person can type; anything else (a dict, a
                 # list) is dropped rather than stringified — the billet text
@@ -237,10 +249,30 @@ def put_responses():
                 # words, so `str({'nested': 'x'})` must never reach it looking
                 # like something a person wrote. Same disposal rule as an
                 # unknown field key (contract § E5).
-                target[key] = str(value)
-        merged["billets"][n] = target
+                kept[key] = str(value)
+        kept_billets[n] = kept
 
+    if any(len(value) > BILLET_MAX_CHARS
+           for kept in kept_billets.values() for value in kept.values()):
+        return jsonify({"errors": [
+            f"Réponse trop longue : {BILLET_MAX_CHARS} caractères maximum."
+        ]}), 400
+
+    merged = voyage.responses
+    merged["answers"].update(known)
+    for n, kept in kept_billets.items():
+        merged["billets"][n] = {**(merged["billets"].get(n) or {}), **kept}
     voyage.responses = merged
+
+    # Backstop for the column, see RESPONSES_MAX_CHARS. Every field can be
+    # within its cap and the whole still too large (thirteen full boxes of
+    # four-byte characters are enough), and only the ciphertext's length says
+    # so. The rollback drops the assignment above so nothing of this request
+    # is written.
+    if len(voyage.responses_encrypted or "") > RESPONSES_MAX_CHARS:
+        db.session.rollback()
+        return jsonify({"errors": ["Vos réponses dépassent la taille enregistrable."]}), 400
+
     db.session.commit()
     return jsonify({"responses": voyage.responses}), 200
 

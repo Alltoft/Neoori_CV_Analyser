@@ -801,6 +801,105 @@ def test_a_non_object_body_is_a_400_not_a_500(client, auth):
     assert stored["answers"] == {"S0-01": True}
 
 
+# ── how much a billet may hold ───────────────────────────────────────────────
+
+TOO_LONG = "Réponse trop longue : 1000 caractères maximum."
+TOO_BIG = "Vos réponses dépassent la taille enregistrable."
+
+
+def _stored(voyage_id):
+    """The row through a query, deliberately without expire_all() first: the
+    query autoflushes, so a refusal that left its change pending in the session
+    surfaces here instead of being quietly discarded."""
+    return _db.session.query(Voyage).filter_by(id=voyage_id).one()
+
+
+def test_the_two_size_caps_are_pinned():
+    """The player mirrors the first as its maxLength; the second is the MySQL
+    TEXT column's size."""
+    from app.routes import voyage as voyage_routes
+    assert voyage_routes.BILLET_MAX_CHARS == 1000
+    assert voyage_routes.RESPONSES_MAX_CHARS == 65535
+
+
+def test_a_billet_of_exactly_a_thousand_characters_is_kept(client, auth):
+    voyage = _open_voyage(client, auth)
+    text = "é" * 1000
+    res = client.put("/api/voyage/responses",
+                     json={"billets": {"0": {"surprise": text}}}, headers=auth)
+    assert res.status_code == 200
+    assert _stored(voyage.id).responses["billets"]["0"]["surprise"] == text
+
+
+def test_a_billet_one_character_too_long_is_refused_before_anything_is_written(client, auth):
+    voyage = _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={
+        "answers": {"S0-01": True}, "billets": {"0": {"surprise": "déjà là"}},
+    }, headers=auth)
+    row = _stored(voyage.id)
+    cipher, stamp = row.responses_encrypted, row.updated_at
+
+    # A string, and a number whose str() is as long: the cap measures what
+    # would be stored, after the scalar conversion.
+    for value in ("x" * 1001, int("9" * 1001)):
+        res = client.put("/api/voyage/responses",
+                         json={"billets": {"0": {"surprise": value}}}, headers=auth)
+        assert res.status_code == 400
+        assert res.get_json() == {"errors": [TOO_LONG]}
+
+    row = _stored(voyage.id)
+    assert row.responses_encrypted == cipher      # Fernet re-encrypts with a new IV
+    assert row.updated_at == stamp
+
+
+def test_a_valid_answer_beside_a_refused_billet_is_not_merged(client, auth):
+    voyage = _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses", json={
+        "answers": {"S0-01": True},
+        "billets": {"0": {"top3": "ok", "surprise": "x" * 1001}},
+    }, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json() == {"errors": [TOO_LONG]}
+    assert _stored(voyage.id).responses == {"answers": {}, "billets": {}}
+
+
+def test_answers_too_large_for_the_column_are_refused_whole(client, auth, candidate):
+    """The column is MySQL TEXT: strict mode raises error 1406 past 65535 bytes,
+    an unhandled 500. SQLite stores anything, so only the route's own guard can
+    make that failure visible here. The Fernet token is ASCII, so characters
+    are bytes.
+
+    Measured, not guessed: every billet field of sessions 0-3 at the
+    1000-character cap, in a four-byte character, encrypts to 65144 characters
+    with those sessions' answers — storable, as a row that was saved must be.
+    One more such field, in session 4 and itself within the cap, takes the
+    token to 70500.
+    """
+    voyage = _voyage(candidate, status=STATUS_S0, sessions_completed=["0", "1", "2", "3"],
+                     counselor_code_id=_code().id)
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    played = ("0", "1", "2", "3")
+    voyage.responses = {
+        "answers": {k: v for n in played for k, v in _answers_for(n).items()},
+        "billets": {n: {key: "😀" * 1000 for key in bank.billet_keys(n)} for n in played},
+    }
+    _db.session.commit()
+    voyage_id = voyage.id
+    before = _stored(voyage_id)
+    cipher, responses = before.responses_encrypted, before.responses
+    assert len(cipher) <= 65535
+
+    field = bank.billet_keys("4")[0]
+    res = client.put("/api/voyage/responses",
+                     json={"billets": {"4": {field: "😀" * 1000}}}, headers=auth)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"errors": [TOO_BIG]}
+    after = _stored(voyage_id)
+    assert after.responses_encrypted == cipher
+    assert after.responses == responses
+
+
 # ── POST /api/voyage/sessions/<n>/complete ───────────────────────────────────
 
 from unittest.mock import patch  # noqa: E402  (kept beside the tests that use it)
