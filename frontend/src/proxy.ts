@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 /** Routes that need an account. Gated at the edge so no page ever renders a
  *  form the user can fill and then lose at submit. */
-const PROTECTED = ["/admin", "/profil"]
+const PROTECTED = ["/admin", "/profil", "/voyage"]
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl

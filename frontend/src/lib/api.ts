@@ -3,7 +3,15 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
 type ApiOptions = RequestInit & { skipRedirect?: boolean }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    /** The parsed error body, when the server sent one. Voyage endpoints answer
+     *  `{errors: [...]}` (a sentence then, for session completion, the missing
+     *  item ids) and `{error, status}` for a 409 portrait — both are useful to
+     *  the caller, and both used to be discarded here. */
+    public body?: Record<string, unknown>,
+  ) {
     super(message)
   }
 }
@@ -33,14 +41,21 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
     const fallback =
       res.status === 429
         ? "Trop de requêtes — patientez une minute puis réessayez."
         : res.status >= 502 && res.status <= 504
           ? "Le serveur démarre ou est temporairement indisponible. Réessayez dans 30 secondes."
           : "Erreur inattendue."
-    throw new ApiError(res.status, body.error ?? body.message ?? fallback)
+    const first = Array.isArray(body.errors) && typeof body.errors[0] === "string"
+      ? (body.errors[0] as string)
+      : undefined
+    throw new ApiError(
+      res.status,
+      (body.error as string) ?? first ?? (body.message as string) ?? fallback,
+      body,
+    )
   }
 
   const text = await res.text()

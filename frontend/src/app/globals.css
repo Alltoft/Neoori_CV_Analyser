@@ -236,6 +236,16 @@ html { scroll-behavior: smooth; }
   background: var(--orange);
 }
 
+/* ── Le voyage ──
+   The three parcours own the charter's three full-weight hues (orange, navy,
+   teal). The voyage is a fourth scenario, not a fourth parcours, so instead of
+   a fourth hue it takes the charter's inverted pairing: peach on navy, 6.81:1,
+   the same pair the report header and the landing preview already use. */
+.voyage-rule {
+  height: 6px;
+  background: var(--peach);
+}
+
 /* ── Print ── */
 @page {
   size: A4;
