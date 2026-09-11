@@ -1389,8 +1389,12 @@ def test_a_failed_phrase_is_relaunched_once_its_status_is_committed(client, auth
     assert seen == [(voyage_id, "generating")]
 
 
-def test_a_phrase_stalled_for_four_minutes_is_relaunched(client, auth, candidate):
-    voyage = _age(_after_session_zero(candidate, micro_status="generating"), 4)
+@pytest.mark.parametrize("minutes", [3.5, 4])
+def test_a_phrase_stalled_past_three_minutes_is_relaunched(client, auth, candidate, minutes):
+    """3.5 is the one that pins the arithmetic: a four-minute row sits exactly
+    on a threshold mistakenly pushed to `minutes + 1` and passes it by the
+    milliseconds the request takes."""
+    voyage = _age(_after_session_zero(candidate, micro_status="generating"), minutes)
     with patch("app.routes.voyage._spawn_micro") as spawn:
         res = client.post(RETRY_URL, headers=auth)
     assert res.status_code == 202
@@ -1415,6 +1419,11 @@ def test_relaunching_a_stalled_phrase_restarts_its_clock(client, auth, candidate
     _age(_after_session_zero(candidate, micro_status="generating"), 4)
     with patch("app.routes.voyage._spawn_micro") as spawn:
         first = client.post(RETRY_URL, headers=auth)
+        # Production tears the session down between two requests. The test
+        # client shares one app context, where a stamp left uncommitted would
+        # be autoflushed into the second request and look committed.
+        _db.session.rollback()
+        _db.session.expire_all()
         second = client.post(RETRY_URL, headers=auth)
     assert first.status_code == 202
     assert second.status_code == 409
@@ -2133,9 +2142,11 @@ def test_the_portrait_stall_threshold_is_ten_minutes():
     assert voyage_routes.PORTRAIT_RETRY_STALE_MINUTES == 10
 
 
-def test_a_counselor_can_relaunch_a_portrait_that_stalled(client, sheet, counselor_auth):
+@pytest.mark.parametrize("minutes", [10.5, 11])
+def test_a_counselor_can_relaunch_a_portrait_that_stalled(client, sheet, counselor_auth, minutes):
+    """10.5 pins the arithmetic, as 3.5 does for the phrase."""
     _, counselor_auth = counselor_auth
-    voyage_id = _portrait_generating(sheet, 11).id
+    voyage_id = _portrait_generating(sheet, minutes).id
 
     with patch("app.routes.voyage._spawn_portrait") as spawn:
         res = client.post(REGENERATE_URL, headers=counselor_auth)
@@ -2190,6 +2201,10 @@ def test_relaunching_a_stalled_portrait_restarts_its_clock(client, sheet, counse
 
     with patch("app.routes.voyage._spawn_portrait") as spawn:
         first = client.post(REGENERATE_URL, headers=counselor_auth)
+        # As for the phrase: no uncommitted stamp may survive into the
+        # second request the way it cannot in production.
+        _db.session.rollback()
+        _db.session.expire_all()
         second = client.post(REGENERATE_URL, headers=counselor_auth)
 
     assert first.status_code == 202

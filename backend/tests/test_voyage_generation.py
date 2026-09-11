@@ -1060,12 +1060,39 @@ def test_the_phrase_fixtures_are_what_their_names_say():
     assert OTHER_LEAKY_PHRASE.isascii()
 
 
-def test_the_phrase_corrective_turn_quotes_the_words_and_asks_for_one_short_sentence():
-    message = gen._micro_leak_retry_message(["névrotisme", "score"])
-    assert "névrotisme, score" in message
-    assert "Une seule phrase" in message
-    assert f"de {gen.MICRO_WORDS[0]} à {gen.MICRO_WORDS[1]} mots" in message
-    assert "de 15 à 25 mots" in message
+def test_the_phrase_corrective_turn_is_pinned_word_for_word():
+    """Compared whole, not by containment: every clause is a rule — the words
+    quoted, no other technical term, one sentence of the manual's length,
+    nothing else — and dropping any one of them left a containment check
+    green. This text lives in code, not in a prompt the PM edits."""
+    assert gen._micro_leak_retry_message(["riasec", "trait"]) == (
+        "Cette phrase contient des mots interdits : riasec, trait. "
+        "Réécris-la sans ces mots et sans aucun autre terme technique de "
+        "psychologie ou de ressources humaines. Une seule phrase, de 15 à 25 mots. "
+        "Réponds uniquement avec la phrase."
+    )
+
+
+def test_the_corrective_call_is_the_same_call_as_the_first(app):
+    """Same free model, same active system prompt, same 200-token budget, no
+    schema: the correction must not silently move to the paid model or lose
+    the PM's prompt."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")
+    _seed("voyage_micro", "Consigne micro.")
+    voyage_id = voyage.id
+
+    client = _client(LEAKY_PHRASE, CLEAN_PHRASE)
+    with patch.object(gen, "_get_client", return_value=client):
+        gen._run_micro(voyage_id, app)
+
+    assert client.messages.stream.call_count == 2
+    for call in client.messages.stream.call_args_list:
+        assert call.kwargs["model"] == tiers.model_for(tiers.FREE)[0]
+        assert call.kwargs["system"] == "Consigne micro."
+        assert call.kwargs["max_tokens"] == gen.MICRO_MAX_TOKENS
+        assert "extra_body" not in call.kwargs
+    assert tiers.model_for(tiers.FREE)[0] != tiers.model_for(tiers.PAID)[0]
+    assert _reload(voyage_id).micro_phrase == CLEAN_PHRASE
 
 
 def test_a_clean_phrase_costs_one_call_and_is_kept(app):
