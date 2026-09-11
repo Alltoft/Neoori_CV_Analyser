@@ -83,11 +83,26 @@ export default function VoyagePage() {
   // R8: share-link copy confirmation.
   const [copied, setCopied] = useState(false)
 
+  // F1: a loadError retry in flight. State (not a ref) because it drives the
+  // button's disabled state and label; the guard in retryLoad below is safe
+  // because React flushes discrete click events synchronously, so a second
+  // click always observes the first click's update (same reasoning as F3).
+  const [reloading, setReloading] = useState(false)
+
   // Poll bookkeeping — mutable, read only inside the poll effect/timer, never
   // during render (react-hooks/refs).
   const streakStartRef = useRef<number | null>(null)
+  // F2: the last (micro_status, portrait_status) pair the poll effect saw —
+  // lets it tell "still generating, same thing" from "still generating, but
+  // the thing that's generating just changed" (e.g. the phrase just
+  // succeeded and the portrait is what's left running).
+  const lastPairRef = useRef<string | null>(null)
   const delayRef = useRef(POLL_MS)
   const [pollTick, setPollTick] = useState(0)
+  // F4: true while the page `error` on screen came from retryPhrase's own
+  // rejection — cleared by any other setError call, and by the poll loop
+  // once it sees the phrase actually leave "generating".
+  const retryErrorRef = useRef(false)
 
   // The proxy gates /voyage on cookie *presence*, which misses an expired
   // token. Without this, an expired session renders the consent form and only
@@ -100,14 +115,24 @@ export default function VoyagePage() {
   // exists) and reports any rejection as loadError. Reused by the mount
   // effect below, the loadError "Réessayer" button, the post-delete reload
   // and start()'s post-409 re-read (R9, R24).
+  //
+  // F1 fix: loadError is cleared only once the read actually succeeds, not
+  // synchronously when the loader starts. Clearing it eagerly left `loaded`
+  // true and `voyage` still null for the whole retry, so the consent gate
+  // (and its "Commencer le voyage" button) was reachable while a stale
+  // failure was being re-checked — on a finished voyage a click there is a
+  // 201 retake that hides a validated portrait, exactly what R9 exists to
+  // prevent. This also has no leading synchronous setState, so the mount
+  // effect can call it directly (see below) without tripping
+  // react-hooks/set-state-in-effect.
   const load = useCallback(() => {
-    setLoadError(null)
     return Promise.all([
       getBank(),
       getVoyage(),
       api.get<{ profile: Profile | null }>("/profile", { skipRedirect: true }).then((r) => r.profile),
     ])
       .then(([b, v, p]) => {
+        setLoadError(null)
         setBank(b)
         setVoyage(v)
         setProfile(p)
@@ -129,7 +154,7 @@ export default function VoyagePage() {
   // being checked or has come back empty (that case is the redirect above).
   useEffect(() => {
     if (authLoading || !user) return
-    Promise.resolve().then(() => load())
+    load()
   }, [authLoading, user, load])
 
   // While the phrase or the portrait is being written, re-read the voyage.
@@ -138,12 +163,23 @@ export default function VoyagePage() {
   // re-run since `voyage` itself did not change); a continuous streak past
   // POLL_MAX_MS on this page load sets `stalled` and stops scheduling.
   useEffect(() => {
-    const generating = voyage?.micro_status === "generating" || voyage?.portrait_status === "generating"
+    const microStatus = voyage?.micro_status ?? null
+    const portraitStatus = voyage?.portrait_status ?? null
+    const generating = microStatus === "generating" || portraitStatus === "generating"
     if (!voyage || !generating) {
       streakStartRef.current = null
+      lastPairRef.current = null
       return
     }
-    if (streakStartRef.current === null) streakStartRef.current = Date.now()
+    // F2: restart the streak whenever the pair changes, not only when
+    // generating starts or stops. Without this, the phrase succeeding while
+    // the portrait keeps generating left the portrait riding the phrase's
+    // old streak clock and stalling early.
+    const pairKey = `${microStatus}|${portraitStatus}`
+    if (lastPairRef.current !== pairKey) {
+      lastPairRef.current = pairKey
+      streakStartRef.current = Date.now()
+    }
 
     let alive = true
     const delay = delayRef.current
@@ -159,6 +195,12 @@ export default function VoyagePage() {
         .then((v) => {
           if (!alive) return
           delayRef.current = POLL_MS
+          // F4: a retry-path error next to the phrase is stale once polling
+          // shows the phrase actually resolved on its own.
+          if (retryErrorRef.current && v?.micro_status !== "generating") {
+            retryErrorRef.current = false
+            setError(null)
+          }
           // A poll that returns null (voyage deleted in another tab) must
           // still be applied — silently keeping the stale voyage would leave
           // this tab polling a voyage that no longer exists.
@@ -186,6 +228,7 @@ export default function VoyagePage() {
         // A 409 means this tab's "no voyage" view is stale — re-read instead
         // of leaving a dead-end error on what looks like the consent gate.
         if (e instanceof ApiError && e.status === 409) return load()
+        retryErrorRef.current = false
         setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
         return undefined
       })
@@ -194,14 +237,22 @@ export default function VoyagePage() {
       })
   }, [load])
 
+  // F3: guarded with a ref, not codeState. State would also survive two
+  // separate discrete events (React flushes those synchronously, so the
+  // second handler always sees the first's update) but a ref reads back
+  // immediately regardless, so the guard does not depend on reasoning about
+  // event-flushing timing.
+  const checkingRef = useRef(false)
+
   const redeem = useCallback(() => {
-    // R23: Enter and a click can both fire before codeState re-renders.
-    if (codeState === "checking") return
+    if (checkingRef.current) return
     setError(null)
     if (!code.trim()) {
+      retryErrorRef.current = false
       setError("Saisissez votre code conseiller.")
       return
     }
+    checkingRef.current = true
     setCodeState("checking")
     unlockVoyage(code)
       .then((v) => {
@@ -209,12 +260,19 @@ export default function VoyagePage() {
         setCode("")
       })
       .catch((e) => {
+        // F6: a 409 means the voyage was already unlocked (e.g. in another
+        // tab) — re-read instead of leaving the error up next to a code
+        // field that no longer applies.
+        if (e instanceof ApiError && e.status === 409) return load()
+        retryErrorRef.current = false
         setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
+        return undefined
       })
       .finally(() => {
         setCodeState("idle")
+        checkingRef.current = false
       })
-  }, [code, codeState])
+  }, [code, load])
 
   // PM-Q2: retry a session-0 phrase stuck in "error" or stalled in
   // "generating". On acceptance, restart the poll streak from zero; on any
@@ -225,13 +283,18 @@ export default function VoyagePage() {
     retryMicro()
       .then((v) => {
         streakStartRef.current = null
+        lastPairRef.current = null
         delayRef.current = POLL_MS
         setStalled(false)
         setVoyage(v)
       })
       .catch((e) => {
+        // F4: flagged so the poll loop can clear this once it sees the
+        // phrase actually leave "generating" on its own.
+        retryErrorRef.current = true
         setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
         streakStartRef.current = null
+        lastPairRef.current = null
         delayRef.current = POLL_MS
         setStalled(false)
         return load()
@@ -249,16 +312,19 @@ export default function VoyagePage() {
       .then(() => {
         // R24: an older finished voyage may legitimately resurface — let the
         // loader decide, rather than assuming there is nothing left.
+        retryErrorRef.current = false
         setError(null)
         setCode("")
         setConsent(false)
         setAge(false)
         streakStartRef.current = null
+        lastPairRef.current = null
         delayRef.current = POLL_MS
         setStalled(false)
         return load()
       })
       .catch((e) => {
+        retryErrorRef.current = false
         setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
       })
   }, [load])
@@ -275,6 +341,15 @@ export default function VoyagePage() {
       setTimeout(() => setCopied(false), 2500)
     })
   }, [voyage])
+
+  // F1: wraps load() for the loadError "Réessayer" button specifically —
+  // disables the button and swaps its label while a retry is in flight, and
+  // a second click cannot start a parallel load.
+  const retryLoad = useCallback(() => {
+    if (reloading) return
+    setReloading(true)
+    load().finally(() => setReloading(false))
+  }, [load, reloading])
 
   if (authLoading || !user || !loaded) {
     return (
@@ -321,7 +396,9 @@ export default function VoyagePage() {
             <Alert variant="destructive" className="mb-4">
               <AlertDescription>{loadError}</AlertDescription>
             </Alert>
-            <Button size="lg" onClick={load}>Réessayer</Button>
+            <Button size="lg" onClick={retryLoad} disabled={reloading}>
+              {reloading ? "Chargement…" : "Réessayer"}
+            </Button>
           </>
         ) : (
           <>
@@ -409,7 +486,9 @@ export default function VoyagePage() {
                   </div>
                 )}
 
-                {!profile?.prenom || !profile?.tranche_age ? (
+                {/* F5: nothing is left to open on a finished voyage, so the
+                    nudge to fill the profile no longer applies. */}
+                {!finished && (!profile?.prenom || !profile?.tranche_age) ? (
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     Les sessions 1 à 5 utilisent le prénom et la tranche d&apos;âge de votre
                     profil.{" "}
