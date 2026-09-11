@@ -14,6 +14,14 @@ export type Parcours = "1" | "2" | "3"
 export type AnalysisPath = Parcours | "A" | "B"
 
 /**
+ * Everything PromptVersion.path may hold: the three parcours plus the two
+ * voyage prompt slots. Mirrors backend/app/services/prompt_slots.valid().
+ * The voyage slots are prompt slots only — they carry no report sections and
+ * an Analysis never holds one, which is why AnalysisPath stays narrower.
+ */
+export type PromptSlot = Parcours | "voyage_micro" | "voyage_portrait"
+
+/**
  * Coerce a stored `_path` to a parcours id. Analyses written before the v1.2
  * migration carry "A"/"B"; the backend normalises the same way on read.
  */
@@ -129,7 +137,8 @@ export interface PromptVersion {
   version_label: string
   system_prompt_text?: string
   is_active: boolean
-  path?: AnalysisPath
+  /** Legacy rows still carry the "A"/"B" codes; the backend normalises them. */
+  path?: PromptSlot | "A" | "B"
   author: string | null
   created_at: string
 }

@@ -181,12 +181,18 @@ Generation is blocked (no prompt). Test the form itself.
 
 | # | Do | Expect |
 |---|---|---|
-| 9.1 | `/admin/prompts` | The selector now shows **three** parcours: P1 · J'ai une cible / P2 · Je cherche ma direction / P3 · Je pars de zéro (was "Chemin A / Chemin B") |
-| 9.2 | Switch between them | Each has its own version history. P2 and P3 say "Aucune version pour le parcours…" |
+| 9.1 | `/admin/prompts` | The selector shows **five** prompts, in this order: Parcours 1 · J'ai une cible / Parcours 2 · Je cherche ma direction / Parcours 3 · Je pars de zéro / Voyage · phrase (S0) / Voyage · portrait (was three parcours, and before that "Chemin A / Chemin B") |
+| 9.2 | Switch between them | Each has its own version history. A prompt with no version yet says « Aucune version pour … » followed by that prompt's name |
 | 9.3 | **Paste and publish the P1 prompt** | New version appears, labelled with a `-P1` suffix |
 | 9.4 | `/admin/couts` | **Three** token columns (Gratuit / Payant / Premium) instead of two, and each shows the model name it bills |
 | 9.5 | Check the model names | `claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5` |
 | 9.6 | `/admin` overview | The "prompt actif" tile no longer shows a random parcours' version |
+| 9.7 | Read the help line under the chips | It names the selected prompt and says what that prompt produces — the report sections for a parcours, the phrase or the six portrait sections for the voyage. The word « parcours » never appears for the two Voyage entries |
+| 9.8 | Click « Voyage · phrase (S0) » | The editor loads the seeded text, the badge reads `v1.0-VM · actif`, and the help line describes the phrase written just after la session 0 |
+| 9.9 | Click « Voyage · portrait » | The editor loads the seeded text, the badge reads `v1.0-VP · actif`, and the help line lists the six sections |
+| 9.10 | Change one word in the portrait prompt, click « Publier la nouvelle version » | A new version appears at the top of the history, labelled with a `-VP` suffix and marked `actif`; the previous one now offers « Rollback » |
+| 9.11 | Switch back to « Parcours 1 · J'ai une cible » | Its history is unchanged — no `-VM` or `-VP` version appears in it, and the editor still shows the parcours 1 prompt |
+| 9.12 | Click « Rollback » on the previous `-VP` version, confirm | It becomes `actif` again and the editor reloads its text |
 
 ---
 
