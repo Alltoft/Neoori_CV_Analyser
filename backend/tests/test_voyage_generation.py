@@ -1238,6 +1238,52 @@ def test_an_inflected_leak_is_enough_to_trigger_the_rewrite(app):
     assert _reload(voyage_id).micro_phrase == CLEAN_PHRASE
 
 
+def _succeeded(**columns):
+    """A voyage whose phrase run already succeeded — run A of a twin pair."""
+    voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="success",
+                     **columns)
+    voyage.micro = {"phrase": CLEAN_PHRASE, "prompt_version_id": "pv-a",
+                    "tokens_in": 120, "tokens_out": 40, "error": None}
+    db.session.commit()
+    return voyage.id
+
+
+def test_a_failure_drops_any_phrase_already_in_the_payload(app):
+    """The invariant: micro_phrase is readable only on a success row. /espace
+    renders micro_phrase whenever it is set, so a phrase left beside "error"
+    would be shown next to a failure."""
+    voyage_id = _succeeded()
+
+    gen._fail_micro(db.session.get(Voyage, voyage_id),
+                    "Vocabulaire interdit dans la phrase : riasec.")
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro_phrase is None
+    assert row.to_dict()["micro_phrase"] is None
+    assert "phrase" not in row.micro
+    assert row.micro == {"prompt_version_id": "pv-a", "tokens_in": 120, "tokens_out": 40,
+                         "error": "Vocabulaire interdit dans la phrase : riasec."}
+
+
+def test_a_twin_run_that_fails_after_a_success_leaves_no_phrase_beside_the_error(app):
+    """The race behind the rule: run A wrote its phrase, then twin B —
+    relaunched while A looked stalled — leaks twice and fails on the same row.
+    Last write wins, and what it wins with must be coherent."""
+    voyage_id = _succeeded()
+    _seed("voyage_micro")
+
+    with patch.object(gen, "_get_client",
+                      return_value=_client(LEAKY_PHRASE, OTHER_LEAKY_PHRASE)):
+        gen._run_micro(voyage_id, app)
+
+    row = _reload(voyage_id)
+    assert row.micro_status == "error"
+    assert row.micro_phrase is None
+    assert row.to_dict()["micro_phrase"] is None
+    assert CLEAN_PHRASE not in _payload_text(row)
+
+
 def test_no_connection_is_held_across_either_call(app):
     """Both calls run between the pre-stream remove() and the write-back."""
     voyage = _voyage(_s0_only_responses(), status="s0_termine", micro_status="generating")

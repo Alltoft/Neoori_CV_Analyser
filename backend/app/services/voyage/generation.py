@@ -427,8 +427,15 @@ def _profile_fields(user_id: str) -> dict:
 
 
 def _fail_micro(voyage: Voyage, message: str) -> None:
-    """Record the failure inside the ciphertext; only the status is plaintext."""
-    voyage.micro = {**(voyage.micro or {}), "error": str(message)[:ERROR_MAX_CHARS]}
+    """Record the failure inside the ciphertext; only the status is plaintext.
+
+    Any phrase already in the payload is dropped: micro_phrase must be
+    readable only on a "success" row. A relaunched twin that fails after the
+    run it replaced had succeeded would otherwise leave that sentence served
+    beside "error". The prompt version and the token counts stay.
+    """
+    kept = {k: v for k, v in (voyage.micro or {}).items() if k != "phrase"}
+    voyage.micro = {**kept, "error": str(message)[:ERROR_MAX_CHARS]}
     voyage.micro_status = "error"
     db.session.commit()
 
