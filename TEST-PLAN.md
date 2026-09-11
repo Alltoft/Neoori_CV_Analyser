@@ -224,8 +224,7 @@ gate, not a bug.
 
 Text that comes from the paper cahier — session titles, scenes, the portrait —
 says *tu* wherever it appears. Everything the app adds — buttons, cards,
-banners, error messages — says *vous*. If you find a *tu* on a button or a
-*vous* inside a session, that is a bug.
+banners, error messages — says *vous*.
 
 ### 12.1 Entry points
 
@@ -265,14 +264,14 @@ banners, error messages — says *vous*. If you find a *tu* on a button or a
 |---|---|---|
 | 12.4.1 | Click « Commencer » on session 0 | One scrolling list of **20** affirmations, each with a ✓ and a ✗ button. Not one question per screen |
 | 12.4.2 | Answer five rows, then reload the page | The five answers are still there — each row saves the moment you press it |
-| 12.4.3 | Answer all 20, click « Suivant » | The « Billet de sortie » screen: two free-text boxes, each marked « Facultatif » |
+| 12.4.3 | Answer all 20, click « Suivant » | The « Billet de sortie » screen: one « Facultatif. Rien ici n'est noté ni comparé. » line under the heading, then two free-text boxes |
 | 12.4.4 | Click « Terminer » with the billet empty | Accepted. Back on `/voyage`, session 0 stamped with a check |
 | 12.4.5 | Watch the top of the hub | « Votre phrase » shows a spinner and "Nous la rédigeons. Quelques secondes.", then a single sentence a few seconds later. No page reload needed |
 | 12.4.6 | Read that sentence | One sentence about you. No score, no percentage, no psychology or framework word. An age is fine |
 | 12.4.7 | Reopen `/voyage/session/0` | It opens read-only on the **20 rows first** (not the billet screen) — greyed out, a banner reading « Session terminée. », and the last screen's button reading « Retour au voyage » |
 | 12.4.8 | With code + profile already set, look at row 1 now that session 0 is finished | It offers « Commencer » — session 0 was the last lock blocking it |
-| 12.4.9 | Force a failure: in `/admin/prompts`, deactivate "Voyage · phrase (S0)", then finish a fresh session 0 | « Votre phrase » shows "La rédaction de votre phrase n'a pas abouti. Vos réponses sont enregistrées." and a « Réessayer » button |
-| 12.4.10 | Reactivate the prompt in `/admin/prompts`, click « Réessayer » | A sentence appears — no error, no jargon |
+| 12.4.9 | **Local stack only — never do this against the production prompt.** Stop the backend, set an invalid `ANTHROPIC_API_KEY` in the local env, start the backend, then finish a fresh session 0 | « Votre phrase » shows « La rédaction de votre phrase n'a pas abouti. Vos réponses sont enregistrées. » and a « Réessayer » button |
+| 12.4.10 | Restore the real key, restart the backend, click « Réessayer » | A sentence appears — no error, no jargon |
 | 12.4.11 | Leave a phrase on "generating" for more than 3 minutes (or simulate it) | « Votre phrase » switches to "La rédaction de votre phrase prend plus de temps que prévu. Vos réponses sont enregistrées." with a « Réessayer » button |
 | 12.4.12 | Try to type more than 1000 characters into a billet de sortie box | The field stops accepting input at 1000 characters |
 
@@ -288,7 +287,7 @@ banners, error messages — says *vous*. If you find a *tu* on a button or a
 | 12.5.6 | Answer a scene, then turn off your network, then click « Suivant » | An error appears and the screen does not advance. Turn the network back on, click again — it saves and moves on. You lose at most the current scene |
 | 12.5.7 | Click « Précédent » | Back one scene, answer still selected. No re-save needed |
 | 12.5.8 | Reach the last screen of a session | The session's closing paragraphs, if it has any, then the billet de sortie for that session |
-| 12.5.9 | Finish sessions 1 to 5 | After « Terminer » on session 5 the hub shows all six stamped, and a line saying the portrait is awaiting your counselor's validation |
+| 12.5.9 | Finish sessions 1 to 5 | After « Terminer » on session 5 the hub shows all six stamped and « Votre portrait est en cours de rédaction. » while it is being written, then « Votre portrait est rédigé. Transmettez le lien ci-dessus à votre conseiller : vous y aurez accès une fois qu'il aura été relu avec vous. » once it is |
 | 12.5.10 | Right after that, look below the six stamps | A card « Lien à transmettre à votre conseiller » with a read-only URL field and a « Copier le lien » button; clicking it briefly shows « Lien copié » |
 
 ### 12.6 The portrait
@@ -313,8 +312,9 @@ banners, error messages — says *vous*. If you find a *tu* on a button or a
 
 | # | Do | Expect |
 |---|---|---|
-| 12.8.1 | Finish a session, then try to change one of its answers (reopen it, or edit responses from another tab) | The server refuses the write; the row/scene stays inert and reopening the session always shows the read-only banner — nothing you do there is saved |
-| 12.8.2 | Stop the backend, then reload `/voyage` | An error message and a « Réessayer » button — **never** the consent form |
+| 12.8.1 | Finish a session, then try to change one of its answers by reopening it | The server refuses the write; the session opens read-only with the « Session terminée. » banner and inert rows/scene — nothing you do there is saved |
+| 12.8.2 | Instead, leave a session open in this tab and finish it from another tab, then change an answer here | The row/scene shows the new value on screen along with « Cette session est terminée : ses réponses ne sont plus modifiables. », but nothing is saved — reopening the session (or reloading) shows it read-only |
+| 12.8.3 | Log in, open `/espace`, stop the backend, then open « Mon voyage » from the account menu **without reloading** | « Connexion au serveur impossible. Il démarre peut-être — réessayez dans 30 secondes. » plus a « Réessayer » button — **never** the consent form |
 
 > The rule the PM cares about here: **the person never sees a score, a trait
 > name, or a framework name.** Not on the hub, not in the phrase, not in the
