@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services import prompt_slots
 from app.services import section_registry as registry
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -31,7 +32,7 @@ _JSON_BLOCK_RE = re.compile(r"```json\s*\n(\{.*?\n\})\s*\n```", re.DOTALL)
 
 
 def _seed_scripts():
-    """(filename, parcours, declared keys) for every path-bound seed script."""
+    """(filename, parcours, declared keys) for every parcours-bound seed script."""
     found = []
     for script in sorted(BACKEND.glob("seed_prompt*.py")):
         source = script.read_text(encoding="utf-8")
@@ -40,10 +41,16 @@ def _seed_scripts():
             # seed_prompt.py predates the path column; the reheal migration
             # assigns it. Nothing to check against a parcours here.
             continue
+        slot = path_match.group(1)
+        if prompt_slots.is_voyage(slot):
+            # The voyage prompts are not parcours: they have no registry
+            # sections, and the phrase prompt returns one plain sentence with no
+            # JSON at all. test_seed_scripts.py guards their shape instead.
+            continue
         block = _JSON_BLOCK_RE.search(source)
         assert block, f"{script.name} declares PATH but has no ```json example"
         keys = list(json.loads(block.group(1)).keys())
-        found.append(pytest.param(script.name, path_match.group(1), keys, id=script.name))
+        found.append(pytest.param(script.name, slot, keys, id=script.name))
     return found
 
 
