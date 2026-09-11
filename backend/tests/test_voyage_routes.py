@@ -995,6 +995,74 @@ def test_a_completed_session_is_refused_before_the_lock_is_consulted(client, aut
     assert _unchanged(voyage_id) == before
 
 
+# ── a save that changes nothing writes nothing ───────────────────────────────
+# Contract § E5: a request with neither answers nor billets is a no-op 200.
+# Re-encrypting unchanged answers would still move updated_at, the clock the
+# stall rules and the startup sweep read.
+
+SAVED = {"answers": {"S0-01": True}, "billets": {"0": {"surprise": "avant"}}}
+# No billet stored yet: a request naming session 0's billet with nothing
+# keepable in it must not create an empty one.
+ANSWERS_ONLY = {"answers": {"S0-01": True}, "billets": {}}
+
+
+def _saved_and_aged(client, auth, saved=SAVED):
+    """An open voyage holding `saved`, its clock pushed five minutes back so
+    both « unchanged » and « moved » are measurable."""
+    voyage = _open_voyage(client, auth)
+    assert client.put("/api/voyage/responses", json=saved, headers=auth).status_code == 200
+    aged = _age(voyage, 5)
+    assert aged.responses == saved
+    return aged.id, aged.responses_encrypted, aged.updated_at
+
+
+@pytest.mark.parametrize("body", [
+    {},
+    {"answers": {"S9-99": "Z"}},                        # unknown item id
+    {"billets": {"0": {"inventé": "x"}}},               # unknown billet key
+    {"billets": {"0": {}}},                             # a session with nothing in it
+    {"billets": {"0": {"top3": ["a", "b"]}}},           # a value that is dropped
+    {"billets": {"9": {"a": "b"}}},                     # unknown session
+], ids=["empty", "unknown-id", "unknown-key", "empty-billet", "dropped-value",
+        "unknown-session"])
+def test_a_request_that_changes_nothing_writes_nothing(client, auth, body):
+    voyage_id, cipher, stamp = _saved_and_aged(client, auth, ANSWERS_ONLY)
+
+    res = client.put("/api/voyage/responses", json=body, headers=auth)
+
+    assert res.status_code == 200
+    assert res.get_json() == {"responses": ANSWERS_ONLY}
+    row = _stored(voyage_id)
+    assert row.responses_encrypted == cipher
+    assert row.updated_at == stamp
+
+
+def test_re_sending_identical_answers_writes_nothing(client, auth):
+    """The player's reconcile on « Suivant » resends what is already saved."""
+    voyage_id, cipher, stamp = _saved_and_aged(client, auth)
+
+    res = client.put("/api/voyage/responses", json=SAVED, headers=auth)
+
+    assert res.status_code == 200
+    assert res.get_json() == {"responses": SAVED}
+    row = _stored(voyage_id)
+    assert row.responses_encrypted == cipher
+    assert row.updated_at == stamp
+
+
+def test_a_real_change_still_writes_and_moves_the_clock(client, auth):
+    voyage_id, cipher, stamp = _saved_and_aged(client, auth)
+
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S0-01": False}}, headers=auth)
+
+    assert res.status_code == 200
+    row = _stored(voyage_id)
+    assert row.responses["answers"] == {"S0-01": False}
+    assert row.responses_encrypted != cipher
+    assert row.updated_at > stamp
+
+
 # ── POST /api/voyage/sessions/<n>/complete ───────────────────────────────────
 
 from unittest.mock import patch  # noqa: E402  (kept beside the tests that use it)

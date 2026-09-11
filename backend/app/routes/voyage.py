@@ -15,6 +15,7 @@ models.voyage.session_lock: S0 needs the voyage to exist, S1-S5 need a
 counselor code and a Profil de base with prénom + tranche d'âge, and every
 session needs the one before it.
 """
+import copy
 import re
 from datetime import datetime, timedelta
 
@@ -265,7 +266,11 @@ def put_responses():
                 # like something a person wrote. Same disposal rule as an
                 # unknown field key (contract § E5).
                 kept[key] = str(value)
-        kept_billets[n] = kept
+        if kept:
+            # A session whose fields were all dropped contributes nothing,
+            # not an empty dict — otherwise a request carrying only unknown
+            # keys would still count as a change below.
+            kept_billets[n] = kept
 
     if any(len(value) > BILLET_MAX_CHARS
            for kept in kept_billets.values() for value in kept.values()):
@@ -273,10 +278,21 @@ def put_responses():
             f"Réponse trop longue : {BILLET_MAX_CHARS} caractères maximum."
         ]}), 400
 
-    merged = voyage.responses
+    stored = voyage.responses
+    merged = copy.deepcopy(stored)
     merged["answers"].update(known)
     for n, kept in kept_billets.items():
         merged["billets"][n] = {**(merged["billets"].get(n) or {}), **kept}
+
+    # A save that changes nothing writes nothing (contract § E5: a request
+    # with neither is a no-op 200). Assigning would re-encrypt the same answers
+    # under a new IV and commit, and that commit moves updated_at — the clock
+    # both stall rules and the startup sweep read. An empty body, only unknown
+    # ids, keys or sessions, and the player re-sending what is already saved
+    # all end here.
+    if merged == stored:
+        return jsonify({"responses": stored}), 200
+
     voyage.responses = merged
 
     # Backstop for the column, see RESPONSES_MAX_CHARS. Every field can be

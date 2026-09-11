@@ -57,30 +57,35 @@ def reap_stale_generating(cutoff_minutes: int | None = None) -> int:
     theorised.
 
     A portrait used to be exposed the same way by a stranger path: it is
-    spawned at S5, on a finished voyage, and re-saving a session-0 answer there
-    returned 200 and moved updated_at. That path is closed. Every session of a
-    finished voyage is complete, and PUT /api/voyage/responses refuses a
-    request naming a completed session with a 409 before it writes anything.
+    spawned at S5, on a finished voyage, and a candidate's save there moved
+    updated_at — a re-saved session-0 answer, or a request that changed
+    nothing at all. Both are closed. PUT /api/voyage/responses refuses a
+    request naming a completed session with a 409 before it writes anything,
+    and a request that leaves the answers as they were writes nothing; both
+    are pinned in tests/test_voyage_reaper.py. A candidate's save can no
+    longer move a finished voyage's clock.
 
-    What remains, each case pinned in tests/test_voyage_reaper.py:
+    What still moves it is every other write to the row, and because the two
+    runs share this one clock, a write made for one pushes back the other's
+    stale test as well as this sweep. Measured on a finished voyage:
 
-      * the phrase case above — an open voyage whose person is saving answers
-        to the session they are playing;
-      * a PUT /api/voyage/responses that names no session at all (an empty
-        body, or only unknown ids). The refusal has nothing to refuse, so the
-        route still re-encrypts the unchanged answers and commits — on a
-        finished voyage too. The player never sends one.
+      * the candidate's POST /api/voyage/micro/retry stamps the clock, and the
+        phrase run it starts (_run_micro) commits again before and after its
+        stream. Each pushes back a stalled portrait's ten-minute counselor
+        relaunch (PORTRAIT_RETRY_STALE_MINUTES in routes/voyage.py).
+      * a counselor's portrait regenerate, edit and validate, and the portrait
+        run regenerate starts (_run_portrait). Each pushes back a stalled
+        phrase's three-minute retry (MICRO_RETRY_STALE_MINUTES).
 
-    Neither case waits on this sweep alone any more. Both routes below read
-    the same clock, but with far shorter thresholds and no restart: the
-    candidate can relaunch a phrase once its row has gone three minutes
-    without a write (POST /api/voyage/micro/retry), and a counselor a portrait
-    after ten (POST /api/voyage/c/<token>/portrait/regenerate).
+    A counselor's private note lives in its own table and moves nothing here.
+    On an open voyage the person's saves to the session they are playing move
+    the clock too — the phrase case above, also pinned.
 
-    Fixing that properly needs a per-run timestamp (micro_started_at /
-    portrait_started_at) rather than a shared last-write column, and that is a
-    migration; this phase adds none by design. Do the columns when a migration
-    is next on the table, and this function's filter moves to them unchanged.
+    The durable fix is a per-run timestamp (micro_started_at /
+    portrait_started_at) instead of this shared last-write column. That is a
+    migration, and this phase adds none by design: add the columns with the
+    next migration, and this function's filter and both stall rules move to
+    them unchanged.
 
     Both statuses are swept in ONE statement, each rewritten only where it
     actually reads 'generating'. Two successive UPDATEs would not do: the first

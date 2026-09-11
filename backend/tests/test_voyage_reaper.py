@@ -333,29 +333,29 @@ def test_an_open_voyage_can_still_refresh_a_stranded_phrases_clock(app, client):
     assert db.session.get(Voyage, voyage_id).updated_at == stale     # setup left the clock
 
     item = bank.items("1")[0]
+    assert item["id"] not in s0          # a genuinely new answer, not a no-op re-send
     res = client.put("/api/voyage/responses", headers=headers,
                      json={"answers": {item["id"]: item["options"][0]["letter"]}})
     assert res.status_code == 200
 
     db.session.expire_all()
-    assert db.session.get(Voyage, voyage_id).updated_at > stale
+    saved = db.session.get(Voyage, voyage_id)
+    assert saved.responses["answers"][item["id"]] == item["options"][0]["letter"]
+    assert saved.updated_at > stale
 
     # And so the sweep no longer sees it.
     assert reap_stale_generating() == 0
     assert db.session.get(Voyage, voyage_id).micro_status == "generating"
 
 
-def test_a_save_that_names_no_session_still_refreshes_a_finished_voyages_clock(app, client):
-    """The narrowing's own edge, pinned so the docstring's claim is a measured
-    fact. Documents it rather than asserting a guarantee.
+def test_a_save_that_changes_nothing_no_longer_hides_a_finished_voyages_portrait(app, client):
+    """The other half of the finished-voyage path, closed.
 
-    The completed-session refusal fires for the sessions a request names. An
-    empty body names none, and neither does one carrying only unknown ids, so
-    the route still re-encrypts the unchanged answers and commits: 200,
-    updated_at moves, and a finished voyage's stranded portrait leaves the
-    sweep's reach exactly as before. The player never sends such a request; a
-    stale or hand-written client can. The counselor's regenerate reaches the
-    portrait after ten minutes either way.
+    A request naming no session (an empty body, only unknown ids) is not
+    caught by the completed-session refusal. It used to re-encrypt the
+    unchanged answers and commit anyway: 200, updated_at moved, and the
+    stranded portrait left the sweep's reach. A save that changes nothing now
+    writes nothing, so the clock stays where it was and the sweep reaches it.
     """
     for n, body in enumerate(({}, {"answers": {"S9-99": "Z"}})):
         voyage_id, headers, stale = _aged_player(
@@ -366,6 +366,7 @@ def test_a_save_that_names_no_session_still_refreshes_a_finished_voyages_clock(a
         assert res.status_code == 200
 
         db.session.expire_all()
-        assert db.session.get(Voyage, voyage_id).updated_at > stale
-        assert reap_stale_generating() == 0
-        assert db.session.get(Voyage, voyage_id).portrait_status == "generating"
+        assert db.session.get(Voyage, voyage_id).updated_at == stale
+        assert reap_stale_generating() == 1
+        db.session.expire_all()
+        assert db.session.get(Voyage, voyage_id).portrait_status == "error"
