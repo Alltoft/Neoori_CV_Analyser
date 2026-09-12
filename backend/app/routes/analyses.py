@@ -8,6 +8,9 @@ from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
+from ..models.voyage import Voyage
+from ..services.voyage.scoring import STAGE_S0
+from ..services.voyage.scoring import prompt_context as voyage_prompt_context
 from ..utils.tokens import generate_share_token
 from ..utils.request_body import json_object, text_field, dict_field
 from ..services import section_registry as registry
@@ -93,6 +96,11 @@ def create_analysis():
         inputs=inputs,
         status="queued",
         share_token=generate_share_token(),
+        # Set by _merge_voyage a few lines up. Stored on the row as well as
+        # in the inputs blob so "which voyage fed this analysis" survives a
+        # JSON shape change and is queryable -- B2G traceability, as with
+        # prompt_version_id.
+        voyage_id=inputs.get("_voyage_id"),
     )
     db.session.add(analysis)
     db.session.commit()
@@ -240,29 +248,72 @@ def delete_analysis(analysis_id):
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _merge_profile(inputs: dict, user_id: str | None) -> None:
-    """Copy the Profil de base into this analysis's inputs.
+    """Copy the Profil de base and le voyage into this analysis's inputs.
 
-    The ordinary fields are copied so the analysis stays readable on its own
-    (a later profile edit must not silently rewrite an already-delivered
-    report). Bloc 5 is reduced to prompt_context() first, and the OETH flag
-    becomes a plain boolean — neither the raw condition answers nor the status
-    itself is ever stored on the analysis.
+    The ordinary profile fields are copied so the analysis stays readable on
+    its own (a later profile edit must not silently rewrite an already-
+    delivered report). Bloc 5 is reduced to prompt_context() first, and the
+    OETH flag becomes a plain boolean — neither the raw condition answers nor
+    the status itself is ever stored on the analysis.
+
+    The voyage fold runs whether or not a profile exists, and whether or not
+    there is a user_id at all: _merge_voyage is the only place that strips a
+    client-supplied _voyage/_voyage_id (see its docstring), and that has to
+    happen for every request this route accepts, anonymous ones included —
+    create_analysis has no @jwt_required.
     """
-    if not user_id:
-        return
-    profile = Profile.query.filter_by(user_id=user_id).first()
-    if profile is None:
+    if user_id:
+        profile = Profile.query.filter_by(user_id=user_id).first()
+        if profile is not None:
+            for field in ("prenom", "nom", "ville", "rayon", "tranche_age",
+                          "situation", "reconversion_scope", "projet",
+                          "contraintes_pratiques"):
+                inputs.setdefault(field, getattr(profile, field, None))
+
+            sensitive = profile.sensitive
+            if sensitive is not None:
+                inputs["_conditions"] = prompt_context(sensitive.conditions)
+                inputs["_oeth"] = sensitive.oeth
+
+    _merge_voyage(inputs, user_id)
+
+
+def _merge_voyage(inputs: dict, user_id: str | None) -> None:
+    """Fold le voyage into this analysis's inputs, reduced to plain lines.
+
+    The first two statements remove whatever the caller itself posted under
+    these keys. `inputs` is dict_field(data, "inputs") — a shallow copy of
+    the request's own JSON, so it carries any key the client sent, verbatim.
+    _voyage and _voyage_id are server-only: left in place, a posted _voyage
+    reaches the model under the real "CE QUE LE VOYAGE A REVELE" header
+    (prompt injection, and a framework-vocabulary leak past every guard
+    prompt_context() enforces), and a posted _voyage_id either stamps another
+    user's voyage onto this row's traceability column or, if it names no
+    row, raises an uncaught IntegrityError on the Analysis(voyage_id=...)
+    commit below — a 500 on a route anyone can call, logged in or not.
+    Popping unconditionally, before any lookup, closes both — for every
+    caller, which is why this runs even when user_id is falsy rather than
+    from inside the `if user_id:` block above.
+
+    Reduced here rather than at prompt-build time, exactly like bloc 5: the
+    stored lines are what the model saw, so unlocking this analysis months
+    later regenerates it from the same material instead of from whatever the
+    person's voyage has become since.
+
+    No voyage: no key. Every parcours runs identically without one, and an
+    empty key would be a shape every later reader has to allow for.
+    """
+    inputs.pop("_voyage", None)
+    inputs.pop("_voyage_id", None)
+
+    voyage = Voyage.for_prompt(user_id)
+    if voyage is None:
         return
 
-    for field in ("prenom", "nom", "ville", "rayon", "tranche_age",
-                  "situation", "reconversion_scope", "projet",
-                  "contraintes_pratiques"):
-        inputs.setdefault(field, getattr(profile, field, None))
-
-    sensitive = profile.sensitive
-    if sensitive is not None:
-        inputs["_conditions"] = prompt_context(sensitive.conditions)
-        inputs["_oeth"] = sensitive.oeth
+    inputs["_voyage_id"] = voyage.id
+    inputs["_voyage"] = voyage_prompt_context(
+        voyage.synthesis(), voyage.micro_phrase, STAGE_S0
+    )
 
 
 def _may_access(analysis: Analysis) -> bool:

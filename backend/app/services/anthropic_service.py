@@ -98,8 +98,26 @@ def _rights_block(inputs: dict) -> list[str]:
     ]
 
 
+def _voyage_block(inputs: dict) -> list[str]:
+    """Le voyage, already reduced to plain lines by scoring.prompt_context().
+
+    Mirrors _conditions_block: the caller stores only the reduced lines and
+    this adds the blank separator and the header. Two lines before a
+    counselor has validated the portrait, up to nine after -- the reduction
+    is decided at merge time, so what an unlock regenerates is what the
+    first run sent.
+
+    No voyage means no block and no header. Every parcours runs identically
+    without one; the voyage is never required.
+    """
+    lines = inputs.get("_voyage") or []
+    if not lines:
+        return []
+    return ["", "--- CE QUE LE VOYAGE A RÉVÉLÉ ---"] + list(lines)
+
+
 def _common_tail(inputs: dict) -> list[str]:
-    return _conditions_block(inputs) + _rights_block(inputs)
+    return _conditions_block(inputs) + _rights_block(inputs) + _voyage_block(inputs)
 
 
 def _format_user_message_p1(inputs: dict) -> str:

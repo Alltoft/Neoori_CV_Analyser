@@ -229,6 +229,10 @@ ROUTES = [
         fields=[
             "inputs", "tier",
             "inputs.cv_text", "inputs.cible_visee", "inputs._path", "inputs._chemin",
+            # R1: _voyage / _voyage_id are server-only -- _merge_voyage pops
+            # both before any lookup, so a hostile shape here must never
+            # reach _voyage_block() or the Analysis(voyage_id=...) commit.
+            "inputs._voyage", "inputs._voyage_id",
         ],
     ),
     dict(
