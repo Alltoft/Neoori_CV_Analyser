@@ -75,6 +75,15 @@ export interface AnalysisInputs {
   /** Plan the analysis was generated on. "haiku"/"sonnet" on rows written
    *  before the plan-name migration — see backend services/tiers.py. */
   _tier?: "free" | "paid" | "premium" | "haiku" | "sonnet"
+  /** Le voyage, reduced to plain French lines at merge time — no number, no
+   *  trait name, no framework name. Two lines until a counselor validates the
+   *  portrait, up to nine after. Model-facing only: neither the report nor
+   *  /c/<token> renders it, and neither should anything added later. */
+  _voyage?: string[]
+  /** Which voyage the lines above were reduced from. Mirrored onto
+   *  Analysis.voyage_id. Absent when the person has no voyage — every
+   *  parcours runs identically without one. */
+  _voyage_id?: string
 }
 
 export interface AnalysisInputsB {
@@ -122,6 +131,9 @@ export interface Analysis {
   unlock_method?: string | null
   share_token: string | null
   prompt_version_id: string | null
+  /** The voyage that fed this analysis. Traceability, like
+   *  prompt_version_id. Absent on responses from an older backend. */
+  voyage_id?: string | null
   tokens_in: number | null
   tokens_out: number | null
   /** 0-99 while the generation streams, 100 once it succeeds. Read off the
