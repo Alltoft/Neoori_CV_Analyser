@@ -9,7 +9,7 @@ from ..models.counselor_code import CounselorCode
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..models.voyage import Voyage
-from ..services.voyage.scoring import STAGE_S0
+from ..services.voyage.scoring import STAGE_S0, STAGE_VALIDATED
 from ..services.voyage.scoring import prompt_context as voyage_prompt_context
 from ..utils.tokens import generate_share_token
 from ..utils.request_body import json_object, text_field, dict_field
@@ -300,6 +300,12 @@ def _merge_voyage(inputs: dict, user_id: str | None) -> None:
     later regenerates it from the same material instead of from whatever the
     person's voyage has become since.
 
+    Two stages, and the narrow one is the default. Until a counselor has
+    validated the portrait, only session 0 travels -- its phrase and its
+    three attractions, which the person has already read on their own
+    screen. Everything else waits for the restitution the paper protocol
+    makes a human act. An analysis is not allowed to perform it first.
+
     No voyage: no key. Every parcours runs identically without one, and an
     empty key would be a shape every later reader has to allow for.
     """
@@ -310,9 +316,10 @@ def _merge_voyage(inputs: dict, user_id: str | None) -> None:
     if voyage is None:
         return
 
+    stage = STAGE_VALIDATED if voyage.portrait_status == "validated" else STAGE_S0
     inputs["_voyage_id"] = voyage.id
     inputs["_voyage"] = voyage_prompt_context(
-        voyage.synthesis(), voyage.micro_phrase, STAGE_S0
+        voyage.synthesis(), voyage.micro_phrase, stage
     )
 
 

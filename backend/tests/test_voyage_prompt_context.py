@@ -472,3 +472,287 @@ def test_an_anonymous_posted_voyage_is_also_stripped(_start, client, app):
     assert "_voyage" not in payload["inputs"]
     assert "_voyage_id" not in payload["inputs"]
     assert payload["voyage_id"] is None
+
+
+# ── the stage rule ───────────────────────────────────────────────────────────
+#
+# The load-bearing rule of the module. The paper protocol makes restitution a
+# human act: a counselor reads the portrait to the person, in a room, and
+# answers what it raises. Between session 5 and that conversation the draft
+# exists but has been said to nobody. An analysis that quoted it would perform
+# the restitution first, badly, in writing, unaccompanied.
+
+# The eight labels a complete voyage always produces. « Ambivalences relevées »
+# is left out on purpose: a person with no axis inside the tension band has no
+# ambivalence, and prompt_context() drops the label rather than print an empty
+# one.
+ALWAYS_PRESENT = {
+    "Phrase révélée",
+    "Ce qui l'attire le plus dans dix ans",
+    "Univers dominants",
+    "Besoin dominant",
+    "Cadre où elle donne le meilleur",
+    "Ce qui l'épuise",
+    "Ce qui la met en colère",
+    "Se sent vivant(e) quand",
+}
+
+
+def _run(client, user):
+    """POST an analysis as `user`, return the stored inputs."""
+    res = client.post("/api/analyses/", json={"inputs": dict(P1_FULL)},
+                      headers=_auth(user))
+    assert res.status_code == 201, res.data
+    return res.get_json()["analysis"]["inputs"]
+
+
+@pytest.mark.parametrize("portrait_status", ["none", "generating", "draft", "error"])
+@patch("app.routes.analyses.start_analysis")
+def test_an_unvalidated_portrait_sends_only_session_zero(
+        _start, portrait_status, client, app):
+    """Every state short of `validated` stops at session 0 — including
+    `draft`, which is the whole point, and `error`, which must fail closed."""
+    user = _user(f"stage-{portrait_status}@test.fr")
+    _voyage(user, answers=_all_answers(), portrait_status=portrait_status,
+            status="termine", sessions_completed=["0", "1", "2", "3", "4", "5"],
+            share_token=f"tok-{portrait_status}")
+
+    lines = _run(client, user)["_voyage"]
+    assert _labels(lines) == S0_LABELS
+    assert not any(line.startswith("Univers dominants") for line in lines)
+
+
+@patch("app.routes.analyses.start_analysis")
+def test_a_validated_portrait_sends_the_full_reduction(_start, client, app):
+    """Once a counselor has restituted, the analysis may use all of it."""
+    user = _user("stage-validated@test.fr")
+    _voyage(user, answers=_all_answers(), portrait_status="validated",
+            status="termine", sessions_completed=["0", "1", "2", "3", "4", "5"],
+            share_token="tok-validated")
+
+    labels = _labels(_run(client, user)["_voyage"])
+    assert _ordered_subset(labels, ALL_LABELS), labels
+    assert ALWAYS_PRESENT <= set(labels), ALWAYS_PRESENT - set(labels)
+
+
+@patch("app.routes.analyses.start_analysis")
+def test_validating_widens_what_a_new_analysis_receives(_start, client, app):
+    """The same voyage, before and after validation. Two lines, then more."""
+    user = _user("avant-apres@test.fr")
+    voyage = _voyage(user, answers=_all_answers(), portrait_status="draft",
+                     status="termine",
+                     sessions_completed=["0", "1", "2", "3", "4", "5"],
+                     share_token="tok-avant-apres")
+
+    before = _run(client, user)["_voyage"]
+    assert _labels(before) == S0_LABELS
+
+    voyage.portrait_status = "validated"
+    voyage.portrait_validated_at = datetime(2026, 9, 12)
+    db.session.commit()
+
+    after = _run(client, user)["_voyage"]
+    assert len(after) > len(before)
+    assert before == after[:2], "the two session-0 lines must not be rewritten"
+
+
+@patch("app.routes.analyses.start_analysis")
+def test_an_earlier_analysis_is_not_rewritten_by_a_later_validation(
+        _start, client, app):
+    """The reduction is a snapshot. A report already delivered must not gain
+    content retroactively — that is what storing it on the row buys."""
+    user = _user("figee@test.fr")
+    voyage = _voyage(user, answers=_all_answers(), portrait_status="draft",
+                     status="termine",
+                     sessions_completed=["0", "1", "2", "3", "4", "5"],
+                     share_token="tok-figee")
+
+    res = client.post("/api/analyses/", json={"inputs": dict(P1_FULL)},
+                      headers=_auth(user))
+    analysis_id = res.get_json()["analysis"]["id"]
+
+    voyage.portrait_status = "validated"
+    db.session.commit()
+
+    row = Analysis.query.get(analysis_id)
+    assert _labels(row.inputs["_voyage"]) == S0_LABELS
+
+
+@patch("app.routes.analyses.start_analysis")
+def test_a_validated_portrait_outranks_a_newer_retake(_start, client, app):
+    """for_prompt takes the newest validated row first and only then the
+    newest row whose micro_status is "success" (contracts § C.4). A retake in
+    progress must not demote a portrait a counselor has already restituted."""
+    user = _user("reprise@test.fr")
+    validated = _voyage(user, answers=_all_answers(), portrait_status="validated",
+                        status="termine",
+                        sessions_completed=["0", "1", "2", "3", "4", "5"],
+                        share_token="tok-reprise", created_at=datetime(2026, 8, 1))
+    newer = _voyage(user, created_at=datetime(2026, 9, 5))
+    assert newer.created_at > validated.created_at
+
+    inputs = _run(client, user)
+    assert inputs["_voyage_id"] == validated.id
+    assert ALWAYS_PRESENT <= set(_labels(inputs["_voyage"]))
+
+
+# ── the reduction: what a model is allowed to be told ────────────────────────
+#
+# Digit, framework-word (generation.leak_check-style) and Big Five/axis-name
+# guards over real scoring.synthesize() data are phase 0's own coverage --
+# tests/test_voyage_scoring.py:509-539 (test_prompt_context_never_emits_a_digit,
+# ..._never_emits_a_framework_word, ..._never_emits_a_level_or_an_axis_label,
+# all run against scoring.synthesize(_answers()), i.e. real bank data, not a
+# fixture). Not re-created here: the phase-0 handoff already asked phase 5 to
+# extend rather than duplicate, "or the digit/leak assertions end up
+# duplicated in two files that drift" (rulings R4).
+#
+# The one guard phase 0 never wrote is CLAUDE.md's UI-copy ban list --
+# distinct from generation.LEAK_PATTERNS' framework vocabulary, and never
+# asserted anywhere before phase 5. It runs over both a hand-written synthesis
+# and a real scoring.synthesize() output (rulings R5): a probe found that
+# planting a banned word into bank.AXES.plain_pos/plain_neg produces exactly
+# that word in a real block while a fixture-only guard stays green, because
+# the fixture never touches the bank -- which is how all four of an earlier
+# draft's guards passed that same probe.
+
+# The literal synthesize() return value for a fully-answered voyage, pinned
+# from contracts § B.5 and transcribed by hand -- not computed, so it stays a
+# safety net under the reducer rather than an echo of it. Kept honest by
+# test_the_fixture_has_the_shape_synthesize_really_returns below.
+SYNTHESIS = {
+    "scoring_version": "cahier-2026-09",
+    "s0": {
+        "axes": {
+            "A1": {"oui": 0, "non": 1, "resultant": -1, "n_items": 1, "tension": False},
+            "A2": {"oui": 1, "non": 2, "resultant": -1, "n_items": 3, "tension": True},
+            "A3": {"oui": 1, "non": 1, "resultant": 0, "n_items": 2, "tension": True},
+            "A4": {"oui": 3, "non": 1, "resultant": 2, "n_items": 4, "tension": True},
+            "A5": {"oui": 2, "non": 2, "resultant": 1, "n_items": 4, "tension": True},
+            "A6": {"oui": 3, "non": 2, "resultant": 1, "n_items": 5, "tension": True},
+            "A7": {"oui": 4, "non": 0, "resultant": 4, "n_items": 4, "tension": False},
+            "A8": {"oui": 1, "non": 1, "resultant": 0, "n_items": 2, "tension": True},
+            "A9": {"oui": 2, "non": 0, "resultant": 2, "n_items": 2, "tension": True},
+            "A10": {"oui": 2, "non": 0, "resultant": 2, "n_items": 2, "tension": True},
+        },
+        "tensions": [
+            {"axis": "A2", "resultant": -1, "label": "Visibilité",
+             "tension": "discrétion vs reconnaissance"},
+            {"axis": "A3", "resultant": 0, "label": "Rapport au collectif",
+             "tension": "solo vs collectif"},
+            {"axis": "A4", "resultant": 2, "label": "Échelle d'impact",
+             "tension": "impact local vs impact global"},
+            {"axis": "A5", "resultant": 1, "label": "Sécurité vs risque",
+             "tension": "sécurité vs risque"},
+            {"axis": "A6", "resultant": 1, "label": "Type de création",
+             "tension": "méthode vs expression libre"},
+            {"axis": "A8", "resultant": 0, "label": "Temporalité de l'impact",
+             "tension": "impact différé vs impact immédiat"},
+            {"axis": "A9", "resultant": 2, "label": "Rapport au corps",
+             "tension": "bureau vs terrain"},
+            {"axis": "A10", "resultant": 2, "label": "Transmission vs expertise",
+             "tension": "expertise vs transmission"},
+        ],
+        "top3": [
+            {"axis": "A7", "resultant": 4, "pole": "pos",
+             "label": "Lien humain direct", "plain": "le lien avec les gens"},
+            {"axis": "A4", "resultant": 2, "pole": "pos",
+             "label": "Impact global / systémique", "plain": "un impact visible"},
+            {"axis": "A9", "resultant": 2, "pole": "pos",
+             "label": "Terrain / action physique", "plain": "le terrain et l'action"},
+        ],
+    },
+    "riasec": {
+        "scores": {"R": 8, "I": 5, "A": 3, "S": 4, "E": 7, "C": 6},
+        "maxima": {"R": 12, "I": 11, "A": 10, "S": 10, "E": 11, "C": 9},
+        "normalized": {"R": 0.667, "I": 0.455, "A": 0.3, "S": 0.4,
+                       "E": 0.636, "C": 0.667},
+        "top3": [
+            {"letter": "R", "univers": "Réaliste", "score": 8, "normalized": 0.667},
+            {"letter": "C", "univers": "Conventionnel", "score": 6, "normalized": 0.667},
+            {"letter": "E", "univers": "Entreprenant", "score": 7, "normalized": 0.636},
+        ],
+    },
+    "s2": {
+        "sdt": {"autonomie": 3, "appartenance": 2, "competence": 1},
+        "sdt_dominant": ["autonomie"],
+        "schwartz": {"autodirection": 2, "stimulation": 0, "hedonisme": 0,
+                     "reussite": 1, "pouvoir": 0, "securite": 0, "conformite": 1,
+                     "bienveillance": 3, "universalisme": 2, "integrite": 0,
+                     "conservation": 0},
+        "schwartz_dominant": ["bienveillance"],
+        "ambivalences": {"item_id": "S2-7", "letter": "F",
+                         "label": "Liberté / Indépendance",
+                         "plain": "tu veux que ta vie t'appartienne"},
+    },
+    "s3": {
+        "big5": {"ouverture": 3, "conscienciosite": -1, "extraversion": 2,
+                 "agreabilite": 0, "nevrotisme": -2},
+        "levels": {"ouverture": "Élevé", "conscienciosite": "Moyen",
+                   "extraversion": "Élevé", "agreabilite": "Moyen",
+                   "nevrotisme": "Faible"},
+        "style": {"holistique": 2, "sequentiel": 1, "adaptatif": 1, "consultatif": 3},
+        "style_dominant": ["consultatif"],
+        "intro_extra": "plutôt tourné(e) vers les autres",
+    },
+    "s4": {
+        "espace": "bureau fermé et calme",
+        "rythme": "cycles courts",
+        "equipe": "petite équipe soudée",
+        "manager": "confiance et droit à l'essai",
+        "irritant": "les interruptions constantes",
+        "vendredi": "besoin de calme",
+    },
+    "s5": {
+        "risque": "Calculé",
+        "rapport_echec": "elle analyse et recommence",
+        "rapport_flou": "elle crée son propre cadre",
+        "valeur_centrale": "l'injustice",
+        "trace": "une trace dans les gens",
+        "sacrifice": "le temps",
+        "vivant": "elle crée",
+    },
+    "completeness": {"0": True, "1": True, "2": True, "3": True,
+                     "4": True, "5": True},
+}
+
+# A real reduction, computed (not hand-written) from a full, real answer set --
+# rulings R5's real-data half. Module-level, alongside SYNTHESIS: scoring.py is
+# pure arithmetic with no Flask/DB dependency, so this is as safe to compute at
+# import time as SYNTHESIS is to write out by hand.
+REAL_SYNTHESIS = scoring.synthesize({"answers": _all_answers(), "billets": {}})
+
+
+def test_the_fixture_has_the_shape_synthesize_really_returns():
+    """SYNTHESIS above is hand-written, for the ban-list guard below to run
+    against something disconnected from the bank -- the fixture rulings R5
+    is warning cannot, by itself, catch a leak planted into the bank. Kept
+    honest here: if synthesize() grows or loses a top-level section, this is
+    what notices."""
+    real = scoring.synthesize({"answers": {}, "billets": {}})
+    assert set(real) == set(SYNTHESIS)
+
+
+@pytest.mark.parametrize("synthesis", [SYNTHESIS, REAL_SYNTHESIS],
+                          ids=["hand-written fixture", "real synthesize() output"])
+def test_the_block_avoids_the_projects_banned_words(synthesis):
+    """CLAUDE.md's ban list -- not phase 0's territory (BANNED_ROOTS there is
+    the framework-vocabulary leak check, a different list for a different
+    audience; phase 0 never asserts this one). The header and « Phrase
+    révélée » share a root with « révélation » and are kept on purpose
+    (contracts § H): model-facing prompt text, not UI chrome -- and neither
+    is an exact match for the banned word itself, so both survive this check
+    unflagged.
+
+    Parametrised over both a hand-written synthesis and a real
+    scoring.synthesize() output (rulings R5): a probe found that planting a
+    banned word into bank.AXES.plain_pos/plain_neg produces exactly that word
+    in a real block while a fixture-only guard stays green, because the
+    fixture never touches the bank.
+    """
+    lines = scoring.prompt_context(synthesis, PHRASE, scoring.STAGE_VALIDATED)
+    assert lines, "a full synthesis must produce at least one line"
+    block = "\n".join(_voyage_block({"_voyage": lines})).lower()
+    for word in BAN_LIST:
+        assert not re.search(rf"\b{re.escape(word)}\b", block), word
+    assert VOYAGE_HEADER.lower() in block
