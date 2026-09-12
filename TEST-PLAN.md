@@ -316,6 +316,17 @@ banners, error messages — says *vous*.
 | 12.8.2 | Instead, leave a session open in this tab and finish it from another tab, then change an answer here | The row/scene shows the new value on screen along with « Cette session est terminée : ses réponses ne sont plus modifiables. », but nothing is saved — reopening the session (or reloading) shows it read-only |
 | 12.8.3 | Log in, open `/espace`, stop the backend, then open « Mon voyage » from the account menu **without reloading** | « Connexion au serveur impossible. Il démarre peut-être — réessayez dans 30 secondes. » plus a « Réessayer » button — **never** the consent form |
 
+### 12.9 Ce que le voyage change dans une analyse
+
+| # | Do | Expect |
+|---|---|---|
+| 12.9.1 | With an account that has no voyage, run any parcours analysis and open its response (`GET /api/analyses/<id>`) in the Network tab (F12 → Network) | Runs and completes exactly as before. `inputs` has **no** `_voyage` key and **no** `_voyage_id` key at all; `voyage_id` is `null`. The voyage is never required |
+| 12.9.2 | Play session 0 to the end, wait for the phrase, then run a new analysis and look at `inputs._voyage` in the same response | A list of **exactly 2** lines: « Phrase révélée : … » and « Ce qui l'attire le plus dans dix ans : … ». `inputs._voyage_id` and the top-level `voyage_id` are the same id |
+| 12.9.3 | Have the counselor validate the portrait (§ 13.22), then run **another** new analysis and look at `inputs._voyage` | Up to **9** lines — the two from § 12.9.2 plus « Univers dominants », « Besoin dominant », « Ambivalences relevées », « Cadre où elle donne le meilleur », « Ce qui l'épuise », « Ce qui la met en colère », « Se sent vivant(e) quand » (a line is omitted, not left empty, when it has nothing to say). The § 12.9.2 analysis itself is untouched — still its own 2 lines |
+| 12.9.4 | Read every line in `inputs._voyage` carefully | The first line (« Phrase révélée : … ») is free text the model wrote from the person's own answers and may legitimately carry a digit — an age or a duration, e.g. a made-up « Après 17 ans d'usine… », is not a bug. **Every other line must never contain a digit**, and no line may contain a framework word: « score », « névrotisme », « RIASEC », « Big Five », « extraversion », « conscienciosité », « Élevé » / « Moyen » / « Faible ». If one does, stop and report it — it is the one bug in this section that matters |
+| 12.9.5 | On an analysis carrying a voyage, open the report itself, its « Vue conseiller » tab (§ 8.3), and its `/c/<token>` link (§ 8.1) | The voyage lines are rendered on **none** of the three — they exist only in the raw `inputs` payload read directly, as in the rows above. Model-facing only, never on a page or a share link |
+| 12.9.6 | With that same analysis still around, open `/voyage`, click « Supprimer mon voyage » (§ 12.7.1) and confirm, then re-open the analysis's response | `inputs` no longer has `_voyage` or `_voyage_id`, and the top-level `voyage_id` is `null`. The analysis and its delivered report text are untouched — only the copied voyage lines are gone |
+
 > The rule the PM cares about here: **the person never sees a score, a trait
 > name, or a framework name.** Not on the hub, not in the phrase, not in the
 > portrait. Everything numeric stays on the counselor's side of the wall.
