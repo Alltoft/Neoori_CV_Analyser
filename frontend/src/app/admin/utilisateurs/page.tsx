@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -12,13 +19,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 import { fmtDate, planLabel, roleLabel } from "@/lib/format"
 import type { User } from "@/types"
 import { Search, Users } from "lucide-react"
 
-const roleVariant = (role: User["role"]) =>
-  role === "admin" ? "destructive" : role === "counselor" ? "navy" : "secondary"
+/** The three values the API accepts (contracts § E16). */
+const ROLE_OPTIONS: User["role"][] = ["candidate", "counselor", "admin"]
 
 const planVariant = (plan: User["plan"]) => (plan === "paid" ? "peach" : "secondary")
 
@@ -27,6 +34,26 @@ export default function UtilisateursPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<Record<string, string>>({})
+
+  const changeRole = async (id: string, role: string) => {
+    setSavingId(id)
+    setRowError((current) => ({ ...current, [id]: "" }))
+    try {
+      const res = await api.put<{ user: User }>(`/admin/users/${id}/role`, { role })
+      setUsers((list) => list.map((u) => (u.id === res.user.id ? res.user : u)))
+    } catch (err) {
+      // The API refuses to demote the last admin with a 409 and a French
+      // sentence — show it on the row rather than swallowing it.
+      setRowError((current) => ({
+        ...current,
+        [id]: err instanceof ApiError ? err.message : "Échec de la modification.",
+      }))
+    } finally {
+      setSavingId(null)
+    }
+  }
 
   useEffect(() => {
     api
@@ -57,7 +84,8 @@ export default function UtilisateursPage() {
           Utilisateurs
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Liste des comptes en lecture seule.
+          Liste des comptes. Le rôle est modifiable : un conseiller peut ouvrir les fiches de
+          synthèse et valider les portraits du voyage.
         </p>
       </header>
 
@@ -130,9 +158,31 @@ export default function UtilisateursPage() {
                       {u.email}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={roleVariant(u.role)}>
-                        {roleLabel(u.role)}
-                      </Badge>
+                      <Select
+                        value={u.role}
+                        onValueChange={(v) => {
+                          if (typeof v === "string" && v !== u.role) void changeRole(u.id, v)
+                        }}
+                      >
+                        <SelectTrigger
+                          size="sm"
+                          className="w-36"
+                          disabled={savingId === u.id}
+                          aria-label={`Rôle de ${u.email}`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROLE_OPTIONS.map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {roleLabel(role)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {rowError[u.id] ? (
+                        <p className="mt-1 text-[11px] text-destructive">{rowError[u.id]}</p>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <Badge variant={planVariant(u.plan)}>
