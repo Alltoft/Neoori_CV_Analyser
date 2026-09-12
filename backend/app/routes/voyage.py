@@ -24,6 +24,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
+from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
 from ..models.profile import Profile
 from ..models.voyage import (
@@ -149,10 +150,33 @@ def delete_voyage():
     untouched: it keeps existing with its own share token, so
     GET /api/voyage/c/<its token> still serves it to a counselor. Not a 404
     when there is nothing to erase: mirrors delete_profile.
+
+    PM ruling 2026-09-12: erasure also strips the reduced lines this voyage
+    copied into the candidate's past analyses (routes/analyses.py's
+    _merge_voyage). The row's ondelete="SET NULL" (models/analysis.py) clears
+    Analysis.voyage_id on its own once the DELETE below fires, but that FK
+    says nothing about the JSON inputs blob -- left alone,
+    inputs["_voyage"] / inputs["_voyage_id"] would survive erasure in
+    plaintext, pointing at an id that no longer resolves to anything. The
+    delivered analysis text (Analysis.output) is untouched: only the stored
+    voyage inputs go.
     """
     voyage = _current()
     if voyage is None:
         return jsonify({"message": "Aucun voyage à supprimer."}), 200
+
+    referencing = Analysis.query.filter_by(
+        user_id=voyage.user_id, voyage_id=voyage.id
+    ).all()
+    for analysis in referencing:
+        # JSON column: reassign a new dict rather than popping the existing
+        # one in place -- the repo's standing trap (SQLAlchemy does not see a
+        # mutation of a JSON column's current value as a change to flush).
+        stripped = dict(analysis.inputs or {})
+        stripped.pop("_voyage", None)
+        stripped.pop("_voyage_id", None)
+        analysis.inputs = stripped
+
     try:
         db.session.delete(voyage)
         db.session.commit()

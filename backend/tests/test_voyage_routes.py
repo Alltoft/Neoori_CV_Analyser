@@ -521,9 +521,22 @@ def test_deleting_a_voyage_still_referenced_by_an_analysis_sets_it_null(client, 
     ondelete="SET NULL" (analysis.py) plus the handler's own try/except mean
     the erasure still succeeds and only the dangling link is cleared -- the
     analysis itself, the person's own report and its B2G traceability row,
-    is never touched."""
+    is never touched.
+
+    PM ruling 2026-09-12 (R3): the FK alone only clears voyage_id. Left
+    alone, inputs["_voyage"] / inputs["_voyage_id"] would survive in
+    plaintext pointing at an id that resolves to nothing -- so this also
+    pins that the handler strips both keys, while leaving the rest of the
+    stored inputs (and the delivered report text) exactly as they were."""
     voyage = _voyage(candidate)
-    analysis = Analysis(user_id=candidate.id, voyage_id=voyage.id, status="success")
+    analysis = Analysis(
+        user_id=candidate.id, voyage_id=voyage.id, status="success",
+        inputs={
+            "_path": "1", "cible_visee": "kept as-is",
+            "_voyage": ["Phrase révélée : une phrase"],
+            "_voyage_id": voyage.id,
+        },
+    )
     _db.session.add(analysis)
     _db.session.commit()
 
@@ -535,6 +548,45 @@ def test_deleting_a_voyage_still_referenced_by_an_analysis_sets_it_null(client, 
     refreshed = Analysis.query.get(analysis.id)
     assert refreshed is not None
     assert refreshed.voyage_id is None
+    assert "_voyage" not in refreshed.inputs
+    assert "_voyage_id" not in refreshed.inputs
+    assert refreshed.inputs["cible_visee"] == "kept as-is"
+
+
+def test_deleting_a_voyage_does_not_touch_another_users_analysis(client, auth, candidate):
+    """The erasure query is scoped to the caller's own user_id as well as the
+    voyage id -- a belt-and-braces check on top of the fact that a client can
+    no longer post an arbitrary _voyage_id onto their own analysis (R1), so
+    two accounts should never collide on this in practice either."""
+    other = _user("autre-erasure@test.fr")
+    other_voyage = _voyage(other)
+    other_analysis = Analysis(
+        user_id=other.id, voyage_id=other_voyage.id, status="success",
+        inputs={"_voyage": ["ligne d'un autre"], "_voyage_id": other_voyage.id},
+    )
+    _db.session.add(other_analysis)
+    _voyage(candidate)
+    _db.session.commit()
+
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+
+    refreshed = Analysis.query.get(other_analysis.id)
+    assert refreshed.voyage_id == other_voyage.id
+    assert refreshed.inputs["_voyage"] == ["ligne d'un autre"]
+    assert refreshed.inputs["_voyage_id"] == other_voyage.id
+
+
+def test_deleting_a_voyage_with_no_referencing_analyses_still_returns_200(
+        client, auth, candidate):
+    """The referencing-analyses lookup runs even when it will find nothing --
+    an empty result must not change the response. Distinct from
+    test_erasing_nothing_is_not_an_error below: here a voyage exists, it is
+    just not quoted by any analysis."""
+    _voyage(candidate)
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+    assert res.get_json()["message"] == "Voyage supprimé."
 
 
 def test_deleting_a_voyage_through_the_endpoint_still_erases_its_notes(client, auth, candidate):
