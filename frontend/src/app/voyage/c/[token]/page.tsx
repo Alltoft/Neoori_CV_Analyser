@@ -168,19 +168,31 @@ export default function VoyageCounselorPage() {
   const [confirmRegenFor, setConfirmRegenFor] = useState<PortraitStatus | null>(null)
   const [validating, setValidating] = useState(false)
   const [stalled, setStalled] = useState(false)
-  const seededRef = useRef("")
+  const prevPortraitStatusRef = useRef<PortraitStatus | null>(null)
   const streakStartRef = useRef<number | null>(null)
 
   const portraitStatus = data?.portrait.status
   const confirmRegen = confirmRegenFor !== null && confirmRegenFor === portraitStatus
 
+  // Seed the six fields when a fresh draft body has actually arrived: the
+  // first load, or the moment generation finishes (status leaving
+  // "generating"). A change that leaves the status where it already was —
+  // most importantly validate flipping draft -> validated on content that is
+  // already on screen — must NOT re-seed: the counselor may have typed a
+  // correction during that round trip (saveSections resolves, then the
+  // validate POST is still in flight), and re-seeding from the server's
+  // now-stale copy would silently discard it (finding F1).
   useEffect(() => {
-    if (!data || data.portrait.status === "generating") return
-    // Seed the six fields once per draft. Re-seeding on every poll tick or on
-    // every save response would wipe what the counselor is typing.
-    const signature = `${data.portrait.status}:${data.portrait.validated_at ?? ""}`
-    if (seededRef.current === signature) return
-    seededRef.current = signature
+    if (!data) return
+    const status = data.portrait.status
+    if (status === "generating") {
+      prevPortraitStatusRef.current = status
+      return
+    }
+    const freshDraft =
+      prevPortraitStatusRef.current === null || prevPortraitStatusRef.current === "generating"
+    prevPortraitStatusRef.current = status
+    if (!freshDraft) return
     setSections(fillSections(data.portrait.sections))
   }, [data])
 
@@ -239,7 +251,15 @@ export default function VoyageCounselorPage() {
     })
   }, [sections, token])
 
+  // F4: a ref per mutating action, not the `saving`/`validating`/`regenerating`
+  // state alone — two clicks captured on the same handler before React
+  // re-renders the disabled button both read the same stale `false` closure,
+  // so a naive `if (saving) return` does not collapse them. A ref is read
+  // and written synchronously, same as `loadingRef` above.
+  const savingRef = useRef(false)
   const saveDraft = useCallback(() => {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     setActionError(null)
     saveSections()
@@ -254,18 +274,26 @@ export default function VoyageCounselorPage() {
               : "Échec de l’enregistrement.",
         )
       })
-      .finally(() => setSaving(false))
+      .finally(() => {
+        savingRef.current = false
+        setSaving(false)
+      })
   }, [saveSections])
 
+  const regeneratingRef = useRef(false)
   const regenerate = useCallback(() => {
     // Two-click confirmation: regeneration replaces the text in the fields.
     if (!confirmRegen) {
       setConfirmRegenFor(portraitStatus ?? null)
       return
     }
+    if (regeneratingRef.current) return // F4
+    regeneratingRef.current = true
     setRegenerating(true)
     setActionError(null)
-    seededRef.current = "" // let the new draft repopulate the fields
+    // No manual seed reset needed here: regeneratePortrait always lands on
+    // "generating" first, and the seed effect above reseeds on its own as
+    // soon as a fresh draft leaves that status.
     regeneratePortrait(token)
       .then((portrait) => {
         setData((current) => (current ? { ...current, portrait } : current))
@@ -275,7 +303,10 @@ export default function VoyageCounselorPage() {
         setActionError(e instanceof ApiError ? e.message : "Échec de la régénération.")
         setConfirmRegenFor(null) // R16: reset on any error
       })
-      .finally(() => setRegenerating(false))
+      .finally(() => {
+        regeneratingRef.current = false
+        setRegenerating(false)
+      })
   }, [confirmRegen, portraitStatus, token])
 
   // R12: save the counselor's current edits FIRST, and post validate only
@@ -284,7 +315,10 @@ export default function VoyageCounselorPage() {
   // reads the old text, and the seed effect above then overwrites the
   // textareas with that old text once the response lands, so the correction
   // simply vanishes and the candidate receives the un-edited draft.
+  const validatingRef = useRef(false)
   const validate = useCallback(() => {
+    if (validatingRef.current) return // F4
+    validatingRef.current = true
     setValidating(true)
     setActionError(null)
     saveSections()
@@ -299,7 +333,10 @@ export default function VoyageCounselorPage() {
               : "Échec de la validation.",
         )
       })
-      .finally(() => setValidating(false))
+      .finally(() => {
+        validatingRef.current = false
+        setValidating(false)
+      })
   }, [saveSections, token])
 
   // ── private note ───────────────────────────────────────────────────────────
@@ -487,6 +524,15 @@ export default function VoyageCounselorPage() {
                     : ""}
                 </p>
 
+                {/* F7: once `data` exists, a failed poll or reload lands in
+                    `error` with nothing rendering it — silent until the
+                    3-minute stall line. Surface it without ever replacing
+                    the editor (R7 / G7: never swallow a rejection into a
+                    "nothing here" state). */}
+                {error ? (
+                  <p className="mt-1 text-xs text-destructive">Mise à jour impossible.</p>
+                ) : null}
+
                 {/* R13: what failed, before the counselor reaches for "Régénérer". */}
                 {data.portrait.status === "error" && data.portrait.error ? (
                   <p className="mt-1 text-xs text-destructive">{data.portrait.error}</p>
@@ -510,6 +556,12 @@ export default function VoyageCounselorPage() {
                       ? "La rédaction prend plus de temps que prévu. Rechargez la page dans quelques instants."
                       : "Rédaction en cours. Cette page se met à jour toute seule."}
                   </p>
+                ) : data.portrait.status === "none" ? (
+                  // F2: the backend only accepts a PUT for draft/validated —
+                  // an editor here could never actually be saved.
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Le portrait n’a pas encore été lancé.
+                  </p>
                 ) : (
                   <>
                     {/* Editor — screen only. Each field carries .ai-block: this
@@ -530,6 +582,7 @@ export default function VoyageCounselorPage() {
                             onChange={(e) =>
                               setSections((current) => ({ ...current, [key]: e.target.value }))
                             }
+                            disabled={saving || validating || regenerating}
                             className="ai-block mt-1 min-h-24 text-sm"
                           />
                         </div>
@@ -633,6 +686,7 @@ export default function VoyageCounselorPage() {
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Ce que vous retenez de l’entretien…"
+                    disabled={noteSaving}
                     className="mt-3 min-h-[120px] bg-background text-sm"
                   />
                   {noteError ? (

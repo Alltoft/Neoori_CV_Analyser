@@ -35,8 +35,13 @@ const big5Label = (key: string) => BIG5_ROWS.find((r) => r.key === key)?.label ?
 // reads it. These strings sit in TS constants rather than bare JSX text so
 // their straight apostrophes never trip react/no-unescaped-entities.
 const AI_LEGEND =
-  "Les blocs teintés sont rédigés par l'IA. La phrase a déjà été montrée à la personne, sans relecture préalable. Le portrait est un brouillon : il ne lui parvient qu'une fois que vous l'avez validé."
+  "Les blocs bordés de pêche sont rédigés par l'IA. La phrase a déjà été montrée à la personne, sans relecture préalable. Le portrait est un brouillon : il ne lui parvient qu'une fois que vous l'avez validé."
 const PHRASE_MARKER = "Déjà affichée à la personne"
+// F6: microStatus is "none" | "generating" | "success" | "error" — only
+// "error" is an actual failure. The other two non-terminal statuses get
+// their own sentence instead of borrowing the failure line.
+const PHRASE_NONE = "Phrase pas encore rédigée."
+const PHRASE_GENERATING = "Phrase en cours de rédaction."
 const PHRASE_FALLBACK = "La phrase n'a pas pu être rédigée."
 
 // ── Ruling R10 — a row can be scored under a bank version that has since
@@ -203,7 +208,13 @@ export function SynthesisSheet({
       <div className="ai-block mt-4 rounded-md p-4">
         <p className="eyebrow text-orange-dark">{PHRASE_MARKER}</p>
         <p className="mt-1.5 text-sm font-medium text-navy">
-          {microStatus === "success" ? microPhrase : PHRASE_FALLBACK}
+          {microStatus === "success"
+            ? microPhrase
+            : microStatus === "none"
+              ? PHRASE_NONE
+              : microStatus === "generating"
+                ? PHRASE_GENERATING
+                : PHRASE_FALLBACK}
         </p>
       </div>
 
