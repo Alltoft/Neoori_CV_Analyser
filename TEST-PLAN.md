@@ -323,6 +323,46 @@ banners, error messages — says *vous*.
 
 ---
 
+## 13 · Le voyage — vue conseiller
+
+Prerequisites: one candidate account that has finished the five sessions (its
+voyage row is `termine` with `portrait_status` = `draft`) and its `share_token`;
+one second account to promote; one admin account. A few rows below call for a
+second, ad hoc fixture — an `error` portrait, a failed phrase, a stale
+`scoring_version`, a broken connection — each row says how to get there.
+
+| # | Do | Expect |
+|---|---|---|
+| 13.1 | Logged out, open `/voyage/c/<token>` | Redirected to `/connexion?redirect=/voyage/c/<token>`. The fiche never renders |
+| 13.2 | Log in as the **candidate who played**, open `/voyage/c/<token>` | A card saying « Accès non autorisé. » — no numbers, no trait names, no portrait text anywhere on the page. Open the network tab: no request to `/api/voyage/c/...` was made |
+| 13.3 | As admin, open `/admin/utilisateurs`, set the second account's role select to « conseiller » | The select shows « conseiller » straight away, no page reload, no error under the row |
+| 13.4 | Still in `/admin/utilisateurs`, try to set the **only** admin account to « candidat » | The row shows « Impossible de retirer le dernier rôle administrateur. » and the select goes back to « administrateur » on reload |
+| 13.5 | Log in as the new conseiller. Stop the backend (or otherwise break the connection), then open `/voyage/c/<token>` | The load fails: an error card with a « Réessayer » button — never a dead end. Restart the backend and click « Réessayer »: the fiche loads normally |
+| 13.6 | Log in as the new conseiller, open `/voyage/c/<token>` | The fiche renders: navy band, badge « VERSION CONSEILLER », title « Le voyage · <prénom> », then the warning strip « Document conseiller… » |
+| 13.7 | Read the top of the sheet, above the synthesis table | The legend « Les blocs teintés sont rédigés par l'IA. La phrase a déjà été montrée à la personne, sans relecture préalable. Le portrait est un brouillon : il ne lui parvient qu'une fois que vous l'avez validé. ». The tinted blocks it names are the phrase block just below it and, further down, the six portrait fields |
+| 13.8 | Read the tinted phrase block | The marker « Déjà affichée à la personne » above the sentence. On a voyage whose session-0 phrase failed to generate, the block reads « La phrase n'a pas pu être rédigée. » instead of an empty tint |
+| 13.9 | Open the fiche for a voyage scored under a retired bank version (locally: set the row's `scoring_version` DB column below `bank.SCORING_VERSION`, then reload) | Above the tableau de synthèse: « Ces réponses ont été enregistrées avec une version antérieure du questionnaire ; certaines sections peuvent apparaître incomplètes. » A voyage scored at the current version shows no such warning |
+| 13.10 | Read the key-facts strip | Prénom, tranche d'âge and situation are in French words (« 25 – 34 ans », « En recherche d'emploi »), not `25_34` / `en_recherche` |
+| 13.11 | Read « Tableau de synthèse — Toutes dimensions » | Eleven rows, from « Axes bipolaires (S0) » to « Sens — Moment vivant », each with a session and a result |
+| 13.12 | Read « Profil RIASEC — Barres de visualisation » | Six bars, R I A S E C in that order, each labelled `n / max`. The maxima read **R 12 · I 11 · A 10 · S 10 · E 11 · C 9** — not 10/10 for E and C. The top three are orange |
+| 13.13 | Read « Axes bipolaires — Session 0 » | Ten rows A1…A10, each with its French name, its two poles, its ✓/✗ counts and its resultant. Only rows with a « tension » badge are between −2 and +2 — and **A1 never carries one** |
+| 13.14 | Read « Tensions S0 — Ambivalences à explorer » | The ×1.5 note, then one card per tension with the question « J'ai noté une ambivalence sur … » |
+| 13.15 | Read the four session boxes | « Synthèse — Besoins SDT dominants » with three counters, « Synthèse Big Five — Profil cognitif » with five Élevé/Moyen/Faible cells, « Synthèse environnementale » with six lines, « Synthèse Risque & Sens » with seven |
+| 13.16 | Scroll to « Restitution » | The wording rappel table, then PHASE 01 to PHASE 05 with their durations (5/10/10/10/5 min), then « Phrases utiles en restitution » with five quotes |
+| 13.17 | Edit « Phrase d'accroche », click « Enregistrer » | Button flips to « Enregistré » with a green check. Reload the page: the edit is still there and the status line now says « · modifié par un conseiller » |
+| 13.18 | Empty one textarea, click « Enregistrer » | An inline red line « À compléter avant d’enregistrer : <section>. » — nothing is sent to the server |
+| 13.19 | Local stack only — never against the production prompt. Stop the backend, set an invalid `ANTHROPIC_API_KEY`, restart, then click « Régénérer » on a draft portrait; once it lands on `error`, reload the fiche | Under the status line « Échec de la rédaction », the failure reason (`portrait.error`) in red — and « Régénérer » is still offered, never a dead end. Restore the key, restart the backend and click it again: a fresh draft replaces it |
+| 13.20 | Click « Régénérer », then « Confirmer : réécrire le brouillon » | The editor is replaced by « Rédaction en cours. Cette page se met à jour toute seule. » and, within a few seconds and with no reload, a new draft fills the six fields |
+| 13.21 | If the red banner « Vocabulaire à vérifier » appears | Read the draft: it should be the reason — a test name, a trait name or the word « score » survived into the prose. Rewrite that passage before validating |
+| 13.22 | Click « Valider et transmettre » | Status becomes « Validé et transmis · validé le <date> ». « Régénérer » and « Valider » disappear; « Enregistrer » stays |
+| 13.23 | Log back in as the candidate, open `/voyage/portrait` | The six sections are there — the same text the conseiller validated, and nothing else from the fiche |
+| 13.24 | Back on the fiche, click « Régénérer » again and confirm, then edit one field (e.g. « Qui tu es ») **without** clicking « Enregistrer », then click « Valider et transmettre » directly | Your edit is saved first and only then transmitted. Log back in as the candidate: the field shows your edited wording, not the regenerated draft — before this fix, validate sent the stored, un-edited text and the correction was silently lost |
+| 13.25 | Back on the fiche, type in « Mes notes de restitution », click « Enregistrer », reload | The note comes back. Log in as a *different* conseiller and open the same fiche: the note field is empty (notes are per conseiller) |
+| 13.26 | Click « PDF fiche » | The print preview shows the synthesis sheet, the portrait as prose (not as textareas) and the restitution guide. It does **not** show the action bar, the buttons or the notes |
+| 13.27 | `/admin` overview | A « Le voyage » row of four tiles: Voyages commencés / Session 0 terminée / Voyages terminés / Portraits validés, with the counts you would expect from the rows you created |
+
+---
+
 ## What to report back
 
 For each failure: the step number, the URL, and what you saw instead.
