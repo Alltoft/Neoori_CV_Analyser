@@ -4,6 +4,32 @@ from ..extensions import db
 from ..services import section_registry as registry
 
 
+# GET /api/c/<share_token> is public and unauthenticated -- anyone holding
+# the link gets whatever to_dict(audience="counselor") puts in "inputs".
+# This allow-list mirrors every `analysis.inputs.X` access in
+# frontend/src/app/c/[token]/page.tsx (verified 2026-09-12): the parcours
+# discriminator, the candidate name shown in the header, and the "key facts"
+# strip for both the parcours-1/2 layout and the parcours-3 layout. Anything
+# that page does not render -- cv_text, the encrypted-profile-derived
+# _conditions/_oeth lines, the _voyage/_voyage_id lines -- must never travel
+# over this public link. Add a key here only after confirming that page
+# reads it; this must stay an allow-list, never a deny-list, so an
+# unclassified future field defaults to hidden.
+COUNSELOR_VISIBLE_INPUT_KEYS = frozenset({
+    "_path",
+    "prenom",
+    "nom",
+    "cible_visee",
+    "type_mobilite",
+    "situation_actuelle",
+    "notes_specifiques",
+    "_sub_profile",
+    "aime",
+    "refuse",
+    "accompagnement",
+})
+
+
 class Analysis(db.Model):
     __tablename__ = "analyses"
 
@@ -89,6 +115,14 @@ class Analysis(db.Model):
         if audience == "counselor":
             # Spec rule: same analysis object, different view — no regeneration.
             meta = [m for m in meta if m["key"] in set(counselor)]
+            # Public share link: ship only what the counselor page renders,
+            # never the candidate's full submission. See
+            # COUNSELOR_VISIBLE_INPUT_KEYS above -- the candidate audience
+            # (default) is untouched and keeps every input key.
+            data["inputs"] = {
+                k: v for k, v in (self.inputs or {}).items()
+                if k in COUNSELOR_VISIBLE_INPUT_KEYS
+            }
         data["sections_meta"] = meta
         # Lets the candidate view render its "vue conseiller" tab without a
         # second request, and without keeping its own copy of this rule.
