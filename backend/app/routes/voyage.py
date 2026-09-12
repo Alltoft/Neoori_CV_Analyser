@@ -571,6 +571,13 @@ def counselor_sheet(token):
         "prenom": getattr(profile, "prenom", None),
         "tranche_age": getattr(profile, "tranche_age", None),
         "situation": getattr(profile, "situation", None),
+        # The row's own scoring version, never the bank's current one:
+        # voyage.synthesis() always recomputes against the live bank, so
+        # without this key the sheet cannot tell a row scored under a
+        # retired bank version from a fresh one — a `termine` voyage can
+        # then render "Session 1 non terminee." with no explanation
+        # (phase-0 handoff warned about exactly this drift).
+        "scoring_version": voyage.scoring_version,
         # The candidate has already read this phrase, with no human review
         # (leak_check() is scoped to the portrait only) — the counselor must
         # see exactly what the app told them before the restitution starts.

@@ -156,6 +156,9 @@ export interface CounselorVoyage {
    *  Task 5). */
   micro_phrase: string | null
   micro_status: MicroStatus
+  /** The row's own scoring version — synthesis.scoring_version is always the
+   *  bank's current value, so this is the only way to detect a drifted row. */
+  scoring_version: string
   synthesis: VoyageSynthesis
   portrait: CounselorPortrait
 }

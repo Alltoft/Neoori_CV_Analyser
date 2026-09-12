@@ -1745,7 +1745,8 @@ def test_the_sheet_carries_the_profile_the_synthesis_and_the_draft(client, sheet
     res = client.get("/api/voyage/c/tok-conseiller", headers=counselor_auth)
     body = res.get_json()["voyage"]
     assert set(body) == {"id", "status", "prenom", "tranche_age", "situation",
-                         "micro_phrase", "micro_status", "synthesis", "portrait"}
+                         "scoring_version", "micro_phrase", "micro_status",
+                         "synthesis", "portrait"}
     assert body["prenom"] == "Marie"
     # Contract literal (§ B.5), not bank.SCORING_VERSION: deriving the
     # expectation from the code under test would let a drift in the constant
@@ -1755,6 +1756,35 @@ def test_the_sheet_carries_the_profile_the_synthesis_and_the_draft(client, sheet
     assert body["synthesis"]["riasec"] is None          # sessions 1-5 unanswered
     assert set(body["portrait"]) == {"status", "sections", "flags", "edited", "validated_at"}
     assert body["portrait"]["status"] == "draft"
+
+
+# ── counselor: the row's own scoring version (R10, phase-4 pre-flight) ───────
+# synthesis.scoring_version is always the live bank's value (it is recomputed
+# on every read), so only a top-level key sourced from the row itself can tell
+# a drifted row from a fresh one.
+
+def test_the_sheet_reports_the_rows_own_scoring_version(client, sheet, counselor_auth):
+    _, counselor_auth = counselor_auth
+    body = client.get("/api/voyage/c/tok-conseiller",
+                      headers=counselor_auth).get_json()["voyage"]
+    assert body["scoring_version"] == sheet.scoring_version
+
+
+def test_a_drifted_row_keeps_its_own_scoring_version_not_the_banks(client, candidate, counselor_auth):
+    """A row scored under a retired bank version must not be reported as
+    current. synthesis.scoring_version would say so regardless, since it is
+    recomputed against the live bank on every read -- only the row's own
+    column can distinguish it."""
+    _, counselor_auth = counselor_auth
+    drifted = _voyage(candidate, share_token="tok-drifted",
+                      scoring_version="cahier-2025-01")
+    drifted.responses = {"answers": _answers_for("0"), "billets": {}}
+    _db.session.commit()
+
+    body = client.get("/api/voyage/c/tok-drifted",
+                      headers=counselor_auth).get_json()["voyage"]
+    assert body["scoring_version"] == "cahier-2025-01"
+    assert body["synthesis"]["scoring_version"] == bank.SCORING_VERSION
 
 
 def test_the_sheet_filters_unknown_keys_out_of_the_stored_sections(client, sheet, counselor_auth):
