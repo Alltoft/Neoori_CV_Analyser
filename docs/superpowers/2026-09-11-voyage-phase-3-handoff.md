@@ -106,6 +106,10 @@ phrase fails with « Aucun prompt actif pour le slot voyage_micro » (now retrya
   stalled portrait's 10-minute relaunch; counselor regenerate/edit/validate and `_run_portrait` defer
   the phrase's 3-minute retry. Documented in `reap_stale_generating`'s docstring. The durable fix is
   per-run timestamps (`micro_started_at` / `portrait_started_at`) with the next migration.
+- **Amendment (2026-09-12):** `GET /api/voyage/c/<token>` now returns nine keys, not seven (contracts
+  § E10) — `micro_phrase` / `micro_status` — so the counselor sees the session-0 phrase, already shown
+  to the candidate unreviewed, before restitution; binding rendering rules are in the phase-4 plan's
+  Task 5.
 
 ## What phase 5 must know
 

@@ -825,6 +825,45 @@ Claude-Session: https://claude.ai/code/session_015fDz83zwALmXr4REGPGH8P"
 
 ### Task 5: `SynthesisSheet` — the page-18 sheet
 
+#### Binding requirement — marking AI-written text (PM ruling, 2026-09-12)
+
+Decided 2026-09-12 (`docs/superpowers/2026-09-11-voyage-phase-3-handoff.md` §
+What phase 4 must know; contracts § E10's amendment note): the counselor
+sheet now receives `micro_phrase` / `micro_status` (E10 is nine keys, not
+seven). Nobody trained to spot an off-protocol sentence reviews the session-0
+phrase before the candidate reads it, and it is weaker-guarded than the
+portrait. Phase 4 **must** meet the following — this is a requirement on
+this task, not a suggestion:
+
+- **What is marked.** Every block of AI-written text on the counselor sheet:
+  the session-0 phrase and the six portrait sections. Nothing else — the
+  synthesis table, the RIASEC bars and the S0–S5 boxes are the manual's own
+  scoring, not generated prose, and stay unmarked.
+- **How.** `border-l-4 border-peach` plus `bg-peach-soft/40` (this repo's
+  Tailwind vocabulary — the voyage's accent is peach, used on navy elsewhere
+  in the app; peach-on-white here is a tint, never a text colour, so body
+  text inside a marked block stays `text-navy` / `text-navy-700` and keeps
+  its contrast). One `.ai-block` class in `frontend/src/app/globals.css`,
+  beside `.voyage-rule` in the "── Le voyage ──" section, instead of
+  repeating the utility string at every call site.
+- **The legend**, once, at the top of the sheet — French, vouvoiement,
+  sober, no CLAUDE.md ban-list word. Copy it verbatim; do not redraft it:
+
+  > Les blocs teintés sont rédigés par l'IA. La phrase a déjà été montrée à
+  > la personne, sans relecture préalable. Le portrait est un brouillon : il
+  > ne lui parvient qu'une fois que vous l'avez validé.
+
+- **The phrase block** additionally carries the marker « Déjà affichée à la
+  personne » (this exact string), and, when `micro_status !== "success"`,
+  the sheet says the phrase could not be written — « La phrase n'a pas pu
+  être rédigée. » — rather than rendering an empty tinted block.
+- **Why it exists.** The phrase is the only candidate-facing generated text
+  with no human gate, and the micro prompt lacks the portrait's `RÈGLE
+  DÉFICIT` (`docs/superpowers/2026-09-11-voyage-phase-2-handoff.md`, "Open,
+  needing the PM" item 1 — still open). The counselor is the only reviewer
+  of it, and the only one who can correct the wording face to face if it
+  reads wrong.
+
 **Files:**
 - Create: `frontend/src/components/voyage/SynthesisSheet.tsx`
 

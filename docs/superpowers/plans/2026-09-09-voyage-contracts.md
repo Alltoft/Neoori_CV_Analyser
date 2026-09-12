@@ -1204,6 +1204,12 @@ voyage with `Voyage.by_token(token)`; a miss is `404 {"error": "Voyage introuvab
 - `403` `{"error": "Accès non autorisé."}` (from `@role_required`).
 - `404` `{"error": "Voyage introuvable."}`.
 
+> **Amendment (2026-09-12):** phase 3 extended this to **nine keys**, adding `micro_phrase`
+> (`string | null`) and `micro_status` (`MicroStatus`) between `situation` and `synthesis`. The
+> session-0 phrase already reaches the candidate with no human review, so the counselor must see
+> exactly what the app showed them before restitution starts — binding rendering rules in
+> `docs/superpowers/plans/2026-09-09-voyage-phase-4-counselor-ui.md`, Task 5.
+
 **E11 · `PUT /api/voyage/c/<token>/portrait`**
 
 - Request: `{"sections": {"accroche": "…", …all six keys…}}`.
