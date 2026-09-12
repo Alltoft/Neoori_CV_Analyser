@@ -18,13 +18,13 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { Logo } from "@/components/brand/Logo"
-import { RestitutionGuide } from "@/components/voyage/RestitutionGuide"
+import { NOTE_PROMPTS, RestitutionGuide } from "@/components/voyage/RestitutionGuide"
 import { SynthesisSheet } from "@/components/voyage/SynthesisSheet"
 import { ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDateTime } from "@/lib/format"
 import {
-  getCounselorVoyage, putPortrait, regeneratePortrait, validatePortrait,
+  getCounselorVoyage, getNote, putNote, putPortrait, regeneratePortrait, validatePortrait,
 } from "@/lib/voyage"
 import { SITUATION_LABELS, TRANCHE_LABELS } from "@/lib/voyage-labels"
 import {
@@ -302,6 +302,41 @@ export default function VoyageCounselorPage() {
       .finally(() => setValidating(false))
   }, [saveSections, token])
 
+  // ── private note ───────────────────────────────────────────────────────────
+  const [note, setNote] = useState("")
+  // R17: a miss is 200 {note: null} — a genuine rejection is a real failure,
+  // not "no note yet", so it gets its own flag rather than being swallowed.
+  const [noteLoadError, setNoteLoadError] = useState(false)
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteSaved, setNoteSaved] = useState(false)
+  const [noteError, setNoteError] = useState(false)
+
+  useEffect(() => {
+    if (authLoading || !allowed) return
+    // One note per (voyage, counselor) — contracts § C.7.
+    getNote(token)
+      .then((n) => {
+        if (n?.body) setNote(n.body)
+      })
+      .catch(() => {
+        setNoteLoadError(true)
+      })
+  }, [authLoading, allowed, token])
+
+  const saveNote = useCallback(() => {
+    setNoteSaving(true)
+    setNoteError(false)
+    // R17: this wrapper always sends a string body — "" legitimately clears
+    // the note server-side; {} / {"body": null} (a 400) are never sent.
+    putNote(token, note)
+      .then(() => {
+        setNoteSaved(true)
+        setTimeout(() => setNoteSaved(false), 2000)
+      })
+      .catch(() => setNoteError(true))
+      .finally(() => setNoteSaving(false))
+  }, [token, note])
+
   // ── gate ───────────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
@@ -570,6 +605,57 @@ export default function VoyageCounselorPage() {
             ) : null}
 
             <RestitutionGuide />
+
+            {/* Counselor notes — private, and never printed into the fiche */}
+            <div className="no-print mt-8 rounded-lg border border-dashed border-border bg-card p-5">
+              <h3 className="font-display text-sm font-semibold text-navy">
+                Mes notes de restitution
+              </h3>
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                Champ libre · enregistré sur votre espace conseiller — non partagé avec le candidat.
+              </p>
+
+              {noteLoadError ? (
+                // R17: a real failure, shown as one — never a blank box that
+                // reads as "you have not written a note yet" when the truth
+                // is unknown.
+                <p className="mt-3 text-xs text-destructive">
+                  Chargement de la note impossible.
+                </p>
+              ) : (
+                <>
+                  <ul className="mt-3 space-y-0.5 text-xs text-muted-foreground">
+                    {NOTE_PROMPTS.map((prompt) => (
+                      <li key={prompt}>{prompt}</li>
+                    ))}
+                  </ul>
+                  <Textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Ce que vous retenez de l’entretien…"
+                    className="mt-3 min-h-[120px] bg-background text-sm"
+                  />
+                  {noteError ? (
+                    <p className="mt-2 text-xs text-destructive">
+                      Échec de l’enregistrement. Réessayez.
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex justify-end">
+                    <Button size="sm" variant="outline" onClick={saveNote} disabled={noteSaving}>
+                      {noteSaved ? (
+                        <>
+                          <Check className="size-3.5 text-success" /> Enregistré
+                        </>
+                      ) : noteSaving ? (
+                        "Enregistrement…"
+                      ) : (
+                        "Enregistrer"
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
