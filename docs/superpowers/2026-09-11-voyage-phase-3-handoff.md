@@ -17,6 +17,24 @@ git-ignored `.superpowers/sdd/2026-09-09-voyage-phase-3-candidate-ui/progress.md
 **Do not deploy phase 3 without phase 5.** The chrome says the voyage « enrichit toutes vos
 analyses »; the injection that makes that true is phase 5. Pushing `initial` deploys production.
 
+## Before the voyage works on any database
+
+The voyage needs its schema and its two prompts. Neither is automatic:
+
+```bash
+# local stack
+docker compose exec backend flask db upgrade          # b8c9d0e1f2a3 -> a3b4c5d6e7f8 (5 migrations)
+docker compose exec backend python seed_prompt_v10_voyage_micro.py
+docker compose exec backend python seed_prompt_v10_voyage_portrait.py
+# VPS: same two steps with -f docker-compose.prod.yml (DOCKER.md's seed loop)
+```
+
+Symptom when the migrations are missing: **every** `/api/voyage` call AND `/api/analyses/`
+answer 500 — `Table 'neoori.voyages' doesn't exist` and `Unknown column 'analyses.voyage_id'`,
+because `Analysis` selects the new column. The hub then shows its load-error screen, which is
+correct behaviour, not a UI bug. Symptom when the seeds are missing: session 0 completes but the
+phrase fails with « Aucun prompt actif pour le slot voyage_micro » (now retryable).
+
 ## What exists
 
 | File | Contents |
