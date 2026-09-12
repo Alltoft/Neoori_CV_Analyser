@@ -1745,7 +1745,7 @@ def test_the_sheet_carries_the_profile_the_synthesis_and_the_draft(client, sheet
     res = client.get("/api/voyage/c/tok-conseiller", headers=counselor_auth)
     body = res.get_json()["voyage"]
     assert set(body) == {"id", "status", "prenom", "tranche_age", "situation",
-                         "synthesis", "portrait"}
+                         "micro_phrase", "micro_status", "synthesis", "portrait"}
     assert body["prenom"] == "Marie"
     # Contract literal (§ B.5), not bank.SCORING_VERSION: deriving the
     # expectation from the code under test would let a drift in the constant
@@ -1772,6 +1772,52 @@ def test_the_sheet_never_carries_the_generation_bookkeeping(client, sheet, couns
     body = client.get("/api/voyage/c/tok-conseiller", headers=counselor_auth).get_data(as_text=True)
     assert "prompt_version_id" not in body
     assert "tokens_in" not in body
+
+
+# ── counselor: the S0 phrase (PM ruling 2026-09-12) ──────────────────────────
+# The candidate has already read this sentence with no human review — the
+# counselor must see exactly what shipped, not a containment-matched excerpt.
+
+def test_a_successful_phrase_reaches_the_counselor_verbatim(client, sheet, counselor_auth):
+    """Exact string equality, never containment: a truncation or a paraphrase
+    must fail this test just as loudly as a missing phrase would."""
+    _, counselor_auth = counselor_auth
+    phrase = "Tu avances mieux quand le résultat de ce que tu fais se voit tout de suite."
+    sheet.micro = {"phrase": phrase, "prompt_version_id": "pv-1",
+                   "tokens_in": 40, "tokens_out": 20}
+    sheet.micro_status = "success"
+    _db.session.commit()
+
+    body = client.get("/api/voyage/c/tok-conseiller",
+                      headers=counselor_auth).get_json()["voyage"]
+    assert body["micro_phrase"] == phrase
+    assert body["micro_status"] == "success"
+
+
+def test_an_errored_phrase_exposes_no_phrase(client, sheet, counselor_auth):
+    """`_fail_micro` (services/voyage/generation.py) drops "phrase" from the
+    ciphertext on failure and never restores it — the refusal path must not
+    leak a stale or partial sentence to the counselor."""
+    _, counselor_auth = counselor_auth
+    sheet.micro = {"prompt_version_id": "pv-1",
+                   "error": "Le modèle n'a renvoyé aucune phrase lisible."}
+    sheet.micro_status = "error"
+    _db.session.commit()
+
+    body = client.get("/api/voyage/c/tok-conseiller",
+                      headers=counselor_auth).get_json()["voyage"]
+    assert body["micro_phrase"] is None
+    assert body["micro_status"] == "error"
+
+
+def test_a_voyage_with_no_phrase_yet_reads_as_none(client, sheet, counselor_auth):
+    """`sheet` never touches `micro` / `micro_status`: this is S0's own
+    starting state, and it must read distinctly from a refused run."""
+    _, counselor_auth = counselor_auth
+    body = client.get("/api/voyage/c/tok-conseiller",
+                      headers=counselor_auth).get_json()["voyage"]
+    assert body["micro_phrase"] is None
+    assert body["micro_status"] == "none"
 
 
 # ── editing, regenerating, validating ────────────────────────────────────────

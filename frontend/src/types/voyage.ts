@@ -150,6 +150,12 @@ export interface CounselorVoyage {
   prenom: string | null
   tranche_age: string | null
   situation: string | null
+  /** The candidate has already read this, unreviewed — the counselor sheet
+   *  must render it as AI-written text, not as ordinary prose (binding
+   *  requirement, docs/superpowers/plans/2026-09-09-voyage-phase-4-counselor-ui.md,
+   *  Task 5). */
+  micro_phrase: string | null
+  micro_status: MicroStatus
   synthesis: VoyageSynthesis
   portrait: CounselorPortrait
 }

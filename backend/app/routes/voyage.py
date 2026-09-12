@@ -571,6 +571,11 @@ def counselor_sheet(token):
         "prenom": getattr(profile, "prenom", None),
         "tranche_age": getattr(profile, "tranche_age", None),
         "situation": getattr(profile, "situation", None),
+        # The candidate has already read this phrase, with no human review
+        # (leak_check() is scoped to the portrait only) — the counselor must
+        # see exactly what the app told them before the restitution starts.
+        "micro_phrase": voyage.micro_phrase,
+        "micro_status": voyage.micro_status,
         "synthesis": voyage.synthesis(),
         "portrait": _counselor_portrait(voyage),
     }}), 200
