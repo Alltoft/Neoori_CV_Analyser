@@ -23,8 +23,9 @@ them as bare literals (ruling R4).
 
 The last test is the other half of the job: spec decision 7 says the person
 never sees a score, a trait name or a framework name, so this module may only be
-imported by the counselor surface (ruling R5 — kept as a subset check, not
-equality, until the counselor surface files exist).
+imported by the counselor surface (ruling R5 — asserted as equality now that
+the counselor surface is exactly its three files, phase-4 final fix wave F8;
+a subset check alone also passes if nothing imports the module).
 
 There is no JS test runner in this repo, so this reads the TypeScript as text —
 the same approach as test_conditions_parity.py.
@@ -183,11 +184,11 @@ def test_the_level_words_match_scoring(source):
 def test_the_vocabulary_never_leaves_the_counselor_surface():
     """Spec decision 7 — the person never sees a trait name or a framework name.
 
-    R5: kept as a subset check (`<=`), not equality. None of the three
-    counselor-surface files exist yet (they land in later phase-4 batches), so
-    an equality check would fail today for a reason unrelated to a leak. Task
-    13 tightens this to `==` once all three exist, which also catches an
-    unused fourth import.
+    F8 (phase-4 final fix wave, ruling R5): equality, not a subset check
+    (`<=`) — the importer set is now exactly the three counselor-surface
+    files (verified live), and `<=` alone would also pass if NOTHING
+    imported the module, which proves nothing. `==` also catches an unused
+    fourth import.
     """
     importers = sorted(
         path.relative_to(FRONTEND).as_posix()
@@ -195,7 +196,7 @@ def test_the_vocabulary_never_leaves_the_counselor_surface():
         if "voyage-labels" in path.read_text(encoding="utf-8")
         and path != LABELS_TS
     )
-    assert set(importers) <= COUNSELOR_SURFACE, (
-        "voyage-labels.ts is imported outside the counselor surface: "
-        f"{sorted(set(importers) - COUNSELOR_SURFACE)}"
+    assert set(importers) == COUNSELOR_SURFACE, (
+        "voyage-labels.ts's importers must be exactly the counselor surface "
+        f"— got {importers}, expected {sorted(COUNSELOR_SURFACE)}"
     )

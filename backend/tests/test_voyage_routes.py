@@ -1661,6 +1661,15 @@ def sheet(candidate):
         share_token="tok-conseiller",
         portrait_status="draft",
         completed_at=datetime.utcnow(),
+        # F5 (phase-4 final fix wave): a non-default value, so this fixture's
+        # scoring_version differs from bank.SCORING_VERSION. Under the old
+        # default (which happens to equal the bank's current version), a
+        # route that wrongly returns bank.SCORING_VERSION instead of the
+        # row's own column would still satisfy this fixture's expectations
+        # by coincidence -- only test_a_drifted_row_keeps_its_own_scoring_
+        # version_not_the_banks (which sets its own non-default value) would
+        # catch it. Both tests must now carry load.
+        scoring_version="cahier-2025-11",
     )
     voyage.responses = {"answers": _answers_for("0"), "billets": {}}
     voyage.portrait = {
