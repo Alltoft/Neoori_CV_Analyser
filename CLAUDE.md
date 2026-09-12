@@ -145,6 +145,100 @@ Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 - Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
 - The legacy Vercel/Render/TiDB test env keeps serving its last deploy until cutover — data migration steps in `DOCKER.md`.
 
+## Le voyage
+
+Six sessions (S0–S5) digitised from the PM's paper cahier and its counselor
+scoring manual. Session 0 is five minutes and self-serve; sessions 1–5 need a
+counselor code. Scoring is arithmetic in Python — no model call — and **the
+candidate never sees a score or a trait name**. The one surface that may show
+that vocabulary is the counselor's own, `/voyage/c/<token>`, gated to the
+counselor (and admin) role.
+
+- Route `/voyage`, API `/api/voyage`, tables `voyages` / `voyage_notes`
+- Answers, phrase and portrait are Fernet-encrypted at rest, same util as bloc 5
+- Two prompt slots in `PromptVersion.path`: `voyage_micro`, `voyage_portrait`
+- Spec: `docs/superpowers/specs/2026-09-09-voyage-design.md`
+- Contracts (names, types, shapes): `docs/superpowers/plans/2026-09-09-voyage-contracts.md`
+
+### A fresh database needs the migration *and* two seed scripts
+
+`flask db upgrade` alone is not enough. Neither prompt slot above has a row
+until it is seeded, and without an active prompt session 0 and the portrait
+error on first use — while `_merge_voyage()` (below) still runs on every
+`POST /api/analyses/` regardless. Skip the seeds and **every `/api/voyage`
+and `/api/analyses/` call 500s.** This bit us on 2026-09-12. From `backend/`:
+
+```
+flask db upgrade
+python seed_prompt_v10_voyage_micro.py
+python seed_prompt_v10_voyage_portrait.py
+```
+
+Both scripts are idempotent — re-running does not duplicate a version.
+DOCKER.md's deploy runbook already runs all three steps; this is here so a
+local database, or a fresh VPS one, is not the first place someone
+rediscovers it.
+
+### What reaches an analysis
+
+`routes/analyses._merge_voyage()` folds the voyage into every new analysis,
+beside the Profil de base fold and independent of it — session 0 requires no
+profile:
+
+- `inputs["_voyage"]` — 2 to 9 plain-French lines. No digit, no trait name, no
+  framework name. Model-facing only: no page renders it.
+- `inputs["_voyage_id"]` and `Analysis.voyage_id` — which voyage fed which
+  analysis, recoverable afterwards. Same discipline as `prompt_version_id`.
+- `anthropic_service._voyage_block()` wraps the lines under
+  `--- CE QUE LE VOYAGE A RÉVÉLÉ ---` inside `_common_tail()`, so all three
+  parcours carry it from one place.
+
+Two rules hold this together, and both have tests in
+`backend/tests/test_voyage_prompt_context.py`:
+
+1. **Never required.** No voyage → no key, no block, no placeholder. Every
+   parcours runs identically without one.
+2. **The stage rule.** Until `portrait_status == "validated"`, an analysis
+   receives only session 0's phrase and its three attractions. The full
+   reduction travels only after a counselor validates — an analysis must never
+   perform a restitution the counselor has not given yet.
+
+The reduction is computed once, at merge time, and stored on the row. Unlocking
+an analysis regenerates it from the same lines the first run sent, so a report
+already delivered is never rewritten by a later validation.
+
+`--- CE QUE LE VOYAGE A RÉVÉLÉ ---` and « Phrase révélée » share a root with the
+banned « révélation ». They are model-facing prompt text, not UI chrome, and the
+ban list does not reach them. It does reach every page: the hub says « Votre
+phrase », never « Votre révélation ».
+
+### Erasing a voyage erases what it copied, too
+
+`DELETE /api/voyage` (RGPD erasure) does not stop at the voyage row. Before
+deleting it, the route strips `_voyage` and `_voyage_id` out of `inputs` on
+every past analysis that carried them. PM ruling, 2026-09-12: a person
+erasing their voyage must not leave its reduced lines sitting in plaintext on
+old reports, pointing at an id that no longer resolves to anything. The
+analysis text already delivered (`Analysis.output`) is untouched — only the
+copied voyage inputs go.
+
+### Le voyage is not le portrait
+
+**Do not touch these four lines.** Le portrait (Parcours doc §8) is the paid
+synthesis of CV + form + voyage. It is still unbuilt, so it stays out of scope:
+
+- `README.md:7` — the "second module (Portrait …) is out of scope" paragraph
+- `README.md:43` — `| Portrait module | Out of scope |`
+- `plan.md:248` — the out-of-scope paragraph of the CDC v1.2 build. It also
+  names « Le voyage », because that was true of *that* build; it is a snapshot
+  of a finished scope, not a live statement about this one.
+- `CLAUDE.md`'s own `## Out of scope` below — `- Portrait module` stays
+
+The six-section text a counselor validates *inside* a voyage is also called a
+portrait (`portrait_status`, `/voyage/portrait`). Same French word, different
+object. Deleting an out-of-scope line because "the portrait is built now" would
+be deleting the wrong one.
+
 ## Out of scope
 - Portrait module
 - CV-per-job adaptation
