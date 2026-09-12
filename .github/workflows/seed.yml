@@ -1,0 +1,57 @@
+# Run the prompt seed scripts on the VPS, by hand.
+#
+# Migrations apply themselves at container start (backend/entrypoint.sh), the
+# seeds do not: a fresh slot has no PromptVersion row until one is seeded, and
+# the surface that needs it fails with "Aucun prompt actif pour le slot ...".
+# deploy.yml deliberately does not run these — seeding is not part of every
+# push — so this is the dispatchable half of the runbook in DOCKER.md:55-60.
+#
+# Every script is idempotent: re-running does not duplicate a version.
+# Uses the same VPS_HOST / VPS_USER / VPS_SSH_KEY secrets as deploy.yml.
+name: seed prompts
+
+on:
+  workflow_dispatch:
+    inputs:
+      set:
+        description: which seed scripts to run
+        type: choice
+        default: voyage
+        options: [voyage, all]
+
+concurrency:
+  group: seed
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run seed scripts in the backend container
+        uses: appleboy/ssh-action@v1
+        env:
+          SEED_SET: ${{ inputs.set }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: SEED_SET
+          script: |
+            set -e
+            cd /srv/neoori
+            if [ "$SEED_SET" = "all" ]; then
+              SCRIPTS="seed_prompt_v18.py seed_prompt_v11_p3.py seed_prompt_v10_p2.py \
+                       seed_prompt_v10_voyage_micro.py seed_prompt_v10_voyage_portrait.py"
+            else
+              SCRIPTS="seed_prompt_v10_voyage_micro.py seed_prompt_v10_voyage_portrait.py"
+            fi
+            for s in $SCRIPTS; do
+              echo "--- $s"
+              docker compose -f docker-compose.prod.yml exec -T backend python "$s"
+            done
+            echo "--- active prompt slots"
+            docker compose -f docker-compose.prod.yml exec -T backend flask shell <<'PY'
+            from app.models.prompt_version import PromptVersion
+            for p in PromptVersion.query.filter_by(is_active=True).all():
+                print(p.path, p.version_label)
+            PY
