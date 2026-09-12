@@ -19,6 +19,10 @@ interface Stats {
   timeout_count: number; success_rate: number; conversion_rate: number
   total_tokens_in: number; total_tokens_out: number
   active_prompt: PromptVersion | null
+  /** Optional so a frontend build that lands ahead of the backend still renders
+   *  the rest of the dashboard — same reasoning as the active_prompt fallback in
+   *  backend/app/routes/admin.py:57. */
+  voyages?: { started: number; s0_done: number; completed: number; validated: number }
 }
 interface LogEntry {
   id: string; created_at: string
@@ -143,6 +147,36 @@ export default function AdminPage() {
             </>
           )}
       </div>
+
+      {/* Le voyage — one row per attempt (spec decision 3), so "commencés"
+          counts attempts, not people. */}
+      {!loading && stats?.voyages ? (
+        <div>
+          <p className="eyebrow mb-2 text-muted-foreground">Le voyage</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard
+              label="Voyages commencés"
+              value={fmtInt(stats.voyages.started)}
+              hint="Tous statuts confondus"
+            />
+            <StatCard
+              label="Session 0 terminée"
+              value={fmtInt(stats.voyages.s0_done)}
+              hint="Session 0 passée"
+            />
+            <StatCard
+              label="Voyages terminés"
+              value={fmtInt(stats.voyages.completed)}
+              hint="Les six sessions"
+            />
+            <StatCard
+              label="Portraits validés"
+              value={fmtInt(stats.voyages.validated)}
+              hint="Transmis au candidat"
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         {/* Condensed prompt panel */}
