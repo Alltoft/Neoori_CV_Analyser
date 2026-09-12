@@ -1,7 +1,7 @@
 # Le voyage — phase 3 handoff
 
 Phase 3 (the candidate UI) is complete and merged into `initial` **locally**. 25 commits (`7dfee96..` this handoff),
-**764 backend tests**, 0 failures. `npm run build` passes; `npm run lint` is exactly the
+**770 backend tests**, 0 failures. `npm run build` passes; `npm run lint` is exactly the
 pre-existing `✖ 10 problems (5 errors, 5 warnings)`. Nothing is pushed; nothing is deployed.
 
 **Spec:** `docs/superpowers/specs/2026-09-09-voyage-design.md`
