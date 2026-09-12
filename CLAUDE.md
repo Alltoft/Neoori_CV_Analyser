@@ -162,11 +162,19 @@ counselor (and admin) role.
 
 ### A fresh database needs the migration *and* two seed scripts
 
-`flask db upgrade` alone is not enough. Neither prompt slot above has a row
-until it is seeded, and without an active prompt session 0 and the portrait
-error on first use — while `_merge_voyage()` (below) still runs on every
-`POST /api/analyses/` regardless. Skip the seeds and **every `/api/voyage`
-and `/api/analyses/` call 500s.** This bit us on 2026-09-12. From `backend/`:
+Skipping either half fails differently, and the two are easy to mix up when
+debugging under pressure:
+
+- **Missing migrations** — every `/api/voyage` and `/api/analyses/` call
+  500s: `Unknown column 'analyses.voyage_id'`, `Table 'neoori.voyages'
+  doesn't exist`. Neither surface can run at all without the schema.
+- **Missing seeds** — the schema is fine, so session 0 completes, but the
+  phrase fails with « Aucun prompt actif pour le slot voyage_micro » (now
+  retryable), because neither prompt slot above has a row until it is
+  seeded. The portrait fails the same way, for the same reason.
+
+This bit us on 2026-09-12, probing a migrated-but-unseeded database. Both
+steps stay mandatory. From `backend/`:
 
 ```
 flask db upgrade
@@ -175,9 +183,11 @@ python seed_prompt_v10_voyage_portrait.py
 ```
 
 Both scripts are idempotent — re-running does not duplicate a version.
-DOCKER.md's deploy runbook already runs all three steps; this is here so a
-local database, or a fresh VPS one, is not the first place someone
-rediscovers it.
+DOCKER.md's deploy runbook (`DOCKER.md:55-60`) runs the two seed scripts —
+not the migration: the production container applies migrations on its own
+at startup (`backend/entrypoint.sh:24`). This section is here so a local
+database, or a fresh VPS one, is not the first place someone rediscovers
+either half.
 
 ### What reaches an analysis
 
@@ -185,8 +195,9 @@ rediscovers it.
 beside the Profil de base fold and independent of it — session 0 requires no
 profile:
 
-- `inputs["_voyage"]` — 2 to 9 plain-French lines. No digit, no trait name, no
-  framework name. Model-facing only: no page renders it.
+- `inputs["_voyage"]` — up to nine plain-French lines, a line omitted rather
+  than left empty. No digit, no trait name, no framework name. Model-facing
+  only: no page renders it.
 - `inputs["_voyage_id"]` and `Analysis.voyage_id` — which voyage fed which
   analysis, recoverable afterwards. Same discipline as `prompt_version_id`.
 - `anthropic_service._voyage_block()` wraps the lines under
