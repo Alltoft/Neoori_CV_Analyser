@@ -130,6 +130,14 @@ def save_draft():
     # no id is ever actually a list, so falling back to "no draft_id" (a new
     # draft) is the right answer, same as an absent one.
     draft_id = text_field(data, "draft_id")
+    # Same rule as _merge_voyage: _voyage / _voyage_id are server-owned, never
+    # client-supplied. A draft never sets them itself (voyage_id is only
+    # assigned at create_analysis time), so a posted pair here can only be a
+    # leftover echoed back from a previous submit response or a planted one --
+    # pop both before the row is created or updated, covering both branches
+    # below in one place.
+    inputs.pop("_voyage", None)
+    inputs.pop("_voyage_id", None)
 
     if draft_id:
         analysis = Analysis.query.filter_by(

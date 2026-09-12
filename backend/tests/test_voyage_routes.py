@@ -577,6 +577,42 @@ def test_deleting_a_voyage_does_not_touch_another_users_analysis(client, auth, c
     assert refreshed.inputs["_voyage_id"] == other_voyage.id
 
 
+def test_deleting_a_voyage_does_not_strip_a_colliding_analysis_owned_by_someone_else(
+        client, auth, candidate):
+    """The test above proves nothing about the user_id half of the erasure
+    filter on its own: other_analysis there carries a *different* voyage_id,
+    so it is already excluded by the voyage_id half alone -- dropping
+    `user_id=voyage.user_id` from that filter would leave it green too.
+
+    This is the case that makes user_id load-bearing: a row that names the
+    caller's own voyage_id but belongs to someone else. _merge_voyage's
+    per-caller lookup means the normal create path can never produce such a
+    row, but the erasure query should not depend on that invariant holding
+    everywhere forever -- hence "belt-and-braces" in the docstring above.
+
+    voyage_id still goes NULL: that half is the FK's ondelete=SET NULL
+    (models/analysis.py), which fires for every row referencing the deleted
+    id regardless of user_id. Only the inputs strip is what user_id gates,
+    so that -- surviving intact -- is the property this test actually pins.
+    """
+    other = _user("collision-erasure@test.fr")
+    voyage = _voyage(candidate)
+    colliding = Analysis(
+        user_id=other.id, voyage_id=voyage.id, status="success",
+        inputs={"_voyage": ["ligne de l'autre"], "_voyage_id": voyage.id},
+    )
+    _db.session.add(colliding)
+    _db.session.commit()
+
+    res = client.delete("/api/voyage", headers=auth)
+    assert res.status_code == 200
+
+    refreshed = Analysis.query.get(colliding.id)
+    assert refreshed.voyage_id is None
+    assert refreshed.inputs["_voyage"] == ["ligne de l'autre"]
+    assert refreshed.inputs["_voyage_id"] == voyage.id
+
+
 def test_deleting_a_voyage_with_no_referencing_analyses_still_returns_200(
         client, auth, candidate):
     """The referencing-analyses lookup runs even when it will find nothing --

@@ -151,12 +151,33 @@ def _s0_answers() -> dict:
 def _all_answers() -> dict:
     """All 53 items answered — session 0 all OUI, every scene on its first
     option. The content is irrelevant; the point is that synthesize() returns
-    all six sections filled, so the validated stage has something to emit."""
+    all six sections filled, so the validated stage has something to emit.
+
+    Every S0 item OUI resolves every axis's resultant to >= 0 (ties go to 0
+    and drop out of top3, never negative) -- given this bank's item signs,
+    s0.top3 therefore only ever reads AXES[...]["plain_pos"]. See
+    _all_answers_non() below for the mirror that exercises plain_neg."""
     answers = {}
     for n in bank.SESSION_IDS:
         for item_id in bank.item_ids(n):
             if n == "0":
                 answers[item_id] = True
+            else:
+                answers[item_id] = bank.item(item_id)["options"][0]["letter"]
+    return answers
+
+
+def _all_answers_non() -> dict:
+    """The mirror of _all_answers(): every session-0 item NON, every scene
+    still on its first option (phase 0's _answers() is the precedent for
+    that half). Flipping s0 to all-NON flips every axis's resultant sign, so
+    s0.top3 now reads AXES[...]["plain_neg"] instead of "plain_pos" -- the
+    pole the all-OUI fixture above can never reach."""
+    answers = {}
+    for n in bank.SESSION_IDS:
+        for item_id in bank.item_ids(n):
+            if n == "0":
+                answers[item_id] = False
             else:
                 answers[item_id] = bank.item(item_id)["options"][0]["letter"]
     return answers
@@ -212,12 +233,28 @@ def test_the_block_is_the_header_then_the_lines():
 
 
 def test_the_block_does_not_hand_out_the_stored_list():
-    """inputs["_voyage"] is a JSON column value. Handing a reference to it
-    downstream would let a message builder edit the stored row."""
+    """inputs["_voyage"] is a JSON column value. Handing out a reference to
+    it would let a downstream message builder mutate the stored row through
+    it -- so the returned block must be its own list, independent of the one
+    the caller passed in, in both directions.
+
+    `["", HEADER] + lines` always allocates a new top-level list regardless
+    of whether the concatenated operand is a copy, so this does not pin that
+    particular defensive copy -- it pins the property that actually matters:
+    the caller's list is never the object handed back (identity, not just
+    equality), and mutating either one afterwards never reaches the other.
+    """
     stored = list(S0_LINES)
-    block = _voyage_block({"_voyage": stored})
+    inputs = {"_voyage": stored}
+
+    block = _voyage_block(inputs)
+    assert block is not stored
+
     block.append("intrus")
-    assert stored == S0_LINES
+    assert inputs["_voyage"] == S0_LINES
+
+    inputs["_voyage"].append("aussi un intrus")
+    assert block == ["", VOYAGE_HEADER] + S0_LINES + ["intrus"]
 
 
 @pytest.mark.parametrize("formatter, inputs", [
@@ -474,6 +511,35 @@ def test_an_anonymous_posted_voyage_is_also_stripped(_start, client, app):
     assert payload["voyage_id"] is None
 
 
+def test_a_posted_voyage_is_stripped_from_a_draft_new_and_updated(client, app):
+    """save_draft has none of _merge_voyage's protections -- inputs is
+    stored on the row verbatim, so a client-posted _voyage / _voyage_id used
+    to survive on a draft row. Not exploitable today (unlock refuses drafts,
+    voyage_id is never set on this route, and submission re-enters
+    create_analysis, which pops again) but this is the one place _voyage
+    was not server-owned, contradicting this module's own rule 5. Covers
+    both branches save_draft can take: creating a new draft and updating an
+    existing one.
+    """
+    user = _user("brouillon-injection@test.fr")
+    hostile = {"_path": "1", "_voyage": ["intrus"], "_voyage_id": "x"}
+
+    res = client.post("/api/analyses/draft", json={"inputs": hostile},
+                      headers=_auth(user))
+    assert res.status_code == 201, res.data
+    created = res.get_json()["analysis"]
+    assert "_voyage" not in created["inputs"]
+    assert "_voyage_id" not in created["inputs"]
+
+    res = client.post("/api/analyses/draft", json={
+        "draft_id": created["id"], "inputs": hostile,
+    }, headers=_auth(user))
+    assert res.status_code == 200, res.data
+    updated = res.get_json()["analysis"]
+    assert "_voyage" not in updated["inputs"]
+    assert "_voyage_id" not in updated["inputs"]
+
+
 # ── the stage rule ───────────────────────────────────────────────────────────
 #
 # The load-bearing rule of the module. The paper protocol makes restitution a
@@ -722,6 +788,13 @@ SYNTHESIS = {
 # import time as SYNTHESIS is to write out by hand.
 REAL_SYNTHESIS = scoring.synthesize({"answers": _all_answers(), "billets": {}})
 
+# The all-NON mirror. Without this, every s0.top3 entry in every parametrised
+# synthesis above resolves through AXES[...]["plain_pos"] -- plain_neg is
+# never read, so a banned word planted only in plain_neg reaches a real block
+# (verbatim, in "Ce qui l'attire le plus dans dix ans") while the suite stays
+# green. See test_the_block_avoids_the_projects_banned_words below.
+REAL_SYNTHESIS_NON = scoring.synthesize({"answers": _all_answers_non(), "billets": {}})
+
 
 def test_the_fixture_has_the_shape_synthesize_really_returns():
     """SYNTHESIS above is hand-written, for the ban-list guard below to run
@@ -733,8 +806,10 @@ def test_the_fixture_has_the_shape_synthesize_really_returns():
     assert set(real) == set(SYNTHESIS)
 
 
-@pytest.mark.parametrize("synthesis", [SYNTHESIS, REAL_SYNTHESIS],
-                          ids=["hand-written fixture", "real synthesize() output"])
+@pytest.mark.parametrize(
+    "synthesis", [SYNTHESIS, REAL_SYNTHESIS, REAL_SYNTHESIS_NON],
+    ids=["hand-written fixture", "real synthesize() output (all OUI)",
+         "real synthesize() output (all NON)"])
 def test_the_block_avoids_the_projects_banned_words(synthesis):
     """CLAUDE.md's ban list -- not phase 0's territory (BANNED_ROOTS there is
     the framework-vocabulary leak check, a different list for a different
@@ -744,11 +819,17 @@ def test_the_block_avoids_the_projects_banned_words(synthesis):
     is an exact match for the banned word itself, so both survive this check
     unflagged.
 
-    Parametrised over both a hand-written synthesis and a real
-    scoring.synthesize() output (rulings R5): a probe found that planting a
+    Parametrised over a hand-written synthesis and two real
+    scoring.synthesize() outputs (rulings R5): a probe found that planting a
     banned word into bank.AXES.plain_pos/plain_neg produces exactly that word
     in a real block while a fixture-only guard stays green, because the
-    fixture never touches the bank.
+    fixture never touches the bank. The all-OUI and all-NON pair matters
+    beyond "two real syntheses instead of one": every S0 item OUI resolves
+    every axis's resultant to the same sign (see _all_answers()'s docstring),
+    so s0.top3 only ever reads plain_pos under all-OUI -- a word planted
+    solely in plain_neg would reach a real block unflagged with only the
+    all-OUI case here. all-NON flips every sign, so top3 reads plain_neg
+    instead: the two together are what make this guard cover both poles.
     """
     lines = scoring.prompt_context(synthesis, PHRASE, scoring.STAGE_VALIDATED)
     assert lines, "a full synthesis must produce at least one line"
