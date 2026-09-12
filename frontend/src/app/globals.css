@@ -246,6 +246,16 @@ html { scroll-behavior: smooth; }
   background: var(--peach);
 }
 
+/* Marks AI-written text on the counselor sheet (phase-4 ruling R6): the
+   session-0 phrase and, from Task 8, the six portrait sections. Nothing else
+   on the sheet is generated prose — the synthesis table, the RIASEC bars and
+   the S0-S5 boxes are the manual's own scoring, and stay unmarked. One class,
+   used at every call site instead of repeating the utility string. */
+.ai-block {
+  border-left: 4px solid var(--peach);
+  background: var(--peach-soft);
+}
+
 /* ── Print ── */
 @page {
   size: A4;
