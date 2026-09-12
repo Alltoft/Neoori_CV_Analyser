@@ -6,6 +6,8 @@ import pytest
 
 from app.extensions import db as _db
 from app.models.analysis import Analysis
+from app.models.user import User
+from app.models.voyage import Voyage
 
 
 @pytest.fixture(autouse=True)
@@ -102,10 +104,14 @@ def test_voyage_id_is_null_rather_than_absent_when_there_is_no_voyage():
     assert payload["voyage_id"] is None
 
 
-def test_the_counselor_view_carries_it_too():
+def test_the_counselor_view_does_not_carry_it():
+    """R2: /api/c/<share_token> needs no login. _voyage itself is already
+    excluded by the inputs allow-list below; voyage_id must not ride along at
+    the top level either -- no frontend reads it, so popping it costs
+    nothing."""
     analysis = _analysis("1")
     analysis.voyage_id = "voy-456"
-    assert analysis.to_dict(audience="counselor")["voyage_id"] == "voy-456"
+    assert "voyage_id" not in analysis.to_dict(audience="counselor")
 
 
 # ── counselor view: inputs allow-list ───────────────────────────────────────
@@ -193,6 +199,30 @@ def test_candidate_audience_still_gets_every_input_key(client):
 
     assert set(data["inputs"].keys()) == set(inputs.keys())
     assert data["inputs"]["cv_text"] == inputs["cv_text"]
+
+
+def test_public_share_link_hides_the_voyage_id_too(client):
+    """Same defect surface as the inputs allow-list test above: no
+    Authorization header at all. voyage_id sits outside "inputs", so that
+    allow-list alone does not cover it -- R2."""
+    owner = User(email="voyage-share-owner@test.fr", password_hash="x")
+    _db.session.add(owner)
+    _db.session.commit()
+    voyage = Voyage(
+        user_id=owner.id, status="s0_termine", sessions_completed=["0"],
+        consent_at=datetime(2026, 9, 12), age_attested=True,
+    )
+    _db.session.add(voyage)
+    _db.session.commit()
+
+    analysis = _persisted_analysis(_full_inputs(), share_token="tok-voyage-id-hidden")
+    analysis.voyage_id = voyage.id
+    _db.session.commit()
+
+    res = client.get("/api/c/tok-voyage-id-hidden")
+
+    assert res.status_code == 200
+    assert "voyage_id" not in res.get_json()["analysis"]
 
 
 def test_an_unknown_input_key_does_not_reach_the_counselor_payload():

@@ -123,6 +123,11 @@ class Analysis(db.Model):
                 k: v for k, v in (self.inputs or {}).items()
                 if k in COUNSELOR_VISIBLE_INPUT_KEYS
             }
+            # /api/c/<share_token> needs no login. _voyage itself is already
+            # excluded by the allow-list above, but voyage_id sits outside
+            # "inputs" at the top level of this dict, so the allow-list alone
+            # does not cover it. No frontend reads it -- pop it too.
+            data.pop("voyage_id", None)
         data["sections_meta"] = meta
         # Lets the candidate view render its "vue conseiller" tab without a
         # second request, and without keeping its own copy of this rule.
