@@ -2,13 +2,16 @@
  * Le voyage — typed wrappers over /api/voyage.
  *
  * Mirrors backend/app/routes/voyage.py § E. The only module in the frontend
- * that knows a voyage endpoint path. Counselor endpoints (/c/<token>) belong to
- * phase 4 and are deliberately absent.
+ * that knows a voyage endpoint path — phase 4 (ruling R9) adds the counselor
+ * calls (/c/<token> and friends) so /voyage/c/[token]/page.tsx never spells
+ * out a raw path either.
  */
 import { ApiError, api } from "@/lib/api"
 import type {
   Bank, BankResponse, CandidatePortrait, CandidatePortraitResponse,
-  ResponsesResponse, SessionId, Voyage, VoyageResponse, VoyageResponses,
+  CounselorPortrait, CounselorPortraitResponse, CounselorVoyage, CounselorVoyageResponse,
+  PortraitSections, ResponsesResponse, SessionId, Voyage, VoyageNote, VoyageNoteResponse,
+  VoyageResponse, VoyageResponses,
 } from "@/types/voyage"
 
 /** Text-only bank: 6 sessions, 53 items, no weights (contracts § A.4 public()). */
@@ -73,3 +76,50 @@ export function errorStatus(err: unknown): string | null {
   const status = err.body?.status
   return typeof status === "string" ? status : null
 }
+
+// ── counselor (GET /api/voyage/c/<token> and friends) ────────────────────────
+// Role AND token required server-side (spec § Security) — /voyage/c/[token]
+// never calls these unless the signed-in user is already counselor/admin.
+
+/** The page-18 sheet plus the portrait draft, recomputed from the answers on
+ *  every read (contracts § E10 — ten keys, phase-4 ruling R10's
+ *  scoring_version included). 404 when the token matches no voyage. */
+export const getCounselorVoyage = (token: string): Promise<CounselorVoyage> =>
+  api.get<CounselorVoyageResponse>(`/voyage/c/${token}`).then((r) => r.voyage)
+
+/** Replace all six sections. 200 with edited:true while draft or validated;
+ *  409 "Aucun portrait à modifier." while generating or error; a blank,
+ *  missing or unknown key is a 400 {"errors": [...]} (§ E11). */
+export const putPortrait = (
+  token: string,
+  sections: PortraitSections,
+): Promise<CounselorPortrait> =>
+  api.put<CounselorPortraitResponse>(`/voyage/c/${token}/portrait`, { sections })
+    .then((r) => r.portrait)
+
+/** 202 while draft or error, or while generating past
+ *  PORTRAIT_RETRY_STALE_MINUTES (10 min); 409 otherwise — a fresh generating
+ *  row, a validated one, or no portrait at all (§ E12). */
+export const regeneratePortrait = (token: string): Promise<CounselorPortrait> =>
+  api.post<CounselorPortraitResponse>(`/voyage/c/${token}/portrait/regenerate`, {})
+    .then((r) => r.portrait)
+
+/** « Valider et transmettre ». 200 only while draft — the server validates
+ *  the STORED sections, so a caller must save first (phase-4 ruling R12);
+ *  409 otherwise (§ E13). */
+export const validatePortrait = (token: string): Promise<CounselorPortrait> =>
+  api.post<CounselorPortraitResponse>(`/voyage/c/${token}/validate`, {})
+    .then((r) => r.portrait)
+
+/** This counselor's own note on this voyage — never the candidate's, never
+ *  another counselor's (contracts § C.7). A miss is 200 {note: null}, not a
+ *  rejection (§ E14). */
+export const getNote = (token: string): Promise<VoyageNote | null> =>
+  api.get<VoyageNoteResponse>(`/voyage/c/${token}/notes`).then((r) => r.note)
+
+/** Upsert, keyed on (voyage, counselor). body: "" legitimately clears the
+ *  note (200); an absent or null body is refused with 400 "Note invalide."
+ *  server-side (§ E15) — never send those, this wrapper always sends a
+ *  string. */
+export const putNote = (token: string, body: string): Promise<VoyageNote | null> =>
+  api.put<VoyageNoteResponse>(`/voyage/c/${token}/notes`, { body }).then((r) => r.note)
