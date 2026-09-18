@@ -6,6 +6,9 @@ from app.extensions import db as _db
 from app.models.profile import (
     ACCEPTED_AGE_BRACKETS,
     AGE_BRACKETS,
+    APPETENCE_ETUDES,
+    DIPLOMES,
+    TYPES_ETUDES,
     Profile,
     SensitiveProfile,
     normalize_conditions,
@@ -217,6 +220,60 @@ def test_brackets_meet_at_25_without_overlapping(app):
     assert AGE_BRACKETS.index("22_24") + 1 == AGE_BRACKETS.index("25_34")
     for bracket in ("25_34", "35_44", "45_54", "55_plus"):
         assert bracket in AGE_BRACKETS
+
+
+# ── « Ton parcours » ─────────────────────────────────────────────────────────
+
+def test_parcours_block_round_trips(client, auth):
+    """The four questions asked after S1. appetence_etudes is the one that
+    filters the pistes by study length, so it earns its own assertion."""
+    res = client.put("/api/profile", json={
+        **BASE,
+        "diplome": "bac",
+        "type_etudes": "technologiques",
+        "intitule_etudes": "Bac STI2D",
+        "appetence_etudes": "courtes",
+    }, headers=auth)
+    assert res.status_code in (200, 201)
+
+    got = client.get("/api/profile", headers=auth).get_json()["profile"]
+    assert got["diplome"] == "bac"
+    assert got["type_etudes"] == "technologiques"
+    assert got["intitule_etudes"] == "Bac STI2D"
+    assert got["appetence_etudes"] == "courtes"
+
+
+def test_every_parcours_option_is_accepted(client, auth):
+    for field, allowed in (
+        ("diplome", DIPLOMES),
+        ("type_etudes", TYPES_ETUDES),
+        ("appetence_etudes", APPETENCE_ETUDES),
+    ):
+        for value in allowed:
+            res = client.put("/api/profile", json={**BASE, field: value}, headers=auth)
+            assert res.status_code in (200, 201), f"{field}={value}"
+            assert res.get_json()["profile"][field] == value
+
+
+def test_parcours_rejects_an_unknown_option(client, auth):
+    for field in ("diplome", "type_etudes", "appetence_etudes"):
+        res = client.put("/api/profile", json={**BASE, field: "doctorat_honoris"}, headers=auth)
+        assert res.status_code == 400, field
+
+
+def test_parcours_is_optional(client, auth):
+    """A profile saved before this block existed must still save."""
+    res = client.put("/api/profile", json=BASE, headers=auth)
+    assert res.status_code in (200, 201)
+    got = client.get("/api/profile", headers=auth).get_json()["profile"]
+    assert got["diplome"] is None
+    assert got["appetence_etudes"] is None
+
+
+def test_intitule_etudes_is_free_text_and_clearable(client, auth):
+    client.put("/api/profile", json={**BASE, "intitule_etudes": "CAP Cuisine"}, headers=auth)
+    res = client.put("/api/profile", json={**BASE, "intitule_etudes": ""}, headers=auth)
+    assert res.get_json()["profile"]["intitule_etudes"] is None
 
 
 def test_legacy_bracket_is_accepted_but_never_offered(client, auth):

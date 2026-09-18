@@ -53,6 +53,17 @@ LEGACY_AGE_BRACKETS = ("moins_25",)
 
 ACCEPTED_AGE_BRACKETS = AGE_BRACKETS + LEGACY_AGE_BRACKETS
 
+# « Ton parcours » — asked after session 1, not at the door. The PM's rule is
+# that a young person who has just played the childhood scenes is engaged, and
+# a short block there is not the entry form they would have closed the tab on.
+DIPLOMES = ("sans_diplome", "cap_bep", "bac", "bac_2", "bac_3_plus")
+
+TYPES_ETUDES = ("generales", "technologiques", "professionnelles", "manuelles", "autre")
+
+# The one that filters the pistes: without it nothing can say whether a piste
+# is reachable for this person. Names match the spec's output schema.
+APPETENCE_ETUDES = ("courtes", "longues", "indecis", "travailler")
+
 # Bloc 5 — the eight families, each rated on three states.
 CONDITION_FAMILIES = (
     "rythme",
@@ -89,6 +100,13 @@ class Profile(db.Model):
     situation = db.Column(db.String(32), nullable=True)
     reconversion_scope = db.Column(db.String(32), nullable=True)
 
+    # « Ton parcours » — level, kind of schooling, and the appetite that filters
+    # the pistes by study length.
+    diplome = db.Column(db.String(32), nullable=True)
+    type_etudes = db.Column(db.String(32), nullable=True)
+    intitule_etudes = db.Column(db.Text, nullable=True)
+    appetence_etudes = db.Column(db.String(16), nullable=True)
+
     # Bloc 3 — Votre projet (+ optional job ad / fiche métier, extracted to text)
     projet = db.Column(db.Text, nullable=True)
     projet_document = db.Column(db.Text, nullable=True)
@@ -124,6 +142,10 @@ class Profile(db.Model):
             "rayon": self.rayon,
             "tranche_age": self.tranche_age,
             "situation": self.situation,
+            "diplome": self.diplome,
+            "type_etudes": self.type_etudes,
+            "intitule_etudes": self.intitule_etudes,
+            "appetence_etudes": self.appetence_etudes,
             "reconversion_scope": self.reconversion_scope,
             "projet": self.projet,
             "projet_document": self.projet_document,

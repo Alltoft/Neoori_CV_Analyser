@@ -12,6 +12,9 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from ..extensions import db
 from ..models.profile import (
     ACCEPTED_AGE_BRACKETS,
+    APPETENCE_ETUDES,
+    DIPLOMES,
+    TYPES_ETUDES,
     RECONVERSION_SCOPES,
     SEARCH_RADIUS,
     SITUATIONS,
@@ -33,10 +36,14 @@ _ENUMS = {
     "tranche_age": ACCEPTED_AGE_BRACKETS,
     "situation": SITUATIONS,
     "reconversion_scope": RECONVERSION_SCOPES,
+    "diplome": DIPLOMES,
+    "type_etudes": TYPES_ETUDES,
+    "appetence_etudes": APPETENCE_ETUDES,
 }
 
 _TEXT_FIELDS = (
     "prenom", "nom", "ville",
+    "intitule_etudes",
     "projet", "projet_document", "contraintes_pratiques",
 )
 
