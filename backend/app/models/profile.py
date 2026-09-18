@@ -139,6 +139,15 @@ class Profile(db.Model):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def conditions_seen(self) -> bool:
+        """Mirror of voyage.has_seen_conditions, kept here so the property and
+        the gate cannot drift: the gate imports nothing, the payload exposes
+        nothing extra, and both read the same two facts."""
+        if self.consent_sensitive_at is not None:
+            return True
+        return bool(self.sensitive is not None and self.sensitive.conditions)
+
     def to_dict(self) -> dict:
         """Never includes the sensitive half — that is the whole point of the
         split. Read it through SensitiveProfile explicitly if you need it."""
@@ -165,6 +174,11 @@ class Profile(db.Model):
                 self.consent_sensitive_at.isoformat() if self.consent_sensitive_at else None
             ),
             "consent_sensitive_version": self.consent_sensitive_version,
+            # Whether the conditions step was played, so the hub can mirror
+            # session_lock without a second request. Says the step was seen,
+            # never what was answered in it — and nothing at all about OETH,
+            # which travels only on /profile/conditions.
+            "conditions_seen": self.conditions_seen,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

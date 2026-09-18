@@ -444,3 +444,26 @@ def test_a_profile_without_bloc5_never_needs_the_second_consent(client, auth):
     res = client.put("/api/profile", json=BASE, headers=auth)
     assert res.status_code in (200, 201)
     assert res.get_json()["profile"]["consent_sensitive_at"] is None
+
+
+def test_conditions_seen_tracks_the_step_not_the_answers(client, auth):
+    """The hub mirrors session_lock from the ordinary payload, so it needs to
+    know the step was played. An empty bloc 5 is a complete answer."""
+    assert client.put("/api/profile", json=BASE, headers=auth) \
+        .get_json()["profile"]["conditions_seen"] is False
+
+    res = client.put("/api/profile", json={**BASE, "consent_sensitive": True,
+                                           "conditions": {}}, headers=auth)
+    assert res.get_json()["profile"]["conditions_seen"] is True
+
+
+def test_conditions_seen_grandfathers_a_row_written_before_the_consent(app, profile):
+    """Answers written through /profil before the second consent existed are
+    taken at their word rather than sent back through a step already answered."""
+    s = SensitiveProfile(profile_id=profile.id)
+    s.conditions = {"attention": {"state": "a_eviter", "point_fort": False}}
+    _db.session.add(s)
+    _db.session.commit()
+
+    assert profile.consent_sensitive_at is None
+    assert profile.conditions_seen is True
