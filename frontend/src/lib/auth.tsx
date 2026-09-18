@@ -11,9 +11,19 @@ interface AuthContextValue {
   user: User | null
   loading: boolean
   login:    (email: string, password: string) => Promise<void>
-  register: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, seed?: ProfileSeed) => Promise<void>
   logout:   () => Promise<void>
   refresh:  () => Promise<void>
+}
+
+/** What signup seeds the Profil de base with. The two fields session_lock has
+ *  demanded before session 1 since the voyage shipped — collected here so the
+ *  person never meets a form in the middle of the journey. `consent` is the CGV
+ *  box the form already shows; nothing is stored without it. */
+export interface ProfileSeed {
+  prenom: string
+  tranche_age: string
+  consent: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -40,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user)
   }
 
-  const register = async (email: string, password: string) => {
-    const data = await api.post<{ user: User }>("/auth/register", { email, password })
+  const register = async (email: string, password: string, seed?: ProfileSeed) => {
+    const data = await api.post<{ user: User }>("/auth/register", { email, password, ...seed })
     setUser(data.user)
   }
 

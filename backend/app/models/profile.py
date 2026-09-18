@@ -19,6 +19,16 @@ from datetime import datetime
 from ..extensions import db
 from ..utils import crypto
 
+# Which wording the person agreed to. Here rather than on the route: two
+# entry points now write a consent — the signup seed and PUT /api/profile —
+# and a version that lived in one of them would be the other's import.
+CONSENT_VERSION = "v1.2"
+
+# Bloc 5 and the OETH flag carry their own consent, versioned apart from the
+# CGV: the questions behind it can change without reopening the whole contract,
+# and a prescriber auditing Art. 9 data wants to see which wording was shown.
+CONSENT_SENSITIVE_VERSION = "v1"
+
 # Bloc 1 — search radius around the declared city.
 SEARCH_RADIUS = ("ma_ville", "30km", "ma_region", "toute_la_france")
 

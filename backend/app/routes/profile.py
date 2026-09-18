@@ -12,6 +12,8 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from ..extensions import db
 from ..models.profile import (
     ACCEPTED_AGE_BRACKETS,
+    CONSENT_SENSITIVE_VERSION,
+    CONSENT_VERSION,
     APPETENCE_ETUDES,
     DIPLOMES,
     TYPES_ETUDES,
@@ -25,13 +27,6 @@ from ..models.profile import (
 from ..utils.request_body import json_object, text_field
 
 profile_bp = Blueprint("profile", __name__)
-
-CONSENT_VERSION = "v1.2"
-
-# Bloc 5 and the OETH flag carry their own consent, versioned apart from the
-# CGV: the questions behind it can change without reopening the whole contract,
-# and a prescriber auditing Art. 9 data wants to see which wording was shown.
-CONSENT_SENSITIVE_VERSION = "v1"
 
 # The keys that consent covers. Presence, never value — see _needs_sensitive_consent.
 _SENSITIVE_FIELDS = ("conditions", "oeth")

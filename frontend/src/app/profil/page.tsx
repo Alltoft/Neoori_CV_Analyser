@@ -20,55 +20,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError } from "@/lib/api"
+import {
+  RAYONS, RECONVERSION_SCOPES, SITUATIONS, trancheOptions,
+} from "@/lib/profile-options"
 import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import type { ConditionsValue } from "@/types/conditions"
-
-/* ── Option sets. Values mirror backend/app/models/profile.py. ───────────── */
-
-const RAYONS = [
-  { value: "ma_ville", label: "Ma ville" },
-  { value: "30km", label: "Jusqu'à 30 km" },
-  { value: "ma_region", label: "Ma région" },
-  { value: "toute_la_france", label: "Toute la France" },
-]
-
-// Mirrors backend AGE_BRACKETS. Seven since the voyage brought school-age
-// candidates in; 22–24 stops where 25–34 starts, so 25 sits in one bucket.
-const TRANCHES_AGE = [
-  { value: "14_17", label: "14 – 17 ans" },
-  { value: "18_21", label: "18 – 21 ans" },
-  { value: "22_24", label: "22 – 24 ans" },
-  { value: "25_34", label: "25 – 34 ans" },
-  { value: "35_44", label: "35 – 44 ans" },
-  { value: "45_54", label: "45 – 54 ans" },
-  { value: "55_plus", label: "55 ans et plus" },
-]
-
-// Written before the split. Offered only to the person who already carries it,
-// so opening the form does not blank a bracket they never touched — picking a
-// new one is what retires it. Never shown to anyone else.
-const LEGACY_TRANCHE = { value: "moins_25", label: "Moins de 25 ans" }
-
-function trancheOptions(current: string | undefined) {
-  return current === LEGACY_TRANCHE.value ? [LEGACY_TRANCHE, ...TRANCHES_AGE] : TRANCHES_AGE
-}
-
-// Mobility used to be a separate chip field; the PM merged it in here because
-// the two were asking the same question twice.
-const SITUATIONS = [
-  { value: "en_recherche", label: "En recherche d'emploi" },
-  { value: "en_reconversion", label: "En reconversion" },
-  { value: "en_poste_evolution", label: "En poste, je souhaite évoluer" },
-  { value: "premiere_insertion", label: "Première insertion" },
-  { value: "reprise_apres_pause", label: "En reprise après une pause" },
-]
-
-const RECONVERSION_SCOPES = [
-  { value: "meme_domaine", label: "Rester dans mon domaine" },
-  { value: "changer_de_metier", label: "Changer de métier" },
-  { value: "changer_de_secteur", label: "Changer de secteur" },
-]
 
 const schema = z.object({
   prenom: z.string().min(1, "Prénom requis."),

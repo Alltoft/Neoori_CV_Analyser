@@ -9,11 +9,20 @@ from flask_jwt_extended import (
     set_refresh_cookies,
     unset_jwt_cookies,
 )
+from datetime import datetime
+
 from ..extensions import db, bcrypt
+from ..models.profile import ACCEPTED_AGE_BRACKETS, CONSENT_VERSION, Profile
 from ..models.user import User
 from ..utils.request_body import json_object, text_field, raw_text_field
 
 auth_bp = Blueprint("auth", __name__)
+
+# The two fields session_lock has demanded before S1 since the voyage shipped.
+# Collected here because this is the only moment the person is already filling
+# a form: asking for them mid-journey is the bounce to /profil that the PM's
+# placement exists to remove.
+SEED_FIELDS = ("prenom", "tranche_age")
 
 
 @auth_bp.post("/register")
@@ -29,11 +38,32 @@ def register():
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Un compte existe déjà avec cet email."}), 409
 
+    # Validated before the account exists, so a refused seed never leaves a
+    # user behind who has to pick another email to try again.
+    seed = {field: text_field(data, field) for field in SEED_FIELDS}
+    seed = {field: value for field, value in seed.items() if value}
+    if seed:
+        if data.get("consent") is not True:
+            return jsonify({"error": "Le consentement est requis."}), 400
+        bracket = seed.get("tranche_age")
+        if bracket and bracket not in ACCEPTED_AGE_BRACKETS:
+            return jsonify({"error": "Valeur invalide pour tranche_age."}), 400
+
     user = User(
         email=email,
         password_hash=bcrypt.generate_password_hash(password).decode("utf-8"),
     )
     db.session.add(user)
+    db.session.flush()  # user.id, for the profile's FK
+
+    if seed:
+        db.session.add(Profile(
+            user_id=user.id,
+            consent_at=datetime.utcnow(),
+            consent_version=CONSENT_VERSION,
+            **seed,
+        ))
+
     db.session.commit()
 
     response = jsonify({"user": user.to_dict()})
