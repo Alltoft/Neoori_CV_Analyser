@@ -15,6 +15,7 @@ from app.models.profile import (
     prompt_context,
 )
 from app.models.user import User
+from app.routes.profile import CONSENT_SENSITIVE_VERSION
 from app.utils import crypto
 
 
@@ -305,6 +306,7 @@ def test_changing_away_from_reconversion_clears_the_scope(client, auth):
 def test_bloc5_is_stored_and_returned_on_its_own_endpoint(client, auth):
     client.put("/api/profile", json={
         **BASE,
+        "consent_sensitive": True,
         "conditions": {"rythme": {"state": "a_eviter", "point_fort": False}},
     }, headers=auth)
 
@@ -316,7 +318,8 @@ def test_bloc5_is_stored_and_returned_on_its_own_endpoint(client, auth):
 
 
 def test_deleting_the_profile_is_a_full_erasure(client, auth):
-    client.put("/api/profile", json={**BASE, "oeth": True}, headers=auth)
+    client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": True},
+               headers=auth)
     assert client.delete("/api/profile", headers=auth).status_code == 200
     assert client.get("/api/profile", headers=auth).get_json()["profile"] is None
     assert SensitiveProfile.query.count() == 0
@@ -340,14 +343,15 @@ def test_oeth_is_indistinguishable_from_the_outside(client, app):
     a = _signup(client, "oeth-yes@test.fr")
     b = _signup(client, "oeth-no@test.fr")
 
-    res_a = client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
-    res_b = client.put("/api/profile", json={**BASE, "oeth": False}, headers=b)
+    res_a = client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": True}, headers=a)
+    res_b = client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": False}, headers=b)
 
     assert res_a.status_code == res_b.status_code
 
     def scrub(payload):
         p = dict(payload["profile"])
-        for volatile in ("id", "created_at", "updated_at", "consent_at"):
+        for volatile in ("id", "created_at", "updated_at", "consent_at",
+                         "consent_sensitive_at"):
             p.pop(volatile, None)
         return p
 
@@ -361,7 +365,7 @@ def test_owner_gets_their_own_oeth_answer_back(client, app):
     the stored answer would silently clear a status governing the person's
     rights on their next save."""
     a = _signup(client, "oeth-persist@test.fr")
-    client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
+    client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": True}, headers=a)
     assert client.get("/api/profile/conditions", headers=a).get_json()["oeth"] is True
 
 
@@ -369,7 +373,7 @@ def test_oeth_never_rides_on_the_ordinary_profile_payload(client, app):
     """It travels only on the sensitive endpoint, so it cannot reach an admin
     view, a log line, or a PDF by accident."""
     a = _signup(client, "oeth-channel@test.fr")
-    client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
+    client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": True}, headers=a)
     body = client.get("/api/profile", headers=a).get_data(as_text=True)
     assert "oeth" not in body.lower()
 
@@ -380,6 +384,63 @@ def test_the_sensitive_row_exists_either_way(client, app):
     they are without decrypting anything."""
     a = _signup(client, "row-yes@test.fr")
     b = _signup(client, "row-no@test.fr")
-    client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
-    client.put("/api/profile", json={**BASE, "oeth": False}, headers=b)
+    client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": True}, headers=a)
+    client.put("/api/profile", json={**BASE, "consent_sensitive": True, "oeth": False}, headers=b)
     assert SensitiveProfile.query.count() == 2
+
+
+# ── the consent bloc 5 needs of its own ──────────────────────────────────────
+
+def test_bloc5_refuses_to_store_without_its_own_consent(client, auth):
+    """The signup CGV covers the ordinary half. Bloc 5 is health-adjacent and
+    OETH is a disability status — Art. 9 — so a generic tick taken before the
+    person had seen the product is not consent for either."""
+    res = client.put("/api/profile", json={
+        **BASE, "conditions": {"rythme": {"state": "a_eviter", "point_fort": False}},
+    }, headers=auth)
+    assert res.status_code == 400
+    assert "conditions de travail" in res.get_json()["errors"][0]
+
+    # and nothing was written on the way out
+    assert client.get("/api/profile/conditions", headers=auth).get_json()["conditions"] == {}
+
+
+def test_bloc5_consent_is_recorded_once_and_then_carries(client, auth):
+    res = client.put("/api/profile", json={
+        **BASE, "consent_sensitive": True,
+        "conditions": {"rythme": {"state": "a_eviter", "point_fort": False}},
+    }, headers=auth)
+    assert res.status_code in (200, 201)
+
+    first = res.get_json()["profile"]["consent_sensitive_at"]
+    assert first is not None
+    assert res.get_json()["profile"]["consent_sensitive_version"] == CONSENT_SENSITIVE_VERSION
+
+    # a later edit needs no second tick, and does not move the record
+    again = client.put("/api/profile", json={
+        **BASE, "conditions": {"attention": {"state": "me_convient", "point_fort": False}},
+    }, headers=auth)
+    assert again.status_code == 200
+    assert again.get_json()["profile"]["consent_sensitive_at"] == first
+
+
+def test_the_consent_gate_does_not_leak_the_oeth_flag(client, app):
+    """The gate keys on the presence of the sensitive fields, never on their
+    values. Were it to refuse `oeth: true` and accept `oeth: false`, the
+    refusal itself would tell the person they had just flagged themselves."""
+    a = _signup(client, "gate-yes@test.fr")
+    b = _signup(client, "gate-no@test.fr")
+
+    res_a = client.put("/api/profile", json={**BASE, "oeth": True}, headers=a)
+    res_b = client.put("/api/profile", json={**BASE, "oeth": False}, headers=b)
+
+    assert res_a.status_code == res_b.status_code == 400
+    assert res_a.get_json() == res_b.get_json()
+
+
+def test_a_profile_without_bloc5_never_needs_the_second_consent(client, auth):
+    """Most people never open the conditions step. Saving the ordinary half
+    must not demand a consent for data they did not give."""
+    res = client.put("/api/profile", json=BASE, headers=auth)
+    assert res.status_code in (200, 201)
+    assert res.get_json()["profile"]["consent_sensitive_at"] is None

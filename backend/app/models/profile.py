@@ -119,6 +119,14 @@ class Profile(db.Model):
     consent_at = db.Column(db.DateTime, nullable=True)
     consent_version = db.Column(db.String(16), nullable=True)
 
+    # The second consent, for bloc 5 and the OETH flag only. Those are
+    # health-adjacent and a disability status — GDPR Art. 9 — and the CGV tick
+    # taken at signup, before the person had seen the product, is neither
+    # specific nor informed for them. Null for everyone who never opened the
+    # conditions step, which is most people.
+    consent_sensitive_at = db.Column(db.DateTime, nullable=True)
+    consent_sensitive_version = db.Column(db.String(16), nullable=True)
+
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -151,6 +159,12 @@ class Profile(db.Model):
             "projet_document": self.projet_document,
             "contraintes_pratiques": self.contraintes_pratiques,
             "consent_at": self.consent_at.isoformat() if self.consent_at else None,
+            # The record, never the answers: this says a consent was given, not
+            # what was stored under it, so it discriminates nobody.
+            "consent_sensitive_at": (
+                self.consent_sensitive_at.isoformat() if self.consent_sensitive_at else None
+            ),
+            "consent_sensitive_version": self.consent_sensitive_version,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
