@@ -249,9 +249,10 @@ export default function VoyagePage() {
     setError(null)
     setCreating(true)
     // The entry block first: it is part of « Je suis prêt(e) », not a form the
-    // person is sent to afterwards. `consent` is the same tick the gate below
-    // already requires, which is also what PUT /profile asks for on creation.
-    api.put("/profile", { ...entry, consent: true })
+    // person is sent to afterwards. The consent goes only with a profile that
+    // has none — signup seeds one, and re-sending it would restamp a consent
+    // the person gave once, moving the record off the moment they agreed.
+    api.put("/profile", profile?.consent_at ? entry : { ...entry, consent: true })
       .then(() => createVoyage())
       .then((v) => {
         setVoyage(v)
@@ -268,7 +269,7 @@ export default function VoyagePage() {
       .finally(() => {
         setCreating(false)
       })
-  }, [load, entry])
+  }, [load, entry, profile])
 
   // F3: guarded with a ref, not codeState. State would also survive two
   // separate discrete events (React flushes those synchronously, so the

@@ -91,3 +91,73 @@ wanting to move » from « première insertion », and grep confirms it costs on
 But the PM's PDFs never ask it, and his audience — a 16-year-old choosing a school — has
 no meaningful answer to it. If the youth parcours is the only one that uses the voyage,
 `situation` could move to the analysis form instead and leave the voyage alone.
+
+---
+
+# Handoff — what shipped, and what you need to know
+
+Branch `feat/profile-in-voyage`, 7 commits off `initial`. Nothing pushed.
+
+**Verification at handoff:** `893 passed` (backend, was 859 at branch point) ·
+`npx tsc --noEmit` clean · `npx next build` succeeds, `/voyage/etape/[bloc]`
+listed · `npx eslint src/` shows 5 errors, all in files this branch did not
+create (`react-hooks/set-state-in-effect` in `lib/auth.tsx`,
+`admin/analyses`, `admin/prompts`, `espace`, and `react-hooks/purity` in
+`analyse/en-cours/[id]`) — same five as before the branch.
+
+## 7 · Read this first: my commits contain some of your uncommitted work
+
+Your tree had 45 uncommitted files when I started (the voyage neutral / ranked
+choices / no-billet work, plus the two PDFs and migration `b4c5d6e7f8a9` as
+untracked files). I branched rather than committing on `initial`, but several
+files I had to edit were already modified — `models/voyage.py`,
+`types/voyage.ts`, `voyage-labels.ts`, `voyage/page.tsx`,
+`voyage/session/[n]/page.tsx`, `test_voyage_routes.py`,
+`test_voyage_parity.py`, `test_voyage_prompt_context.py` — and staging them
+swept your changes in alongside mine.
+
+**Nothing is lost**, and 34 files are still uncommitted on the branch. But my
+commits are not purely mine, and the diffs will read larger than the work.
+If you want them separated, `git reset --soft initial` and re-stage by hand —
+you lose the commit messages, which is the only real cost.
+
+I did **not** touch `TEST-PLAN.md` for exactly this reason, so several of its
+rows are now stale:
+
+| Row | Now wrong because |
+|---|---|
+| 3.1.1 | `/profil` has seven cards — « Votre parcours » is inserted as *2 bis* |
+| 3.1.2 | Rayon is read-only and only shown to rows that have one; brackets are seven, not five |
+| 3.2.x | Bloc 5 is not saved until the new bloc-6 consent is ticked |
+| 12 preamble | S1 wants prénom + tranche d'âge (now from signup); S2–S5 also want the parcours block, S5 the conditions step |
+
+## What is built
+
+- 7 age brackets meeting at 25, `moins_25` accepted and never offered
+- 4 parcours columns + 2 sensitive-consent columns, two idempotent migrations
+  (`c5d6e7f8a9b0`, `d6e7f8a9b0c1`) and a test that the revision graph has one head
+- `session_lock` gates S2–S5 on the parcours block and S5 on the conditions step
+- Signup seeds prénom + tranche d'âge; the entry block sits on the hub's gate;
+  `/voyage/etape/<bloc>` serves parcours and conditions
+- `_profile_block` carries the parcours lines; `rayon` prints only for rows
+  that still hold one
+
+## What is not built
+
+1. **Module Pont (FP-1…FP-14).** Post-portrait, optional, feeds no analysis.
+2. **The bassin d'emploi lookup.** `ville` is collected and reaches the prompt,
+   but nothing reads BMO, so « demande locale » has no source. Retiring `rayon`
+   means new profiles now carry no radius signal at all until this exists.
+3. **The counselor sheet does not show the parcours block.** `/voyage/c/<token>`
+   still shows prénom, tranche d'âge, situation. Adding diplôme and appétence
+   there is a few lines and probably wanted — I left it because the counselor
+   view was not in the scope we discussed.
+4. **No browser pass.** Everything is verified by tests, types and a
+   production build; I did not run the app and click through the new steps.
+
+## Two judgement calls I made alone
+
+- **All eight condition families are asked**, not the five I said. Deriving the
+  other three from S4 means inventing a mapping that feeds the rights section.
+  See §1 above.
+- **`rayon` is retired, not dropped**, and the column stays. See §2 above.

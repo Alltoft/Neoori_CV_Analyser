@@ -233,6 +233,50 @@ old reports, pointing at an id that no longer resolves to anything. The
 analysis text already delivered (`Analysis.output`) is untouched — only the
 copied voyage inputs go.
 
+### The Profil de base is asked inside the voyage
+
+There is no form a person is sent to fill any more. Each block is asked at the
+point where they are already engaged enough to answer it, and
+`models/voyage.session_lock()` enforces the placement server-side — the same
+gate that returns the locked card's French string.
+
+| Where | Block | Enforced by |
+|---|---|---|
+| Signup | prénom, tranche d'âge | `LOCK_PROFILE` (S1) |
+| Hub gate, before S0 | ville, nom, situation | the « Commencer » button |
+| `/voyage/etape/parcours` | diplôme, type d'études, intitulé, appétence | `LOCK_PARCOURS` (S2–S5) |
+| `/voyage/etape/conditions` | bloc 5 + OETH | `LOCK_CONDITIONS` (S5) |
+
+Each block is demanded by the session **after** the one it follows, so nobody
+meets a form before they have played anything and S1 is never held by either.
+`/profil` keeps all six blocs and is where an answer is *changed* — never where
+it is given for the first time.
+
+Three rules that are easy to undo by accident:
+
+- **The conditions gate asks that the step was seen, not that anything was
+  declared.** Bloc 5 is optional for everyone; `Profile.conditions_seen` is the
+  one definition of "seen", and a row with answers but no consent record
+  predates the second consent and is taken at its word.
+- **Bloc 5 and OETH carry their own consent** (`consent_sensitive_at`), because
+  they are GDPR Art. 9 data and the signup CGV does not reach them. The gate
+  keys on the *presence* of `conditions` / `oeth` in the payload, never on
+  their values — refusing `oeth: true` while accepting `oeth: false` would be
+  a reaction to the flag, which is what the OETH invariant forbids. Any client
+  that sends one must send both, or neither.
+- **`GateProfile` names every field the client mirror reads.** A narrower type
+  still compiles — the fields are all optional — and simply makes `sessionLock()`
+  treat a block it never fetched as unanswered, locking a session the server
+  opens. `frontend/src/app/voyage/session/[n]/page.tsx` shipped that bug once.
+
+`rayon` is retired, not dropped: nothing asks for it, `_profile_block()` prints
+it for rows that already carry one, and `/profil` shows it read-only. Age
+brackets are seven (`14_17` … `55_plus`); `moins_25` is accepted on write and
+never offered.
+
+Spec: `docs/superpowers/plans/2026-09-18-profile-in-voyage.md`, with the open
+questions beside it in `…-QUESTIONS.md`.
+
 ### Le voyage is not le portrait
 
 **Do not touch these four lines.** Le portrait (Parcours doc §8) is the paid
