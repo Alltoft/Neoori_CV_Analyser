@@ -5,15 +5,20 @@ import { Check, Lock } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { sessionLock, type BankSession, type Voyage } from "@/types/voyage"
+import { stepForLock } from "@/lib/profile-steps"
+import { sessionLock, type BankSession, type GateProfile, type Voyage } from "@/types/voyage"
 
 /**
  * The six stamps. One row per session: where the person is, what the cahier
  * calls it, and either a way in or the reason there is not one.
  *
  * A locked row must never render a disabled button — a dead control tells
- * nobody anything. It renders LOCK_CODE / LOCK_PROFILE / LOCK_ORDER, the same
- * strings the API returns on a 403, and the hub puts the remedy next to it.
+ * nobody anything. It renders the same string the API returns on a 403, and
+ * where that string has a remedy the person can act on now, the chip is the
+ * way to it: the two profile blocks are asked inside the voyage, so a locked
+ * card links to the step that opens it rather than naming a page to go and
+ * find. LOCK_CODE and LOCK_ORDER have no step — a code comes from a counselor
+ * and an order is fixed by playing — so those stay plain text.
  */
 export function SessionProgress({
   sessions,
@@ -23,7 +28,7 @@ export function SessionProgress({
 }: {
   sessions: BankSession[]
   voyage: Voyage
-  profile: { prenom?: string | null; tranche_age?: string | null } | null
+  profile: GateProfile | null
   /** session id -> how many of that session's items already have an answer */
   answered: Record<string, number>
 }) {
@@ -74,9 +79,26 @@ export function SessionProgress({
                 Revoir mes réponses
               </Link>
             ) : lock ? (
-              <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:self-auto">
-                <Lock className="size-3" aria-hidden /> {lock}
-              </span>
+              (() => {
+                const step = stepForLock(lock)
+                const chip = (
+                  <>
+                    <Lock className="size-3" aria-hidden /> {lock}
+                  </>
+                )
+                return step ? (
+                  <Link
+                    href={`/voyage/etape/${step}`}
+                    className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full bg-peach-soft px-2.5 py-1 text-[11px] font-medium text-orange-dark transition-colors hover:bg-peach sm:self-auto"
+                  >
+                    {chip}
+                  </Link>
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:self-auto">
+                    {chip}
+                  </span>
+                )
+              })()
             ) : (
               <Button render={<Link href={`/voyage/session/${s.n}`} />} size="lg" className="shrink-0">
                 {count > 0 ? "Reprendre" : "Commencer"}

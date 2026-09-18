@@ -82,7 +82,6 @@ def test_session_0_header_and_counts():
     assert s0["duration"] == "5 min"
     assert s0["kind"] == bank.KIND_CHECKLIST
     assert len(s0["items"]) == 20
-    assert [b["key"] for b in s0["billet"]] == ["top3", "surprise"]
 
 
 def test_session_0_item_ids_are_zero_padded():
@@ -174,8 +173,6 @@ def test_session_1_header_and_scene_ids():
     assert s1["subtitle"] == "Là où tout a commencé… · 6 scènes de ton enfance"
     assert s1["duration"] == "15–20 min"
     assert [i["id"] for i in s1["items"]] == [f"S1-{k}" for k in range(1, 7)]
-    assert [b["key"] for b in s1["billet"]] == ["cabane", "jeu", "fierte", "regard"]
-
 
 def test_session_1_every_option_carries_riasec():
     for scene in _session("1")["items"]:
@@ -204,8 +201,6 @@ def test_session_2_header():
     assert s2["subtitle"] == "Ce qui te donne envie de te lever le matin · 7 situations"
     assert s2["duration"] == "20 min"
     assert [i["id"] for i in s2["items"]] == [f"S2-{k}" for k in range(1, 8)]
-    assert [b["key"] for b in s2["billet"]] == ["vibrer", "vide", "vingt_ans"]
-
 
 def test_tag_values_are_in_vocabulary():
     """Every sdt / schwartz / big5 / style value across the whole bank."""
@@ -243,8 +238,6 @@ def test_session_3_header():
     assert s3["subtitle"] == "Pas ce que tu fais — comment tu le fais · 7 situations"
     assert s3["duration"] == "20 min"
     assert [i["id"] for i in s3["items"]] == [f"S3-{k}" for k in range(1, 8)]
-    assert [b["key"] for b in s3["billet"]] == ["imprevu", "meilleur", "pression"]
-
 
 def test_session_3_negative_signs_are_preserved():
     """« Faible Névrotisme » is -1 and « Introversion » is -1. Reading either as
@@ -277,10 +270,6 @@ def test_session_4_header():
     assert s4["subtitle"] == "Pas le métier — l'environnement · 6 situations"
     assert s4["duration"] == "15 min"
     assert [i["id"] for i in s4["items"]] == [f"S4-{k}" for k in range(1, 7)]
-    assert [b["key"] for b in s4["billet"]] == [
-        "environnement", "vide", "cadre_relationnel", "rythme",
-    ]
-
 
 def test_session_4_every_option_carries_env():
     """score_s4 reads `env` by scene position — a missing one is a KeyError
@@ -300,8 +289,6 @@ def test_session_5_header():
     assert s5["subtitle"] == "Risque · Sens · 7 situations"
     assert s5["duration"] == "20 min"
     assert [i["id"] for i in s5["items"]] == [f"S5-{k}" for k in range(1, 8)]
-    assert [b["key"] for b in s5["billet"]] == ["risque", "colere", "trace", "vivant"]
-
 
 def test_s5_1_risk_values_are_the_four_levels():
     letters = {o["letter"]: o["risk"] for o in bank.item("S5-1")["options"]}
@@ -327,8 +314,10 @@ def test_s5_sens_registers():
         assert option["sens"].startswith("elle "), option["letter"]
 
 
+# No "billet": the billet de sortie was removed from every session (PM ruling
+# 2026-09-15) — it dated from when a counselor filled the cahier in.
 SESSION_KEYS = {
-    "n", "title", "subtitle", "intro", "outro", "duration", "kind", "items", "billet",
+    "n", "title", "subtitle", "intro", "outro", "duration", "kind", "items",
 }
 
 
@@ -348,7 +337,13 @@ def test_bank_totals():
     assert [s["n"] for s in bank.SESSIONS] == list(bank.SESSION_IDS)
     assert len(bank.all_item_ids()) == 53
     assert len(set(bank.all_item_ids())) == 53
-    assert sum(len(s["billet"]) for s in bank.SESSIONS) == 20
+
+
+def test_the_billet_de_sortie_is_gone():
+    """SESSION_KEYS pins its absence from every session; this pins the lookup
+    and what GET /api/voyage/bank serves."""
+    assert not hasattr(bank, "billet_keys")
+    assert "billet" not in json.dumps(bank.public())
 
 
 def test_public_strips_every_weight_at_every_depth():
@@ -432,6 +427,19 @@ def _prompt_reachable_bank_strings():
     return strings
 
 
+def test_session_0_affirmations_carry_no_digit_or_framework_word():
+    """A neutral answer quotes its affirmation into both voyage prompts
+    (generation._neutral_line), so these twenty texts are prompt-reachable
+    too — through the phrase and the portrait, never prompt_context()."""
+    texts = [entry["text"] for entry in _session("0")["items"]]
+    assert len(texts) == 20
+    for text in texts:
+        assert not re.search(r"[0-9]", text), text
+        folded = _fold(text)
+        for word in BANNED_BANK_ROOTS:
+            assert not re.search(rf"\b{re.escape(word)}\b", folded), f"{word}: {text}"
+
+
 def test_prompt_reachable_bank_strings_carry_no_digit_or_framework_word():
     strings = _prompt_reachable_bank_strings()
     assert len(strings) == 67, "the walk's coverage shrank or grew — update it deliberately"
@@ -453,7 +461,6 @@ def test_lookups():
     assert bank.option("S1-1", "B")["label"] == "Les bâtisseurs"
     assert bank.option("S1-1", "Z") is None
     assert bank.option("S0-01", "A") is None      # checklist items have no options
-    assert bank.billet_keys("5") == ["risque", "colere", "trace", "vivant"]
 
 
 def test_all_item_ids_is_session_order_then_item_order():
@@ -464,17 +471,56 @@ def test_all_item_ids_is_session_order_then_item_order():
     assert ids[-1] == "S5-7"
 
 
+def test_the_neutral_answer_constants():
+    assert bank.NEUTRAL == "neutre"
+    assert bank.NEUTRAL_MAX == 5
+
+
+def test_the_rank_max_constant():
+    assert bank.RANK_MAX == 3
+
+
+def test_the_scoring_version_is_not_bumped_by_backward_compatible_changes():
+    """The neutral mark and ranked choices keep every stored answer valid and
+    scoring as before. A bump would put the « version antérieure » warning
+    (ruling R10) on every live voyage. voyages.scoring_version is String(16)."""
+    assert bank.SCORING_VERSION == "cahier-2026-09"
+    assert len(bank.SCORING_VERSION) <= 16
+
+
+def test_the_session_0_intro_explains_the_three_marks_and_the_cap():
+    rule = _session("0")["intro"][1]
+    for mark in ("✓", "✗", "–"):
+        assert mark in rule
+    assert f"({bank.NEUTRAL_MAX} au maximum)" in rule
+
+
 def test_validate_answer():
-    # session 0 takes booleans, and only booleans
+    # session 0 takes booleans, and the one neutral string
     assert bank.validate_answer("S0-01", True) is True
     assert bank.validate_answer("S0-01", False) is True
+    assert bank.validate_answer("S0-01", bank.NEUTRAL) is True
+    assert bank.validate_answer("S0-01", "Neutre") is False
+    assert bank.validate_answer("S0-01", None) is False
     assert bank.validate_answer("S0-01", "A") is False
     assert bank.validate_answer("S0-01", 1) is False
     assert bank.validate_answer("S0-01", "oui") is False
+    assert bank.validate_answer("S1-1", bank.NEUTRAL) is False   # scenes have no neutral
     # scenes take a letter that exists on that scene
     assert bank.validate_answer("S1-6", "H") is True
     assert bank.validate_answer("S1-1", "H") is False    # S1-1 stops at F
     assert bank.validate_answer("S1-1", "a") is False    # case-sensitive
     assert bank.validate_answer("S1-1", True) is False
+    # or up to RANK_MAX distinct letters of that scene, in preference order
+    assert bank.validate_answer("S1-1", ["B"]) is True
+    assert bank.validate_answer("S1-1", ["D", "B", "A"]) is True
+    assert bank.validate_answer("S1-1", []) is False
+    assert bank.validate_answer("S1-1", ["A", "B", "C", "D"]) is False   # past RANK_MAX
+    assert bank.validate_answer("S1-1", ["A", "A"]) is False
+    assert bank.validate_answer("S1-1", ["A", "H"]) is False
+    assert bank.validate_answer("S1-1", ["A", 1]) is False
+    assert bank.validate_answer("S1-1", [["A"]]) is False
+    assert bank.validate_answer("S1-1", {"A": 1}) is False
+    assert bank.validate_answer("S0-01", ["A"]) is False
     # unknown ids
     assert bank.validate_answer("S9-1", "A") is False

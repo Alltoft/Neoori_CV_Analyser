@@ -4,6 +4,8 @@ Every number a counselor reads and every plain-French line a prompt receives is
 produced here, from the answers alone. There is no model in this path, so these
 tests are the whole of its correctness.
 """
+from fractions import Fraction
+
 import pytest
 
 from app.services.voyage import bank, scoring
@@ -16,7 +18,7 @@ def _answers(**overrides):
         for item_id in bank.item_ids(n):
             answers[item_id] = "A"
     answers.update(overrides)
-    return {"answers": answers, "billets": {}}
+    return {"answers": answers}
 
 
 def test_module_constants():
@@ -31,7 +33,7 @@ def test_module_constants():
 
 
 def test_missing_items_and_session_complete():
-    empty = {"answers": {}, "billets": {}}
+    empty = {"answers": {}}
     assert scoring.missing_items(empty, "0") == bank.item_ids("0")
     assert scoring.session_complete(empty, "0") is False
 
@@ -39,7 +41,7 @@ def test_missing_items_and_session_complete():
     assert scoring.missing_items(full, "0") == []
     assert scoring.session_complete(full, "0") is True
 
-    partial = {"answers": {"S0-01": True}, "billets": {}}
+    partial = {"answers": {"S0-01": True}}
     assert "S0-01" not in scoring.missing_items(partial, "0")
     assert len(scoring.missing_items(partial, "0")) == 19
 
@@ -47,12 +49,12 @@ def test_missing_items_and_session_complete():
 def test_missing_items_rejects_an_invalid_value():
     """A stored answer that no longer validates leaves the session incomplete
     rather than scoring as something arbitrary."""
-    bad = {"answers": {item_id: "Z" for item_id in bank.item_ids("1")}, "billets": {}}
+    bad = {"answers": {item_id: "Z" for item_id in bank.item_ids("1")}}
     assert scoring.missing_items(bad, "1") == bank.item_ids("1")
 
 
 def test_completeness_is_keyed_by_session_id():
-    assert scoring.completeness({"answers": {}, "billets": {}}) == {
+    assert scoring.completeness({"answers": {}}) == {
         "0": False, "1": False, "2": False, "3": False, "4": False, "5": False,
     }
     assert scoring.completeness(_answers()) == {
@@ -63,12 +65,12 @@ def test_completeness_is_keyed_by_session_id():
 def test_chosen_option():
     responses = _answers(**{"S1-1": "C"})
     assert scoring.chosen_option(responses, "S1-1")["label"] == "Les prospecteurs"
-    assert scoring.chosen_option({"answers": {}, "billets": {}}, "S1-1") is None
+    assert scoring.chosen_option({"answers": {}}, "S1-1") is None
     assert scoring.chosen_option(responses, "S0-01") is None   # checklist, no options
 
 
 def test_score_s0_is_none_until_the_session_is_complete():
-    assert scoring.score_s0({"answers": {"S0-01": True}, "billets": {}}) is None
+    assert scoring.score_s0({"answers": {"S0-01": True}}) is None
 
 
 def test_score_s0_sign_of_a_reversed_item():
@@ -85,7 +87,7 @@ def test_score_s0_all_false_gives_every_positive_axis_its_full_negative():
     result = scoring.score_s0(_answers())
     # A9 has two items, both sign +1; both NON -> -2
     assert result["axes"]["A9"] == {
-        "oui": 0, "non": 2, "resultant": -2, "n_items": 2, "tension": True,
+        "oui": 0, "non": 2, "neutre": 0, "resultant": -2, "n_items": 2, "tension": True,
     }
     assert set(result["axes"]) == set(bank.AXES)
 
@@ -105,7 +107,7 @@ def test_tension_band_edges():
     result = scoring.score_s0(_answers())
     for entry in result["axes"].values():
         inside = scoring.TENSION_BAND[0] <= entry["resultant"] <= scoring.TENSION_BAND[1]
-        expected = inside and entry["n_items"] >= scoring.TENSION_MIN_ITEMS
+        expected = inside and entry["oui"] + entry["non"] >= scoring.TENSION_MIN_ITEMS
         assert entry["tension"] is expected
 
 
@@ -137,22 +139,92 @@ def test_top3_is_ordered_by_magnitude():
     The axis-id tie-break is pinned in test_top3_picks_the_pole_the_sign_points_to
     (top3[0]["axis"] == "A4"), not here.
 
-    score_s0 filters resultant == 0 out of `ranked` before taking [:3], but that
-    filter is unreachable through top3: every axis resultant has the parity of
-    its item count, and A1 (1 item), A2 (3) and A6 (5) are odd, so at least
-    three axes are always non-zero and a zero-resultant axis can never reach
-    ranked[:3]. Kept anyway as cheap insurance for if the PM ever adds
-    session-0 items and changes an axis's parity.
+    score_s0 filters resultant == 0 out of `ranked` before taking [:3]. With
+    booleans only that filter was unreachable (A1, A2 and A6 carry an odd item
+    count, so they could never sit at zero); the neutral answer adds 0 and makes
+    it reachable — test_an_all_neutral_sheet_has_no_pull_and_no_tension pins it.
     """
     result = scoring.score_s0(_answers())
     magnitudes = [abs(e["resultant"]) for e in result["top3"]]
     assert magnitudes == sorted(magnitudes, reverse=True)
 
 
+# ── Session 0 — the neutral answer ───────────────────────────────────────────
+
+def test_a_neutral_answer_completes_its_row():
+    assert scoring.session_complete(_answers(**{"S0-01": bank.NEUTRAL}), "0") is True
+
+
+def test_a_neutral_answer_adds_nothing_to_the_resultant():
+    """A9 carries S0-01 and S0-05, both +1. S0-05 stays NON throughout, so
+    S0-01 alone moves the resultant: OUI 0, NON -2, neutre -1."""
+    a9 = {
+        value: scoring.score_s0(_answers(**{"S0-01": value}))["axes"]["A9"]["resultant"]
+        for value in (True, False, bank.NEUTRAL)
+    }
+    assert a9 == {True: 0, False: -2, bank.NEUTRAL: -1}
+
+
+def test_a_neutral_answer_is_counted_on_its_own():
+    a9 = scoring.score_s0(_answers(**{"S0-01": bank.NEUTRAL}))["axes"]["A9"]
+    assert a9 == {
+        "oui": 0, "non": 1, "neutre": 1, "resultant": -1, "n_items": 2, "tension": False,
+    }
+
+
+def test_neutral_answers_pull_an_axis_toward_the_tension_band():
+    """A7's four items all OUI resolve at +4, outside the band. Two of them
+    left neutral bring it to +2 — inside, with two ✓ still behind it."""
+    a7 = [item_id for item_id, _ in bank.axis_items("A7")]
+    all_oui = dict.fromkeys(a7, True)
+    strong = scoring.score_s0(_answers(**all_oui))["axes"]["A7"]
+    softened = scoring.score_s0(
+        _answers(**{**all_oui, a7[0]: bank.NEUTRAL, a7[1]: bank.NEUTRAL})
+    )["axes"]["A7"]
+    assert (strong["resultant"], strong["tension"]) == (4, False)
+    assert (softened["resultant"], softened["tension"]) == (2, True)
+
+
+def test_an_axis_needs_two_directional_answers_to_be_a_tension():
+    """The A1 rule, applied to what the person actually marked: with fewer
+    than two ✓/✗ on an axis, its resultant sits in the band whatever they
+    think, so it cannot show an ambivalence."""
+    result = scoring.score_s0(_answers(**{"S0-01": bank.NEUTRAL, "S0-05": bank.NEUTRAL}))
+    assert result["axes"]["A9"]["resultant"] == 0
+    assert result["axes"]["A9"]["tension"] is False
+    assert all(t["axis"] != "A9" for t in result["tensions"])
+
+
+def test_neutres_lists_the_neutral_affirmations_in_item_order():
+    result = scoring.score_s0(_answers(**{"S0-12": bank.NEUTRAL, "S0-03": bank.NEUTRAL}))
+    assert result["neutres"] == [
+        {"id": "S0-03", "text": bank.item("S0-03")["text"]},
+        {"id": "S0-12", "text": bank.item("S0-12")["text"]},
+    ]
+    assert scoring.score_s0(_answers())["neutres"] == []
+
+
+def test_an_all_neutral_sheet_has_no_pull_and_no_tension():
+    """The cap lives in the route; scoring itself must not break past it."""
+    result = scoring.score_s0(_answers(**dict.fromkeys(bank.item_ids("0"), bank.NEUTRAL)))
+    assert result["top3"] == []
+    assert result["tensions"] == []
+    assert len(result["neutres"]) == 20
+
+
+def test_neutral_count_counts_only_the_neutral_mark():
+    """The one count both routes check the cap against."""
+    assert scoring.neutral_count(None) == 0
+    assert scoring.neutral_count({"answers": {}}) == 0
+    assert scoring.neutral_count(_answers()) == 0
+    responses = _answers(**{"S0-01": bank.NEUTRAL, "S0-07": bank.NEUTRAL, "S0-08": True})
+    assert scoring.neutral_count(responses) == 2
+
+
 # ── Session 1 — RIASEC ───────────────────────────────────────────────────────
 
 def test_score_riasec_is_none_until_session_1_is_complete():
-    partial = {"answers": {"S1-1": "A"}, "billets": {}}
+    partial = {"answers": {"S1-1": "A"}}
     assert scoring.score_riasec(partial) is None
 
 
@@ -224,7 +296,7 @@ def test_score_riasec_ranks_on_normalized_not_raw_where_they_disagree():
 # ── Session 2 — needs (SDT) and values (Schwartz) ────────────────────────────
 
 def test_score_s2_is_none_until_session_2_is_complete():
-    assert scoring.score_s2({"answers": {"S2-1": "A"}, "billets": {}}) is None
+    assert scoring.score_s2({"answers": {"S2-1": "A"}}) is None
 
 
 def test_score_s2_counts_only_session_2():
@@ -263,13 +335,14 @@ def test_score_s2_ambivalences_is_the_s2_7_choice():
         "letter": "F",
         "label": "Liberté / Indépendance",
         "plain": "tu veux que ta vie t'appartienne",
+        "ensuite": [],
     }
 
 
 # ── Session 3 — Big Five and cognitive style ─────────────────────────────────
 
 def test_score_s3_is_none_until_session_3_is_complete():
-    assert scoring.score_s3({"answers": {"S3-1": "A"}, "billets": {}}) is None
+    assert scoring.score_s3({"answers": {"S3-1": "A"}}) is None
 
 
 def test_score_s3_nets_are_signed():
@@ -354,7 +427,7 @@ def test_score_s4_maps_scene_position_to_slot():
     test the pairing, and the letters below are chosen so all six env strings
     differ.
     """
-    assert scoring.score_s4({"answers": {"S4-1": "A"}, "billets": {}}) is None
+    assert scoring.score_s4({"answers": {"S4-1": "A"}}) is None
     result = scoring.score_s4(_answers(**{
         "S4-1": "A", "S4-2": "B", "S4-3": "C",
         "S4-4": "D", "S4-5": "A", "S4-6": "B",
@@ -366,12 +439,13 @@ def test_score_s4_maps_scene_position_to_slot():
         "manager": "un cap clair",
         "irritant": "les réunions longues et bruyantes",
         "vendredi": "fatigue mais recharge",
+        "ensuite": {},
     }
-    assert list(result) == list(bank.S4_SLOTS)
+    assert list(result) == [*bank.S4_SLOTS, "ensuite"]
 
 
 def test_score_s5_keys_and_registers():
-    assert scoring.score_s5({"answers": {"S5-1": "A"}, "billets": {}}) is None
+    assert scoring.score_s5({"answers": {"S5-1": "A"}}) is None
     result = scoring.score_s5(_answers(**{
         "S5-1": "C", "S5-2": "C", "S5-3": "D",
         "S5-4": "A", "S5-5": "B", "S5-6": "C", "S5-7": "A",
@@ -384,6 +458,7 @@ def test_score_s5_keys_and_registers():
         "trace": "une trace dans les gens",
         "sacrifice": "le temps",
         "vivant": "elle crée",
+        "ensuite": {},
     }
 
 
@@ -398,13 +473,152 @@ def test_score_s5_risque_is_one_of_the_four_levels():
         assert result["risque"] in bank.RISK_LEVELS
 
 
+# ── Sessions 1-5 — ranked choices ────────────────────────────────────────────
+
+def test_rank_weights_share_one_vote_and_halve_at_each_rank():
+    """A scene is one vote. More choices spread it and never add to it. Each
+    rank weighs twice the next, so the first choice outweighs the others
+    combined."""
+    assert scoring.rank_weights(1) == (Fraction(1),)
+    assert scoring.rank_weights(2) == (Fraction(2, 3), Fraction(1, 3))
+    assert scoring.rank_weights(3) == (Fraction(4, 7), Fraction(2, 7), Fraction(1, 7))
+    for k in range(1, bank.RANK_MAX + 1):
+        weights = scoring.rank_weights(k)
+        assert sum(weights) == 1
+        assert weights[0] > sum(weights[1:])
+
+
+def test_ranked_options_reads_a_bare_letter_as_a_single_choice():
+    bare = scoring.ranked_options(_answers(**{"S1-1": "B"}), "S1-1")
+    listed = scoring.ranked_options(_answers(**{"S1-1": ["B"]}), "S1-1")
+    assert [(o["letter"], w) for o, w in bare] == [("B", Fraction(1))]
+    assert [(o["letter"], w) for o, w in listed] == [("B", Fraction(1))]
+
+
+def test_ranked_options_keeps_the_persons_order():
+    ranked = scoring.ranked_options(_answers(**{"S1-1": ["D", "B", "A"]}), "S1-1")
+    assert [(o["letter"], w) for o, w in ranked] == [
+        ("D", Fraction(4, 7)), ("B", Fraction(2, 7)), ("A", Fraction(1, 7)),
+    ]
+    assert scoring.ranked_options(_answers(), "S0-01") == []          # checklist
+    assert scoring.ranked_options({"answers": {}}, "S1-1") == []
+
+
+def test_chosen_option_is_the_first_choice():
+    assert scoring.chosen_option(_answers(**{"S1-1": ["C", "A"]}), "S1-1")["letter"] == "C"
+
+
+def test_an_empty_ranking_leaves_the_scene_unanswered():
+    assert scoring.missing_items(_answers(**{"S1-1": []}), "1") == ["S1-1"]
+
+
+def test_one_letter_lists_score_exactly_like_bare_letters():
+    """Every sheet answered before ranked choices existed scores as it did."""
+    listed = _answers()
+    for n in ("1", "2", "3", "4", "5"):
+        for item_id in bank.item_ids(n):
+            listed["answers"][item_id] = [listed["answers"][item_id]]
+    assert scoring.synthesize(listed) == scoring.synthesize(_answers())
+
+
+def test_ranked_riasec_shares_the_scene_between_the_choices():
+    """S1-1 B (R2 C1) first, A (R1 I1 E1 C1) second: 2/3 and 1/3 of one vote.
+    All-A totals R6 I7 E1 C4, minus S1-1 A, plus R 5/3, I 1/3, E 1/3, C 1."""
+    result = scoring.score_riasec(_answers(**{"S1-1": ["B", "A"]}))
+    assert result["scores"] == {"R": 6.67, "I": 6.33, "A": 0, "S": 0, "E": 0.33, "C": 4}
+    assert result["normalized"]["R"] == round(20 / 3 / 12, 3)
+    assert [e["letter"] for e in result["top3"]] == ["I", "R", "C"]
+
+
+def test_swapping_two_ranks_swaps_their_weight():
+    first_b = scoring.score_riasec(_answers(**{"S1-1": ["B", "A"]}))["scores"]
+    first_a = scoring.score_riasec(_answers(**{"S1-1": ["A", "B"]}))["scores"]
+    assert (first_b["R"], first_b["I"]) == (6.67, 6.33)
+    assert (first_a["R"], first_a["I"]) == (6.33, 6.67)
+
+
+def test_ranked_choices_never_lift_a_letter_past_its_ceiling():
+    """Picking, in every scene, the three options richest in one letter still
+    cannot beat picking the richest alone — which is what the maxima are."""
+    for letter in bank.RIASEC_LETTERS:
+        overrides = {}
+        for item_id in bank.item_ids("1"):
+            options = sorted(bank.item(item_id)["options"],
+                             key=lambda o: -o["riasec"].get(letter, 0))
+            overrides[item_id] = [o["letter"] for o in options[:bank.RANK_MAX]]
+        result = scoring.score_riasec(_answers(**overrides))
+        assert result["scores"][letter] <= result["maxima"][letter], letter
+        assert result["normalized"][letter] <= 1.0, letter
+
+
+def test_ranked_s2_counts_share_the_scene_and_break_an_equal_count():
+    """S2-1 B (autonomie · autodirection), C (appartenance · bienveillance),
+    D (competence · reussite) at 4/7, 2/7, 1/7, replacing A (conformite).
+    All-A ties reussite and bienveillance at 2; the second choice lifts
+    bienveillance further than the third lifts reussite."""
+    result = scoring.score_s2(_answers(**{"S2-1": ["B", "C", "D"]}))
+    assert result["sdt"] == {"autonomie": 1.57, "appartenance": 0.29, "competence": 0.14}
+    assert result["sdt_dominant"] == ["autonomie"]
+    assert (result["schwartz"]["bienveillance"], result["schwartz"]["reussite"]) == (2.29, 2.14)
+    assert result["schwartz_dominant"] == ["bienveillance"]
+
+
+def test_whole_counts_stay_integers_and_shares_round_to_two_decimals():
+    whole = scoring.score_s2(_answers())
+    assert all(isinstance(v, int) for v in whole["sdt"].values())
+    shared = scoring.score_s2(_answers(**{"S2-1": ["B", "C"]}))
+    assert shared["sdt"]["autonomie"] == 1.67
+    assert isinstance(shared["sdt"]["autonomie"], float)
+
+
+def test_the_s2_7_probe_names_the_first_choice_and_keeps_the_rest_in_order():
+    result = scoring.score_s2(_answers(**{"S2-7": ["F", "D"]}))
+    d = bank.option("S2-7", "D")
+    assert result["ambivalences"] == {
+        "item_id": "S2-7",
+        "letter": "F",
+        "label": "Liberté / Indépendance",
+        "plain": "tu veux que ta vie t'appartienne",
+        "ensuite": [{"letter": "D", "label": d["label"], "plain": d["plain"]}],
+    }
+
+
+def test_ranked_big5_nets_can_cross_a_level_threshold():
+    """S3-1 D (nevrotisme +1, conscienciosite +1) first, A (extraversion +1,
+    ouverture +1, nevrotisme -1) second. All-A nevrotisme -3 becomes
+    -3 + 1 + 2/3 - 1/3 = -5/3: out of Faible, into Moyen."""
+    result = scoring.score_s3(_answers(**{"S3-1": ["D", "A"]}))
+    assert result["big5"] == {
+        "ouverture": 2.33, "conscienciosite": 1.67, "extraversion": 0.33,
+        "agreabilite": 0, "nevrotisme": -1.67,
+    }
+    assert result["levels"]["nevrotisme"] == scoring.LEVEL_MID
+    assert result["levels"]["ouverture"] == scoring.LEVEL_HIGH
+    assert result["style"] == {
+        "holistique": 1.33, "sequentiel": 1, "adaptatif": 0, "consultatif": 0,
+    }
+    assert result["style_dominant"] == ["holistique"]
+
+
+def test_score_s4_labels_each_slot_with_its_first_choice():
+    result = scoring.score_s4(_answers(**{"S4-1": ["D", "B"]}))
+    assert result["espace"] == "en mouvement, sur le terrain"
+    assert result["ensuite"] == {"espace": ["open space vivant"]}
+
+
+def test_score_s5_labels_each_key_with_its_first_choice():
+    result = scoring.score_s5(_answers(**{"S5-1": ["C", "A", "B"]}))
+    assert result["risque"] == "Calculé"
+    assert result["ensuite"] == {"risque": ["Fort", "Modéré"]}
+
+
 # ── Synthesis sheet ──────────────────────────────────────────────────────────
 
 SECTION_KEYS = ("s0", "riasec", "s2", "s3", "s4", "s5")
 
 
 def test_synthesize_never_returns_none_and_always_has_every_key():
-    result = scoring.synthesize({"answers": {}, "billets": {}})
+    result = scoring.synthesize({"answers": {}})
     assert result is not None
     assert set(result) == {"scoring_version", "completeness", *SECTION_KEYS}
     assert result["scoring_version"] == bank.SCORING_VERSION
@@ -414,7 +628,7 @@ def test_synthesize_never_returns_none_and_always_has_every_key():
 
 def test_synthesize_s0_only_is_a_normal_state():
     """The self-serve half of the product produces exactly this."""
-    s0_only = {"answers": {i: True for i in bank.item_ids("0")}, "billets": {}}
+    s0_only = {"answers": {i: True for i in bank.item_ids("0")}}
     result = scoring.synthesize(s0_only)
     assert result["s0"] is not None
     assert all(result[key] is None for key in ("riasec", "s2", "s3", "s4", "s5"))
@@ -427,7 +641,7 @@ def test_synthesize_complete_fills_every_section():
     result = scoring.synthesize(_answers())
     assert all(result[key] is not None for key in SECTION_KEYS)
     assert result["completeness"] == dict.fromkeys(bank.SESSION_IDS, True)
-    assert set(result["s0"]) == {"axes", "tensions", "top3"}
+    assert set(result["s0"]) == {"axes", "tensions", "top3", "neutres"}
     assert set(result["riasec"]) == {"scores", "maxima", "normalized", "top3"}
     assert set(result["s2"]) == {
         "sdt", "sdt_dominant", "schwartz", "schwartz_dominant", "ambivalences",
@@ -435,10 +649,10 @@ def test_synthesize_complete_fills_every_section():
     assert set(result["s3"]) == {
         "big5", "levels", "style", "style_dominant", "intro_extra",
     }
-    assert set(result["s4"]) == set(bank.S4_SLOTS)
+    assert set(result["s4"]) == {*bank.S4_SLOTS, "ensuite"}
     assert set(result["s5"]) == {
         "risque", "rapport_echec", "rapport_flou",
-        "valeur_centrale", "trace", "sacrifice", "vivant",
+        "valeur_centrale", "trace", "sacrifice", "vivant", "ensuite",
     }
 
 
@@ -540,7 +754,7 @@ def test_prompt_context_never_emits_a_level_or_an_axis_label():
 
 
 def test_prompt_context_omits_a_line_rather_than_printing_an_empty_label():
-    synthesis = scoring.synthesize({"answers": {}, "billets": {}})
+    synthesis = scoring.synthesize({"answers": {}})
     assert scoring.prompt_context(synthesis, None, scoring.STAGE_S0) == []
     lines = scoring.prompt_context(synthesis, "Une phrase.", scoring.STAGE_VALIDATED)
     assert lines == ["Phrase révélée : Une phrase."]
@@ -565,7 +779,7 @@ def test_prompt_context_emits_only_what_exists_at_the_validated_stage():
     "Ambivalences relevées" still emits because it reads s0.tensions.
     """
     s0_only = scoring.synthesize(
-        {"answers": {item_id: True for item_id in bank.item_ids("0")}, "billets": {}}
+        {"answers": {item_id: True for item_id in bank.item_ids("0")}}
     )
     lines = scoring.prompt_context(s0_only, "Une phrase.", scoring.STAGE_VALIDATED)
     assert [line.split(" : ", 1)[0] for line in lines] == [

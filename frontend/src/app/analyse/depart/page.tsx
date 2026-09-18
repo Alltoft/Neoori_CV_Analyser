@@ -128,9 +128,9 @@ export default function DepartPage() {
 
           <div className="flex flex-col items-start justify-between gap-3 rounded-2xl bg-card p-5 ring-1 ring-foreground/10 sm:flex-row sm:items-center">
             <p className="text-xs text-muted-foreground">
-              Vous avez un début de CV ?{" "}
-              <Link href="/profil" className="link-underline text-navy">Ajoutez-le au profil</Link>
-              {" "}— il sera pris en compte.
+              Le{" "}
+              <Link href="/voyage" className="link-underline text-navy">voyage</Link>{" "}
+              rend ce rapport plus précis — la première session prend 5 minutes.
             </p>
             <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? "Envoi…" : "Lancer l'analyse"} <ArrowRight className="size-4" />

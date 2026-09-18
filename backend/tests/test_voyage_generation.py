@@ -155,14 +155,13 @@ def _full_responses() -> dict:
         checklist = bank.session(n)["kind"] == bank.KIND_CHECKLIST
         for item in bank.items(n):
             answers[item["id"]] = True if checklist else item["options"][0]["letter"]
-    return {"answers": answers, "billets": {}}
+    return {"answers": answers}
 
 
 def _s0_only_responses() -> dict:
     full = _full_responses()
     s0 = set(bank.item_ids("0"))
-    return {"answers": {k: v for k, v in full["answers"].items() if k in s0},
-            "billets": {}}
+    return {"answers": {k: v for k, v in full["answers"].items() if k in s0}}
 
 
 _HEADER_RE = re.compile(r"^---\s.+\s---$", re.MULTILINE)
@@ -345,6 +344,36 @@ def test_a_voyage_with_no_tension_gets_no_tension_line():
     assert "Autant coché" not in gen._micro_user_message(synthesis, "Marie")
 
 
+NEUTRES = [
+    {"id": "S0-12", "text": "Être connu(e), avoir une visibilité publique"},
+    {"id": "S0-19", "text": "Gagner beaucoup d'argent"},
+]
+
+
+def _with_neutres():
+    synthesis = copy.deepcopy(SYNTHESIS)
+    synthesis["s0"]["neutres"] = copy.deepcopy(NEUTRES)
+    return synthesis
+
+
+def test_the_micro_message_names_the_neutral_affirmations_by_their_text():
+    msg = gen._micro_user_message(_with_neutres(), "Marie")
+    assert _line(msg, "Ni oui ni non sur : ") == (
+        "Être connu(e), avoir une visibilité publique · Gagner beaucoup d'argent")
+    assert "S0-" not in msg
+    assert not re.search(r"\d", msg.replace(gen.HEADER_SESSION_0, ""))
+    assert gen.leak_check({"message": msg}) == []
+
+
+def test_a_voyage_with_no_neutral_answer_gets_no_neutral_line():
+    """Covers both a sheet whose neutres list is empty and one scored before
+    the neutral answer existed, which has no such key at all."""
+    empty = copy.deepcopy(SYNTHESIS)
+    empty["s0"]["neutres"] = []
+    for synthesis in (SYNTHESIS, empty):
+        assert "Ni oui ni non" not in gen._micro_user_message(synthesis, "Marie")
+
+
 def test_the_profile_block_disappears_when_the_prenom_is_unknown():
     msg = gen._micro_user_message(SYNTHESIS, None)
     assert gen.HEADER_PROFIL not in msg
@@ -444,6 +473,15 @@ def test_each_choice_line_is_the_scene_title_then_the_persons_own_words():
     assert f"{scene['title']} : {scene['options'][0]['plain']}" in msg
 
 
+def test_a_ranked_choice_line_lists_the_later_choices_in_order():
+    responses = _full_responses()
+    responses["answers"]["S1-1"] = ["B", "D", "A"]
+    msg = gen._portrait_user_message(SYNTHESIS, responses, PROFILE_FIELDS)
+    plain = {o["letter"]: o["plain"] for o in bank.item("S1-1")["options"]}
+    assert f"La cabane : {plain['B']} (puis : {plain['D']} · {plain['A']})" in msg
+    assert not re.search(r"\d", _own_words(_block(msg, gen.HEADER_CHOISI)))
+
+
 def test_a_scene_title_may_carry_a_digit_because_the_cahier_does():
     """S2-7 is « Dans 20 ans ». The digit rule covers the person's words, not
     the cahier's own scene titles."""
@@ -490,6 +528,16 @@ def test_the_synthese_block_is_the_twelve_pinned_lines():
         "Prête à sacrifier : le temps",
         "Se sent vivant(e) quand : elle crée",
     ]
+
+
+def test_the_synthese_block_places_the_neutral_line_after_the_tensions():
+    msg = gen._portrait_user_message(_with_neutres(), _full_responses(), PROFILE_FIELDS)
+    lines = [ln for ln in _block(msg, gen.HEADER_SYNTHESE).splitlines() if ln.strip()]
+    tension_at = next(i for i, ln in enumerate(lines) if ln.startswith("Autant coché"))
+    assert lines[tension_at + 1] == (
+        "Ni oui ni non sur : Être connu(e), avoir une visibilité publique"
+        " · Gagner beaucoup d'argent")
+    assert len(lines) == 13
 
 
 def test_a_whitespace_only_field_is_dropped_rather_than_left_naked():

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useAuth } from "@/lib/auth"
@@ -11,11 +11,19 @@ import { ApiError } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthLayout } from "@/components/layout/AuthLayout"
+import { TRANCHES_AGE } from "@/lib/profile-options"
 
+// Prénom and tranche d'âge are asked here because session_lock has demanded
+// them before session 1 since the voyage shipped. Asking mid-journey means
+// bouncing someone out of the sessions and into a form; this is the one moment
+// they are already filling one.
 const schema = z
   .object({
+    prenom: z.string().min(1, "Prénom requis."),
+    tranche_age: z.string().min(1, "Tranche d'âge requise."),
     email: z.string().email("Email invalide."),
     password: z.string().min(8, "8 caractères minimum."),
     confirm: z.string(),
@@ -34,15 +42,15 @@ export default function InscriptionPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
+  const { register, control, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
     resolver: zodResolver(schema),
-    defaultValues: { consent: false },
+    defaultValues: { consent: false, prenom: "", tranche_age: "" },
   })
 
-  const onSubmit = async ({ email, password }: Fields) => {
+  const onSubmit = async ({ email, password, prenom, tranche_age, consent }: Fields) => {
     setError(null)
     try {
-      await registerUser(email, password)
+      await registerUser(email, password, { prenom, tranche_age, consent })
       router.push("/espace")
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Erreur lors de la création du compte.")
@@ -60,6 +68,31 @@ export default function InscriptionPage() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="prenom">Prénom</Label>
+            <Input id="prenom" autoComplete="given-name" className="h-10" placeholder="Marie" {...register("prenom")} />
+            {errors.prenom && <p className="text-xs text-destructive">{errors.prenom.message}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Tranche d&apos;âge</Label>
+            <Controller
+              name="tranche_age"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Choisir…" /></SelectTrigger>
+                  <SelectContent>
+                    {TRANCHES_AGE.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.tranche_age && <p className="text-xs text-destructive">{errors.tranche_age.message}</p>}
+          </div>
+        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>

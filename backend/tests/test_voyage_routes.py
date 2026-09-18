@@ -87,7 +87,7 @@ def auth(candidate):
 def test_a_new_voyage_starts_empty_and_silent(app, candidate):
     voyage = _voyage(candidate)
     assert voyage.status == STATUS_EN_COURS
-    assert voyage.responses == {"answers": {}, "billets": {}}
+    assert voyage.responses == {"answers": {}}
     assert voyage.micro == {}
     assert voyage.portrait == {}
     assert voyage.micro_status == "none"
@@ -100,30 +100,33 @@ def test_a_new_voyage_starts_empty_and_silent(app, candidate):
 
 def test_responses_round_trip_through_the_property(app, candidate):
     voyage = _voyage(candidate)
-    voyage.responses = {"answers": {"S0-01": True, "S1-1": "A"},
-                        "billets": {"0": {"surprise": "je déteste le bureau"}}}
+    voyage.responses = {"answers": {"S0-01": True, "S1-1": "A"}}
     _db.session.commit()
 
-    stored = Voyage.query.get(voyage.id).responses
-    assert stored["answers"] == {"S0-01": True, "S1-1": "A"}
-    assert stored["billets"]["0"]["surprise"] == "je déteste le bureau"
+    assert Voyage.query.get(voyage.id).responses == {"answers": {"S0-01": True, "S1-1": "A"}}
 
 
-def test_both_response_keys_always_exist(app, candidate):
+def test_the_answers_key_always_exists_and_nothing_else_is_kept(app, candidate):
     """Scoring reads responses["answers"] without a guard — the model owes it
-    the shape whatever was stored."""
+    the shape whatever was stored. The billet de sortie is gone (2026-09-15):
+    neither the setter nor the getter lets one through, even from a row the
+    erasing migration could not rewrite."""
     voyage = _voyage(candidate)
-    voyage.responses = {"answers": {"S0-01": True}}
+    voyage.responses = {"billets": {"0": {"surprise": "je déteste le bureau"}}}
     _db.session.commit()
-    assert Voyage.query.get(voyage.id).responses["billets"] == {}
+    assert Voyage.query.get(voyage.id).responses == {"answers": {}}
+
+    voyage.responses_encrypted = crypto.encrypt_json(
+        {"answers": {"S0-01": True}, "billets": {"0": {"surprise": "avant"}}})
+    _db.session.commit()
+    assert Voyage.query.get(voyage.id).responses == {"answers": {"S0-01": True}}
 
 
 def test_columns_hold_ciphertext_not_plaintext(app, candidate):
     """The guarantee that makes a psychometric read-out storable at all: a DB
     export, an admin query or a log shipper sees nothing."""
     voyage = _voyage(candidate)
-    voyage.responses = {"answers": {"S0-01": True},
-                        "billets": {"0": {"surprise": "je déteste le bureau"}}}
+    voyage.responses = {"answers": {"S0-01": True}}
     voyage.micro = {"phrase": "Tu cherches des endroits où ce que tu fabriques sert."}
     _db.session.commit()
 
@@ -131,7 +134,6 @@ def test_columns_hold_ciphertext_not_plaintext(app, candidate):
         "SELECT responses_encrypted, micro_encrypted FROM voyages"
     )).first()
     assert "S0-01" not in row[0]
-    assert "bureau" not in row[0]
     assert "endroits" not in row[1]
 
 
@@ -166,7 +168,7 @@ def test_synthesis_reads_the_answers_the_model_stores(app, candidate):
     to scoring.synthesize — every score would then read as None/False without
     the suite noticing, because nothing else exercises synthesis()."""
     voyage = _voyage(candidate)
-    voyage.responses = {"answers": _answers_for("0"), "billets": {}}
+    voyage.responses = {"answers": _answers_for("0")}
     _db.session.commit()
 
     sheet = voyage.synthesis()
@@ -189,7 +191,7 @@ TO_DICT_KEYS = {
 
 def test_to_dict_carries_exactly_twelve_keys(app, candidate):
     voyage = _voyage(candidate)
-    voyage.responses = {"answers": {"S0-01": True}, "billets": {}}
+    voyage.responses = {"answers": {"S0-01": True}}
     voyage.portrait = {"sections": {k: "x" for k in PORTRAIT_KEYS}, "snapshot": {"s0": {}},
                        "flags": ["vocabulaire"], "edited": True}
     _db.session.commit()
@@ -309,6 +311,29 @@ def _profile_for(user, **fields):
     return profile
 
 
+# What « Ton parcours » holds once the block between S1 and S2 is answered.
+PARCOURS_ANSWERS = {"diplome": "bac", "type_etudes": "generales",
+                    "appetence_etudes": "courtes"}
+
+
+def _profile_past_the_gates(user, **fields):
+    """A profile carrying every block the gates ask for, bloc 5 included.
+
+    Tests that play past S1 need the parcours block, and past S4 the conditions
+    step — both are part of the voyage now, so a fixture that stops at prénom
+    and tranche d'âge is a person who never finished the journey.
+    """
+    from app.models.profile import SensitiveProfile
+
+    profile = _profile_for(user, **{
+        "prenom": "Marie", "tranche_age": "25_34", **PARCOURS_ANSWERS, **fields,
+    })
+    profile.consent_sensitive_at = datetime.utcnow()
+    _db.session.add(SensitiveProfile(profile_id=profile.id))
+    _db.session.commit()
+    return profile
+
+
 def test_session_zero_is_open_as_soon_as_the_voyage_exists(app, candidate):
     """S0 is the 5-minute self-serve half: no code, no profile, no counselor."""
     assert session_lock(_voyage(candidate), None, "0") is None
@@ -338,7 +363,7 @@ def test_the_later_sessions_need_a_prenom_and_an_age_bracket(app, candidate):
 
 def test_sessions_come_in_order(app, candidate):
     voyage = _voyage(candidate, sessions_completed=["0"], counselor_code_id=_code().id)
-    profile = _profile_for(candidate, prenom="Marie", tranche_age="25_34")
+    profile = _profile_past_the_gates(candidate)
     assert session_lock(voyage, profile, "2") == LOCK_ORDER
     voyage.sessions_completed = ["0", "1"]
     _db.session.commit()
@@ -664,7 +689,7 @@ def test_responses_start_empty_and_come_back_whole(client, auth):
     _open_voyage(client, auth)
     res = client.get("/api/voyage/responses", headers=auth)
     assert res.status_code == 200
-    assert res.get_json()["responses"] == {"answers": {}, "billets": {}}
+    assert res.get_json()["responses"] == {"answers": {}}
 
 
 def test_responses_are_only_ever_the_callers_own(client, auth, candidate):
@@ -677,9 +702,9 @@ def test_responses_are_only_ever_the_callers_own(client, auth, candidate):
     the table would fail this in the caller's direction."""
     neighbour_user = _user("voisin-responses@test.fr")
     voyage_b = _voyage(neighbour_user)
-    voyage_b.responses = {"answers": {"S0-01": False}, "billets": {}}
+    voyage_b.responses = {"answers": {"S0-01": False}}
     voyage_a = _voyage(candidate)
-    voyage_a.responses = {"answers": {"S0-01": True}, "billets": {}}
+    voyage_a.responses = {"answers": {"S0-01": True}}
     _db.session.commit()
 
     res = client.get("/api/voyage/responses", headers=auth)
@@ -733,13 +758,12 @@ def test_a_put_returns_the_full_merged_set(client, auth):
     """
     _open_voyage(client, auth)
     sent = _answers_for("0")
-    client.put("/api/voyage/responses", json={"answers": sent}, headers=auth)
+    ids = list(sent)
+    client.put("/api/voyage/responses",
+               json={"answers": {i: sent[i] for i in ids[:10]}}, headers=auth)
     res = client.put("/api/voyage/responses",
-                     json={"billets": {"0": {"surprise": "je n'aime pas le bureau"}}},
-                     headers=auth)
-    body = res.get_json()["responses"]
-    assert body["answers"] == sent
-    assert body["billets"]["0"]["surprise"] == "je n'aime pas le bureau"
+                     json={"answers": {i: sent[i] for i in ids[10:]}}, headers=auth)
+    assert res.get_json()["responses"] == {"answers": sent}
 
 
 def test_an_unknown_item_id_is_dropped_not_rejected(client, auth):
@@ -760,51 +784,67 @@ def test_a_known_item_with_a_bad_value_is_rejected(client, auth):
     assert Voyage.query.one().responses["answers"] == {}
 
 
-def test_billet_fields_outside_the_session_are_dropped(client, auth):
+def test_a_checklist_row_takes_the_neutral_answer(client, auth):
     _open_voyage(client, auth)
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S0-01": bank.NEUTRAL}}, headers=auth)
+    assert res.status_code == 200
+    assert Voyage.query.one().responses["answers"] == {"S0-01": "neutre"}
+
+
+def _max_neutral(client, auth):
+    """Fill the cap with the first NEUTRAL_MAX rows; returns what was sent."""
+    sent = dict.fromkeys(bank.item_ids("0")[:bank.NEUTRAL_MAX], bank.NEUTRAL)
+    res = client.put("/api/voyage/responses", json={"answers": sent}, headers=auth)
+    assert res.status_code == 200
+    return sent
+
+
+def test_neutral_answers_past_the_cap_are_refused_whole(client, auth):
+    """The cap counts the merged set, so it cannot be dodged one row per
+    request — and a refusal writes nothing, not even the valid row beside it."""
+    _open_voyage(client, auth)
+    sent = _max_neutral(client, auth)
+    ids = bank.item_ids("0")
     res = client.put("/api/voyage/responses", json={
-        "billets": {"0": {"surprise": "ok", "inventé": "x"}, "9": {"a": "b"}},
+        "answers": {ids[bank.NEUTRAL_MAX]: bank.NEUTRAL, ids[-1]: True},
+    }, headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == [
+        f"{bank.NEUTRAL_MAX} réponses neutres au maximum."
+    ]
+    assert Voyage.query.one().responses["answers"] == sent
+
+
+def test_turning_a_neutral_row_into_oui_frees_a_slot(client, auth):
+    _open_voyage(client, auth)
+    _max_neutral(client, auth)
+    ids = bank.item_ids("0")
+    res = client.put("/api/voyage/responses", json={
+        "answers": {ids[0]: True, ids[bank.NEUTRAL_MAX]: bank.NEUTRAL},
     }, headers=auth)
     assert res.status_code == 200
-    billets = res.get_json()["responses"]["billets"]
-    assert billets == {"0": {"surprise": "ok"}}
 
 
-def test_a_non_scalar_billet_value_is_dropped_not_stringified(client, auth):
-    """The billet is quoted into the portrait prompt as the candidate's own
-    words, and shown on the counselor's sheet — a stringified dict must never
-    arrive there looking like something a person typed. Both fields ("top3"
-    and "surprise") are known keys for session 0, so this exercises the
-    value-type check and not the unknown-key drop; the sibling scalar field
-    must still be saved, proving the one field is dropped rather than the
-    whole billet."""
-    _open_voyage(client, auth)
+def test_a_billets_key_from_an_older_player_is_ignored(client, auth):
+    """A tab still running the player from before 2026-09-15 may send its
+    billet de sortie. It is dropped like any unknown key — never stored, never
+    a 400 — and the answers beside it are saved."""
+    voyage = _open_voyage(client, auth)
     res = client.put("/api/voyage/responses", json={
-        "billets": {"0": {
-            "surprise": "je n'aime pas le bureau",
-            "top3": {"nested": "x"},
-        }},
+        "answers": {"S0-01": True},
+        "billets": {"0": {"surprise": "je déteste le bureau"}},
     }, headers=auth)
     assert res.status_code == 200
-    billet = res.get_json()["responses"]["billets"]["0"]
-    assert billet == {"surprise": "je n'aime pas le bureau"}
-    assert "top3" not in billet
-
-    res2 = client.put("/api/voyage/responses", json={
-        "billets": {"0": {"top3": ["a", "b"]}},
-    }, headers=auth)
-    assert res2.status_code == 200
-    assert "top3" not in res2.get_json()["responses"]["billets"]["0"]
-
-    stored = Voyage.query.one().responses["billets"]["0"]
-    assert stored == {"surprise": "je n'aime pas le bureau"}
+    assert res.get_json()["responses"] == {"answers": {"S0-01": True}}
+    assert _stored(voyage.id).responses == {"answers": {"S0-01": True}}
 
 
 def test_an_empty_put_is_a_no_op(client, auth):
     _open_voyage(client, auth)
     res = client.put("/api/voyage/responses", json={}, headers=auth)
     assert res.status_code == 200
-    assert res.get_json()["responses"] == {"answers": {}, "billets": {}}
+    assert res.get_json()["responses"] == {"answers": {}}
 
 
 def test_answers_for_a_locked_session_are_refused_before_anything_is_written(client, auth):
@@ -820,31 +860,23 @@ def test_the_answers_column_holds_ciphertext_after_a_real_save(client, auth):
     """The route-level half of the guarantee: what the API writes is what the
     DB export cannot read."""
     _open_voyage(client, auth)
-    client.put("/api/voyage/responses", json={
-        "answers": {"S0-01": True},
-        "billets": {"0": {"surprise": "je déteste le bureau"}},
-    }, headers=auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
     row = _db.session.execute(_db.text("SELECT responses_encrypted FROM voyages")).first()
     assert "S0-01" not in row[0]
-    assert "bureau" not in row[0]
     assert Voyage.query.one().responses["answers"]["S0-01"] is True
 
 
 def test_a_partial_save_merges_at_the_persistence_layer(client, auth):
-    """Two separate PUTs — one carrying only answers, one only billets — must
-    both survive in the row scoring reads. The proof lives in a fresh query
-    against the (decrypted) column, not just in what the second response
-    echoes back, so a merge bug that only fooled the response body would still
-    be caught here."""
+    """Two separate PUTs, each carrying one answer, must both survive in the
+    row scoring reads. The proof lives in a fresh query against the
+    (decrypted) column, not just in what the second response echoes back, so a
+    merge bug that only fooled the response body would still be caught here."""
     voyage = _open_voyage(client, auth)
     client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
-    client.put("/api/voyage/responses",
-               json={"billets": {"0": {"surprise": "je n'aime pas le bureau"}}},
-               headers=auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-02": False}}, headers=auth)
 
     stored = Voyage.query.get(voyage.id).responses
-    assert stored["answers"] == {"S0-01": True}
-    assert stored["billets"]["0"]["surprise"] == "je n'aime pas le bureau"
+    assert stored["answers"] == {"S0-01": True, "S0-02": False}
 
 
 def test_malformed_answers_shapes_are_ignored_not_stored(client, auth):
@@ -889,9 +921,8 @@ def test_a_non_object_body_is_a_400_not_a_500(client, auth):
     assert stored["answers"] == {"S0-01": True}
 
 
-# ── how much a billet may hold ───────────────────────────────────────────────
+# ── how much the column may hold ─────────────────────────────────────────────
 
-TOO_LONG = "Réponse trop longue : 1000 caractères maximum."
 TOO_BIG = "Vos réponses dépassent la taille enregistrable."
 
 
@@ -902,88 +933,34 @@ def _stored(voyage_id):
     return _db.session.query(Voyage).filter_by(id=voyage_id).one()
 
 
-def test_the_two_size_caps_are_pinned():
-    """The player mirrors the first as its maxLength; the second is the MySQL
-    TEXT column's size."""
+def test_the_column_size_cap_is_pinned():
+    """The MySQL TEXT column's size. The billet's own cap left with it."""
     from app.routes import voyage as voyage_routes
-    assert voyage_routes.BILLET_MAX_CHARS == 1000
     assert voyage_routes.RESPONSES_MAX_CHARS == 65535
+    assert not hasattr(voyage_routes, "BILLET_MAX_CHARS")
 
 
-def test_a_billet_of_exactly_a_thousand_characters_is_kept(client, auth):
-    voyage = _open_voyage(client, auth)
-    text = "é" * 1000
-    res = client.put("/api/voyage/responses",
-                     json={"billets": {"0": {"surprise": text}}}, headers=auth)
-    assert res.status_code == 200
-    assert _stored(voyage.id).responses["billets"]["0"]["surprise"] == text
-
-
-def test_a_billet_one_character_too_long_is_refused_before_anything_is_written(client, auth):
-    voyage = _open_voyage(client, auth)
-    client.put("/api/voyage/responses", json={
-        "answers": {"S0-01": True}, "billets": {"0": {"surprise": "déjà là"}},
-    }, headers=auth)
-    row = _stored(voyage.id)
-    cipher, stamp = row.responses_encrypted, row.updated_at
-
-    # A string, and a number whose str() is as long: the cap measures what
-    # would be stored, after the scalar conversion.
-    for value in ("x" * 1001, int("9" * 1001)):
-        res = client.put("/api/voyage/responses",
-                         json={"billets": {"0": {"surprise": value}}}, headers=auth)
-        assert res.status_code == 400
-        assert res.get_json() == {"errors": [TOO_LONG]}
-
-    row = _stored(voyage.id)
-    assert row.responses_encrypted == cipher      # Fernet re-encrypts with a new IV
-    assert row.updated_at == stamp
-
-
-def test_a_valid_answer_beside_a_refused_billet_is_not_merged(client, auth):
-    voyage = _open_voyage(client, auth)
-    res = client.put("/api/voyage/responses", json={
-        "answers": {"S0-01": True},
-        "billets": {"0": {"top3": "ok", "surprise": "x" * 1001}},
-    }, headers=auth)
-    assert res.status_code == 400
-    assert res.get_json() == {"errors": [TOO_LONG]}
-    assert _stored(voyage.id).responses == {"answers": {}, "billets": {}}
-
-
-def test_answers_too_large_for_the_column_are_refused_whole(client, auth, candidate):
+def test_answers_too_large_for_the_column_are_refused_whole(client, auth, monkeypatch):
     """The column is MySQL TEXT: strict mode raises error 1406 past 65535 bytes,
     an unhandled 500. SQLite stores anything, so only the route's own guard can
-    make that failure visible here. The Fernet token is ASCII, so characters
-    are bytes.
+    make that failure visible here.
 
-    Measured, not guessed: every billet field of sessions 0-3 at the
-    1000-character cap, in a four-byte character, encrypts to 65144 characters
-    with those sessions' answers — storable, as a row that was saved must be.
-    One more such field, in session 4 and itself within the cap, takes the
-    token to 70500.
+    Validated answers alone stay far below the real cap since the billet de
+    sortie's free text left (2026-09-15), so the cap is lowered to the stored
+    token's length: a write that would grow it is refused and nothing moves.
     """
-    voyage = _voyage(candidate, status=STATUS_S0, sessions_completed=["0", "1", "2", "3"],
-                     counselor_code_id=_code().id)
-    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
-    played = ("0", "1", "2", "3")
-    voyage.responses = {
-        "answers": {k: v for n in played for k, v in _answers_for(n).items()},
-        "billets": {n: {key: "😀" * 1000 for key in bank.billet_keys(n)} for n in played},
-    }
-    _db.session.commit()
-    voyage_id = voyage.id
-    before = _stored(voyage_id)
+    from app.routes import voyage as voyage_routes
+    voyage = _open_voyage(client, auth)
+    client.put("/api/voyage/responses", json={"answers": {"S0-01": True}}, headers=auth)
+    before = _stored(voyage.id)
     cipher, responses = before.responses_encrypted, before.responses
-    assert len(cipher) <= 65535
+    monkeypatch.setattr(voyage_routes, "RESPONSES_MAX_CHARS", len(cipher))
 
-    field = bank.billet_keys("4")[0]
-    res = client.put("/api/voyage/responses",
-                     json={"billets": {"4": {field: "😀" * 1000}}}, headers=auth)
+    res = client.put("/api/voyage/responses", json={"answers": _answers_for("0")}, headers=auth)
 
     assert res.status_code == 400
     assert res.get_json() == {"errors": [TOO_BIG]}
-    after = _stored(voyage_id)
+    after = _stored(voyage.id)
     assert after.responses_encrypted == cipher
     assert after.responses == responses
 
@@ -1000,7 +977,7 @@ def _closed_session_zero(user, with_code=True):
         fields["counselor_code_id"] = _code().id
         _db.session.add(Profile(user_id=user.id, prenom="Marie", tranche_age="25_34"))
     voyage = _voyage(user, **fields)
-    voyage.responses = {"answers": _answers_for("0"), "billets": {"0": {"surprise": "avant"}}}
+    voyage.responses = {"answers": _answers_for("0")}
     _db.session.commit()
     return voyage.id
 
@@ -1023,50 +1000,29 @@ def test_answers_to_a_completed_session_are_refused_and_nothing_is_written(
     assert _unchanged(voyage_id) == before
 
 
-def test_billets_to_a_completed_session_are_refused(client, auth, candidate):
+def test_a_request_touching_a_completed_and_an_open_session_merges_neither(
+        client, auth, candidate):
+    """S1 is open here; naming S0 beside it refuses the whole request, so the
+    S1 answer is not saved either."""
     voyage_id = _closed_session_zero(candidate)
     before = _unchanged(voyage_id)
 
     res = client.put("/api/voyage/responses",
-                     json={"billets": {"0": {"surprise": "après"}}}, headers=auth)
-
+                     json={"answers": {"S0-01": False, "S1-1": "A"}}, headers=auth)
     assert res.status_code == 409
     assert res.get_json() == {"error": SESSION_CLOSED}
-    assert _unchanged(voyage_id) == before
-    assert _stored(voyage_id).responses["billets"]["0"] == {"surprise": "avant"}
-
-
-def test_a_request_touching_a_completed_and_an_open_session_merges_neither(
-        client, auth, candidate):
-    """S1 is open here; naming S0 beside it refuses the whole request, so the
-    S1 answer and the S1 billet are not saved either."""
-    voyage_id = _closed_session_zero(candidate)
-    before = _unchanged(voyage_id)
-
-    for body in ({"answers": {"S0-01": False, "S1-1": "A"}},
-                 {"answers": {"S1-1": "A"}, "billets": {"0": {"surprise": "après"}}},
-                 {"billets": {"0": {"surprise": "après"}, "1": {"cabane": "oui"}}}):
-        res = client.put("/api/voyage/responses", json=body, headers=auth)
-        assert res.status_code == 409
-        assert res.get_json() == {"error": SESSION_CLOSED}
 
     assert _unchanged(voyage_id) == before
-    stored = _stored(voyage_id).responses
-    assert "S1-1" not in stored["answers"]
-    assert "1" not in stored["billets"]
+    assert "S1-1" not in _stored(voyage_id).responses["answers"]
 
 
 def test_the_open_session_after_a_completed_one_is_still_saved(client, auth, candidate):
     voyage_id = _closed_session_zero(candidate)
 
-    res = client.put("/api/voyage/responses",
-                     json={"answers": {"S1-1": "A"}, "billets": {"1": {"cabane": "oui"}}},
-                     headers=auth)
+    res = client.put("/api/voyage/responses", json={"answers": {"S1-1": "A"}}, headers=auth)
 
     assert res.status_code == 200
-    stored = _stored(voyage_id).responses
-    assert stored["answers"]["S1-1"] == "A"
-    assert stored["billets"]["1"] == {"cabane": "oui"}
+    assert _stored(voyage_id).responses["answers"]["S1-1"] == "A"
 
 
 def test_a_completed_session_is_refused_before_the_lock_is_consulted(client, auth, candidate):
@@ -1084,14 +1040,11 @@ def test_a_completed_session_is_refused_before_the_lock_is_consulted(client, aut
 
 
 # ── a save that changes nothing writes nothing ───────────────────────────────
-# Contract § E5: a request with neither answers nor billets is a no-op 200.
+# Contract § E5: a request without answers is a no-op 200.
 # Re-encrypting unchanged answers would still move updated_at, the clock the
 # stall rules and the startup sweep read.
 
-SAVED = {"answers": {"S0-01": True}, "billets": {"0": {"surprise": "avant"}}}
-# No billet stored yet: a request naming session 0's billet with nothing
-# keepable in it must not create an empty one.
-ANSWERS_ONLY = {"answers": {"S0-01": True}, "billets": {}}
+SAVED = {"answers": {"S0-01": True}}
 
 
 def _saved_and_aged(client, auth, saved=SAVED):
@@ -1107,19 +1060,15 @@ def _saved_and_aged(client, auth, saved=SAVED):
 @pytest.mark.parametrize("body", [
     {},
     {"answers": {"S9-99": "Z"}},                        # unknown item id
-    {"billets": {"0": {"inventé": "x"}}},               # unknown billet key
-    {"billets": {"0": {}}},                             # a session with nothing in it
-    {"billets": {"0": {"top3": ["a", "b"]}}},           # a value that is dropped
-    {"billets": {"9": {"a": "b"}}},                     # unknown session
-], ids=["empty", "unknown-id", "unknown-key", "empty-billet", "dropped-value",
-        "unknown-session"])
+    {"billets": {"0": {"surprise": "x"}}},              # an older player's billet
+], ids=["empty", "unknown-id", "older-player-billet"])
 def test_a_request_that_changes_nothing_writes_nothing(client, auth, body):
-    voyage_id, cipher, stamp = _saved_and_aged(client, auth, ANSWERS_ONLY)
+    voyage_id, cipher, stamp = _saved_and_aged(client, auth)
 
     res = client.put("/api/voyage/responses", json=body, headers=auth)
 
     assert res.status_code == 200
-    assert res.get_json() == {"responses": ANSWERS_ONLY}
+    assert res.get_json() == {"responses": SAVED}
     row = _stored(voyage_id)
     assert row.responses_encrypted == cipher
     assert row.updated_at == stamp
@@ -1204,6 +1153,33 @@ def test_a_session_cannot_be_completed_twice(client, auth):
     assert Voyage.query.one().sessions_completed == ["0"]
 
 
+def test_completing_session_zero_refuses_more_neutral_answers_than_the_cap(client, auth):
+    """PUT holds the cap, but completion is where the sheet gets scored and
+    handed to the phrase — it checks again rather than trust the row."""
+    _open_voyage(client, auth)
+    over = dict.fromkeys(bank.item_ids("0")[:bank.NEUTRAL_MAX + 1], bank.NEUTRAL)
+    voyage = Voyage.query.one()
+    voyage.responses = {"answers": {**_answers_for("0"), **over}}
+    _db.session.commit()
+
+    with patch("app.routes.voyage._spawn_micro") as spawn:
+        res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert res.status_code == 400
+    assert res.get_json()["errors"] == [f"{bank.NEUTRAL_MAX} réponses neutres au maximum."]
+    assert "0" not in (Voyage.query.one().sessions_completed or [])
+    spawn.assert_not_called()
+
+
+def test_completing_session_zero_accepts_exactly_the_cap(client, auth):
+    _open_voyage(client, auth)
+    at_cap = dict.fromkeys(bank.item_ids("0")[:bank.NEUTRAL_MAX], bank.NEUTRAL)
+    client.put("/api/voyage/responses",
+               json={"answers": {**_answers_for("0"), **at_cap}}, headers=auth)
+    with patch("app.routes.voyage._spawn_micro"):
+        res = client.post("/api/voyage/sessions/0/complete", headers=auth)
+    assert res.status_code == 200
+
+
 def test_session_one_needs_the_code_then_the_profile(client, auth, candidate):
     _open_voyage(client, auth)
     _play_session_zero(client, auth)
@@ -1225,7 +1201,7 @@ def test_sessions_must_be_completed_in_order(client, auth, candidate):
     _play_session_zero(client, auth)
     voyage = Voyage.query.one()
     voyage.counselor_code_id = _code().id
-    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _profile_past_the_gates(candidate)
     _db.session.commit()
 
     client.put("/api/voyage/responses", json={"answers": _answers_for("2")}, headers=auth)
@@ -1241,7 +1217,7 @@ def _play_to_the_end(client, auth, candidate):
     _play_session_zero(client, auth)
     voyage = Voyage.query.one()
     voyage.counselor_code_id = _code().id
-    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _profile_past_the_gates(candidate)
     _db.session.commit()
 
     for n in ("1", "2", "3", "4"):
@@ -1269,6 +1245,33 @@ def test_the_middle_sessions_change_no_status(client, auth, candidate):
     assert payload["status"] == STATUS_S0
     assert payload["sessions_completed"] == ["0", "1"]
     assert payload["portrait_status"] == "none"
+
+
+def _reach_session_one(client, auth, candidate):
+    _open_voyage(client, auth)
+    _play_session_zero(client, auth)
+    voyage = Voyage.query.one()
+    voyage.counselor_code_id = _code().id
+    _db.session.add(Profile(user_id=candidate.id, prenom="Marie", tranche_age="25_34"))
+    _db.session.commit()
+
+
+def test_a_scene_takes_its_choices_ranked(client, auth, candidate):
+    _reach_session_one(client, auth, candidate)
+    res = client.put("/api/voyage/responses",
+                     json={"answers": {"S1-1": ["B", "D", "A"]}}, headers=auth)
+    assert res.status_code == 200
+    assert Voyage.query.one().responses["answers"]["S1-1"] == ["B", "D", "A"]
+
+
+def test_a_ranking_past_the_max_repeated_or_empty_is_refused(client, auth, candidate):
+    _reach_session_one(client, auth, candidate)
+    for bad in (["A", "B", "C", "D"], ["A", "A"], []):
+        res = client.put("/api/voyage/responses",
+                         json={"answers": {"S1-1": bad}}, headers=auth)
+        assert res.status_code == 400, bad
+        assert res.get_json()["errors"] == ["Réponse invalide pour S1-1."]
+    assert "S1-1" not in Voyage.query.one().responses["answers"]
 
 
 def test_completing_session_five_finishes_the_voyage(client, auth, candidate):
@@ -1759,7 +1762,7 @@ def sheet(candidate):
         # catch it. Both tests must now carry load.
         scoring_version="cahier-2025-11",
     )
-    voyage.responses = {"answers": _answers_for("0"), "billets": {}}
+    voyage.responses = {"answers": _answers_for("0")}
     voyage.portrait = {
         # "secret_snapshot" is not a PORTRAIT_KEYS section: it is planted here
         # to prove _counselor_portrait's `if k in PORTRAIT_KEYS` filter is
@@ -1817,7 +1820,7 @@ def test_a_token_reaches_only_its_own_voyage(client, sheet, counselor_auth):
         share_token="tok-voisin", portrait_status="draft",
         completed_at=datetime.utcnow(),
     )
-    voisin.responses = {"answers": _answers_for("0"), "billets": {}}
+    voisin.responses = {"answers": _answers_for("0")}
     voisin.portrait = {"sections": {k: f"voisin {k}" for k in PORTRAIT_KEYS},
                        "flags": [], "edited": False}
     _db.session.add(Profile(user_id=neighbour.id, prenom="Paul",
@@ -1875,7 +1878,7 @@ def test_a_drifted_row_keeps_its_own_scoring_version_not_the_banks(client, candi
     _, counselor_auth = counselor_auth
     drifted = _voyage(candidate, share_token="tok-drifted",
                       scoring_version="cahier-2025-01")
-    drifted.responses = {"answers": _answers_for("0"), "billets": {}}
+    drifted.responses = {"answers": _answers_for("0")}
     _db.session.commit()
 
     body = client.get("/api/voyage/c/tok-drifted",
@@ -2383,3 +2386,99 @@ def test_relaunching_a_stalled_portrait_restarts_its_clock(client, sheet, counse
     assert first.status_code == 202
     assert second.status_code == 409
     spawn.assert_called_once()
+
+
+# ── placement: the profile blocks gate the session after them ────────────────
+
+def _voyage_at(candidate, sessions, **profile_fields):
+    """A coded voyage that has finished `sessions`, beside a profile carrying
+    the named fields on top of the prénom/tranche d'âge S1 has always wanted."""
+    from app.models.profile import Profile
+    from app.models.voyage import Voyage
+
+    voyage = Voyage(user_id=candidate.id, consent_at=datetime.utcnow(),
+                    age_attested=True, sessions_completed=list(sessions),
+                    counselor_code_id=_code().id)
+    fields = {"prenom": "Marie", "tranche_age": "18_21", **profile_fields}
+    _db.session.add_all([voyage, Profile(user_id=candidate.id, **fields)])
+    _db.session.commit()
+    return voyage
+
+
+PARCOURS = {"diplome": "bac", "type_etudes": "generales", "appetence_etudes": "courtes"}
+
+
+def test_session_2_waits_for_the_parcours_block(app, candidate):
+    from app.models.profile import Profile
+    from app.models.voyage import LOCK_PARCOURS, session_lock
+
+    voyage = _voyage_at(candidate, ["0", "1"])
+    profile = Profile.query.filter_by(user_id=candidate.id).first()
+    assert session_lock(voyage, profile, "2") == LOCK_PARCOURS
+
+    for field, value in PARCOURS.items():
+        setattr(profile, field, value)
+    _db.session.commit()
+    assert session_lock(voyage, profile, "2") is None
+
+
+def test_session_1_is_never_held_by_the_parcours_block(app, candidate):
+    """It is asked *after* S1. Gating S1 on it would be the bounce this whole
+    placement exists to remove."""
+    from app.models.profile import Profile
+    from app.models.voyage import has_parcours, session_lock
+
+    voyage = _voyage_at(candidate, ["0"])
+    profile = Profile.query.filter_by(user_id=candidate.id).first()
+    assert not has_parcours(profile)
+    assert session_lock(voyage, profile, "1") is None
+
+
+def test_the_intitule_is_optional_for_the_gate(app, candidate):
+    from app.models.profile import Profile
+    from app.models.voyage import session_lock
+
+    voyage = _voyage_at(candidate, ["0", "1"], **PARCOURS)
+    profile = Profile.query.filter_by(user_id=candidate.id).first()
+    assert profile.intitule_etudes is None
+    assert session_lock(voyage, profile, "2") is None
+
+
+def test_session_5_waits_for_bloc_5(app, candidate):
+    from app.models.profile import Profile, SensitiveProfile
+    from app.models.voyage import LOCK_CONDITIONS, session_lock
+
+    voyage = _voyage_at(candidate, ["0", "1", "2", "3", "4"], **PARCOURS)
+    profile = Profile.query.filter_by(user_id=candidate.id).first()
+    assert session_lock(voyage, profile, "5") == LOCK_CONDITIONS
+
+    sensitive = SensitiveProfile(profile_id=profile.id)
+    sensitive.conditions = {"attention": {"state": "me_convient", "point_fort": False}}
+    _db.session.add(sensitive)
+    _db.session.commit()
+    assert session_lock(voyage, profile, "5") is None
+
+
+def test_an_answered_but_empty_bloc_5_still_opens_session_5(app, candidate):
+    """Bloc 5 is optional for everyone. What the gate asks is that the step was
+    *seen* — the consent record is the proof — not that anything was declared."""
+    from app.models.profile import Profile, SensitiveProfile
+    from app.models.voyage import session_lock
+
+    voyage = _voyage_at(candidate, ["0", "1", "2", "3", "4"], **PARCOURS)
+    profile = Profile.query.filter_by(user_id=candidate.id).first()
+    profile.consent_sensitive_at = datetime.utcnow()
+    _db.session.add(SensitiveProfile(profile_id=profile.id))
+    _db.session.commit()
+    assert session_lock(voyage, profile, "5") is None
+
+
+def test_order_still_wins_over_the_new_gates(app, candidate):
+    """A person who has the blocks but skipped a session is out of order, not
+    missing a profile — the card must say so."""
+    from app.models.profile import Profile
+    from app.models.voyage import LOCK_ORDER, session_lock
+
+    voyage = _voyage_at(candidate, ["0"], **PARCOURS)
+    profile = Profile.query.filter_by(user_id=candidate.id).first()
+    assert session_lock(voyage, profile, "3") == LOCK_ORDER

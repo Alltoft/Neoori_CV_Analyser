@@ -10,17 +10,18 @@ export default function CgvPage() {
 
       <h2>1. Objet</h2>
       <p>
-        Les présentes CGV régissent la vente du service « analyse de CV complète » proposé sur
+        Les présentes CGV régissent la vente du service « analyse complète » proposé sur
         neoori par [À COMPLÉTER : dénomination de l&apos;éditeur] (voir mentions légales).
       </p>
 
       <h2>2. Description du service</h2>
       <p>
-        L&apos;offre gratuite comprend les sections 1 à 3 du rapport d&apos;analyse, ainsi qu&apos;un
-        verdict de diagnostic. L&apos;offre payante débloque le rapport complet en 9 sections,
-        incluant les points à renforcer, les préconisations terrain, un exemple de réécriture,
-        la synthèse, les pistes d&apos;évolution et une proposition de CV retravaillé, ainsi que
-        l&apos;export conseiller. Le rapport est généré par intelligence artificielle à
+        L&apos;offre gratuite comprend les trois premières sections du rapport d&apos;analyse,
+        ainsi qu&apos;un verdict de diagnostic. L&apos;offre payante débloque le rapport complet
+        du parcours choisi, ainsi que l&apos;export conseiller. Pour le parcours « J&apos;ai une
+        cible », il compte 9 sections, incluant les points à renforcer, les préconisations
+        terrain, un exemple de réécriture, la synthèse, les pistes d&apos;évolution et une
+        proposition de CV retravaillé. Le rapport est généré par intelligence artificielle à
         partir des informations fournies par l&apos;utilisateur ; il constitue une aide à la décision
         et non un conseil professionnel individualisé.
       </p>
@@ -51,8 +52,9 @@ export default function CgvPage() {
       <h2>6. Bénéficiaires accompagnés (code conseiller)</h2>
       <p>
         Les bénéficiaires d&apos;un accompagnement Cap Emploi, France Travail, Mission Locale ou CEP
-        peuvent obtenir le rapport complet gratuitement au moyen d&apos;un code fourni par leur
-        conseiller. Ce code est strictement personnel à la structure qui le délivre.
+        peuvent obtenir le rapport complet gratuitement, et accéder aux sessions 1 à 5 du voyage,
+        au moyen d&apos;un code fourni par leur conseiller. Ce code est strictement personnel à la
+        structure qui le délivre.
       </p>
 
       <h2>7. Réclamations et remboursement</h2>

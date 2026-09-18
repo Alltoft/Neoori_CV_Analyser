@@ -17,10 +17,24 @@ export default function ConfidentialitePage() {
       <ul>
         <li><strong>Compte</strong> : adresse email, mot de passe (haché).</li>
         <li>
-          <strong>Analyse de CV</strong> : contenu du CV, projet visé, prénom, nom, tranche
-          d&apos;âge, localisation, situation actuelle, type de mobilité, notes éventuelles
-          (pouvant inclure des informations sensibles que vous choisissez de communiquer, par
-          exemple une RQTH).
+          <strong>Profil de base</strong> : prénom, nom, ville et rayon de recherche, tranche
+          d&apos;âge, situation actuelle, projet (et le document qui le décrit, si vous en joignez
+          un), contraintes pratiques ; si vous les renseignez, vos conditions de travail et votre
+          statut de bénéficiaire de l&apos;obligation d&apos;emploi (voir § 6).
+        </li>
+        <li>
+          <strong>Analyses</strong> : selon le parcours choisi, le contenu de votre CV, la cible
+          visée (offre d&apos;emploi ou description) et vos réponses aux questions du parcours
+          (pouvant inclure des informations sensibles que vous choisissez de communiquer).
+        </li>
+        <li>
+          <strong>Le voyage</strong> : vos réponses aux sessions, la phrase et le portrait
+          rédigés à partir de ces réponses, la date de votre accord et votre attestation
+          d&apos;avoir 15 ans ou plus.
+        </li>
+        <li>
+          <strong>Notes du conseiller</strong> : les notes qu&apos;un conseiller prend sur votre
+          analyse ou votre voyage pour préparer l&apos;entretien.
         </li>
         <li><strong>Paiement</strong> : traité par Stripe ; neoori ne voit jamais votre carte.</li>
       </ul>
@@ -28,6 +42,10 @@ export default function ConfidentialitePage() {
       <h2>3. Finalités et bases légales</h2>
       <ul>
         <li>Génération du rapport d&apos;analyse — exécution du contrat.</li>
+        <li>
+          Le voyage : conservation de vos réponses, rédaction de la phrase et du portrait, prise
+          en compte dans vos analyses — consentement, que vous retirez en supprimant votre voyage.
+        </li>
         <li>Gestion du compte et des paiements — exécution du contrat / obligation légale.</li>
         <li>Amélioration du service (statistiques d&apos;usage agrégées) — intérêt légitime.</li>
       </ul>
@@ -38,6 +56,12 @@ export default function ConfidentialitePage() {
         sous-traitant d&apos;inférence, pour générer le rapport. Conformément à la politique
         commerciale d&apos;Anthropic, ces données ne sont pas utilisées pour entraîner ses modèles.
         Le rapport généré et la réponse brute sont conservés afin de vous restituer votre analyse.
+      </p>
+      <p>
+        Pour le voyage, le modèle reçoit vos réponses reformulées en mots simples — jamais de
+        score chiffré — avec le prénom, la tranche d&apos;âge, la situation et le projet de votre
+        profil, afin de rédiger la phrase et le portrait. Si vous avez fait le voyage, quelques
+        lignes qui en résument les réponses accompagnent aussi vos analyses suivantes.
       </p>
       <p>
         Aucun terme médical, aucun diagnostic et aucune mention de votre statut administratif
@@ -55,8 +79,13 @@ export default function ConfidentialitePage() {
         Le lien de partage conseiller (« /c/… ») donne accès à une synthèse de votre analyse à
         toute personne disposant du lien : ne le transmettez qu&apos;à votre conseiller.
       </p>
+      <p>
+        Le lien conseiller du voyage (« /voyage/c/… ») ne s&apos;ouvre que pour un compte
+        conseiller connecté. Il donne accès à la synthèse de vos réponses et à votre portrait,
+        que le conseiller relit avec vous avant que vous le receviez.
+      </p>
 
-      <h2>6. Profil de base et conservation</h2>
+      <h2>6. Profil de base, voyage et conservation</h2>
       <p>
         Votre profil de base est conservé tant que votre compte est actif, afin que vous
         n&apos;ayez pas à le ressaisir et qu&apos;un conseiller qui vous accompagne puisse
@@ -70,6 +99,12 @@ export default function ConfidentialitePage() {
         stockés séparément et chiffrés : ils n&apos;apparaissent ni dans les journaux
         techniques, ni dans les documents que vous téléchargez ou partagez, ni dans le rapport
         lui-même. Supprimer votre profil supprime les deux.
+      </p>
+      <p>
+        Votre voyage est conservé tant que votre compte est actif ; vos réponses, votre phrase
+        et votre portrait sont chiffrés et stockés séparément de votre profil. Vous le supprimez
+        à tout moment depuis sa page : la suppression efface aussi les lignes du voyage
+        recopiées dans vos analyses. Les rapports déjà rédigés ne sont pas modifiés.
       </p>
       <p>
         Vos analyses sont conservées tant que votre compte est actif. Vous pouvez supprimer

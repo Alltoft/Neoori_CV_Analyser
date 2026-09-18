@@ -11,7 +11,12 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
 from ..models.profile import (
-    AGE_BRACKETS,
+    ACCEPTED_AGE_BRACKETS,
+    CONSENT_SENSITIVE_VERSION,
+    CONSENT_VERSION,
+    APPETENCE_ETUDES,
+    DIPLOMES,
+    TYPES_ETUDES,
     RECONVERSION_SCOPES,
     SEARCH_RADIUS,
     SITUATIONS,
@@ -23,20 +28,29 @@ from ..utils.request_body import json_object, text_field
 
 profile_bp = Blueprint("profile", __name__)
 
-CONSENT_VERSION = "v1.2"
+# The keys that consent covers. Presence, never value — see _needs_sensitive_consent.
+_SENSITIVE_FIELDS = ("conditions", "oeth")
+
+SENSITIVE_CONSENT_REQUIRED = (
+    "Le consentement spécifique aux conditions de travail est requis."
+)
 
 # (field, allowed values) — anything outside the set is rejected rather than
 # silently coerced, because these drive routing (parcours 3 youth schemes,
 # the Académie des Ori variant) and a wrong value is not a cosmetic issue.
 _ENUMS = {
     "rayon": SEARCH_RADIUS,
-    "tranche_age": AGE_BRACKETS,
+    "tranche_age": ACCEPTED_AGE_BRACKETS,
     "situation": SITUATIONS,
     "reconversion_scope": RECONVERSION_SCOPES,
+    "diplome": DIPLOMES,
+    "type_etudes": TYPES_ETUDES,
+    "appetence_etudes": APPETENCE_ETUDES,
 }
 
 _TEXT_FIELDS = (
     "prenom", "nom", "ville",
+    "intitule_etudes",
     "projet", "projet_document", "contraintes_pratiques",
 )
 
@@ -55,6 +69,24 @@ def _validate(data: dict) -> list[str]:
         errors.append("reconversion_scope ne s'applique qu'à une reconversion.")
 
     return errors
+
+
+def _needs_sensitive_consent(profile: Profile | None, data: dict) -> bool:
+    """Whether this payload may not be stored yet.
+
+    Keys on the *presence* of the sensitive fields, never on their values. A
+    gate that refused `oeth: true` and waved `oeth: false` through would be a
+    reaction to the flag — the refusal alone would tell the person they had
+    just flagged themselves, which is the one thing the OETH invariant forbids.
+
+    The tick is asked once. Once it is on the row, every later edit — including
+    clearing the answers — flows without asking again.
+    """
+    if not any(field in data for field in _SENSITIVE_FIELDS):
+        return False
+    if profile is not None and profile.consent_sensitive_at is not None:
+        return False
+    return data.get("consent_sensitive") is not True
 
 
 def _upsert_sensitive(profile: Profile, data: dict) -> None:
@@ -122,6 +154,11 @@ def upsert_profile():
         return jsonify({"errors": errors}), 400
 
     profile = Profile.query.filter_by(user_id=user_id).first()
+
+    # Before anything is created or written, so a refusal leaves no half-row.
+    if _needs_sensitive_consent(profile, data):
+        return jsonify({"errors": [SENSITIVE_CONSENT_REQUIRED]}), 400
+
     creating = profile is None
     if creating:
         profile = Profile(user_id=user_id)
@@ -135,6 +172,12 @@ def upsert_profile():
         profile.consent_version = CONSENT_VERSION
     elif creating:
         return jsonify({"errors": ["Le consentement est requis."]}), 400
+
+    # Stamped once. Re-ticking does not move it — the record is of the moment
+    # the person agreed, not of their last save.
+    if data.get("consent_sensitive") is True and profile.consent_sensitive_at is None:
+        profile.consent_sensitive_at = datetime.utcnow()
+        profile.consent_sensitive_version = CONSENT_SENSITIVE_VERSION
 
     for field in _TEXT_FIELDS:
         if field in data:

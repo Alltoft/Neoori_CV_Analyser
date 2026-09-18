@@ -19,6 +19,16 @@ from datetime import datetime
 from ..extensions import db
 from ..utils import crypto
 
+# Which wording the person agreed to. Here rather than on the route: two
+# entry points now write a consent — the signup seed and PUT /api/profile —
+# and a version that lived in one of them would be the other's import.
+CONSENT_VERSION = "v1.2"
+
+# Bloc 5 and the OETH flag carry their own consent, versioned apart from the
+# CGV: the questions behind it can change without reopening the whole contract,
+# and a prescriber auditing Art. 9 data wants to see which wording was shown.
+CONSENT_SENSITIVE_VERSION = "v1"
+
 # Bloc 1 — search radius around the declared city.
 SEARCH_RADIUS = ("ma_ville", "30km", "ma_region", "toute_la_france")
 
@@ -37,7 +47,32 @@ RECONVERSION_SCOPES = ("meme_domaine", "changer_de_metier", "changer_de_secteur"
 
 # Bloc 1 — brackets, never a date of birth. Routes the Académie des Ori
 # variant and gates the youth schemes in parcours 3.
-AGE_BRACKETS = ("moins_25", "25_34", "35_44", "45_54", "55_plus")
+#
+# Seven since the voyage brought school-age candidates in: "moins_25" was one
+# bucket where the youth schemes need three. The two sets meet at 25 without
+# overlapping — 22_24 stops exactly where 25_34 starts — so a 25-year-old has
+# one bucket and no row written under the five-bracket set changes meaning.
+AGE_BRACKETS = ("14_17", "18_21", "22_24", "25_34", "35_44", "45_54", "55_plus")
+
+# Written before the split and still on rows. Accepted on write so that editing
+# any other field does not reject a bracket the person never touched, but never
+# offered in a select: the form re-asks. Until they answer, the stored value
+# stays usable — voyage.session_lock only requires a non-empty bracket, so the
+# re-ask never locks anyone out of S1-S5 mid-journey.
+LEGACY_AGE_BRACKETS = ("moins_25",)
+
+ACCEPTED_AGE_BRACKETS = AGE_BRACKETS + LEGACY_AGE_BRACKETS
+
+# « Ton parcours » — asked after session 1, not at the door. The PM's rule is
+# that a young person who has just played the childhood scenes is engaged, and
+# a short block there is not the entry form they would have closed the tab on.
+DIPLOMES = ("sans_diplome", "cap_bep", "bac", "bac_2", "bac_3_plus")
+
+TYPES_ETUDES = ("generales", "technologiques", "professionnelles", "manuelles", "autre")
+
+# The one that filters the pistes: without it nothing can say whether a piste
+# is reachable for this person. Names match the spec's output schema.
+APPETENCE_ETUDES = ("courtes", "longues", "indecis", "travailler")
 
 # Bloc 5 — the eight families, each rated on three states.
 CONDITION_FAMILIES = (
@@ -75,6 +110,13 @@ class Profile(db.Model):
     situation = db.Column(db.String(32), nullable=True)
     reconversion_scope = db.Column(db.String(32), nullable=True)
 
+    # « Ton parcours » — level, kind of schooling, and the appetite that filters
+    # the pistes by study length.
+    diplome = db.Column(db.String(32), nullable=True)
+    type_etudes = db.Column(db.String(32), nullable=True)
+    intitule_etudes = db.Column(db.Text, nullable=True)
+    appetence_etudes = db.Column(db.String(16), nullable=True)
+
     # Bloc 3 — Votre projet (+ optional job ad / fiche métier, extracted to text)
     projet = db.Column(db.Text, nullable=True)
     projet_document = db.Column(db.Text, nullable=True)
@@ -86,6 +128,14 @@ class Profile(db.Model):
     # Bloc 6 — RGPD consent. Mandatory before the profile can be saved.
     consent_at = db.Column(db.DateTime, nullable=True)
     consent_version = db.Column(db.String(16), nullable=True)
+
+    # The second consent, for bloc 5 and the OETH flag only. Those are
+    # health-adjacent and a disability status — GDPR Art. 9 — and the CGV tick
+    # taken at signup, before the person had seen the product, is neither
+    # specific nor informed for them. Null for everyone who never opened the
+    # conditions step, which is most people.
+    consent_sensitive_at = db.Column(db.DateTime, nullable=True)
+    consent_sensitive_version = db.Column(db.String(16), nullable=True)
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(
@@ -99,6 +149,15 @@ class Profile(db.Model):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def conditions_seen(self) -> bool:
+        """Mirror of voyage.has_seen_conditions, kept here so the property and
+        the gate cannot drift: the gate imports nothing, the payload exposes
+        nothing extra, and both read the same two facts."""
+        if self.consent_sensitive_at is not None:
+            return True
+        return bool(self.sensitive is not None and self.sensitive.conditions)
+
     def to_dict(self) -> dict:
         """Never includes the sensitive half — that is the whole point of the
         split. Read it through SensitiveProfile explicitly if you need it."""
@@ -110,11 +169,26 @@ class Profile(db.Model):
             "rayon": self.rayon,
             "tranche_age": self.tranche_age,
             "situation": self.situation,
+            "diplome": self.diplome,
+            "type_etudes": self.type_etudes,
+            "intitule_etudes": self.intitule_etudes,
+            "appetence_etudes": self.appetence_etudes,
             "reconversion_scope": self.reconversion_scope,
             "projet": self.projet,
             "projet_document": self.projet_document,
             "contraintes_pratiques": self.contraintes_pratiques,
             "consent_at": self.consent_at.isoformat() if self.consent_at else None,
+            # The record, never the answers: this says a consent was given, not
+            # what was stored under it, so it discriminates nobody.
+            "consent_sensitive_at": (
+                self.consent_sensitive_at.isoformat() if self.consent_sensitive_at else None
+            ),
+            "consent_sensitive_version": self.consent_sensitive_version,
+            # Whether the conditions step was played, so the hub can mirror
+            # session_lock without a second request. Says the step was seen,
+            # never what was answered in it — and nothing at all about OETH,
+            # which travels only on /profile/conditions.
+            "conditions_seen": self.conditions_seen,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

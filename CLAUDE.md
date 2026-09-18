@@ -233,6 +233,61 @@ old reports, pointing at an id that no longer resolves to anything. The
 analysis text already delivered (`Analysis.output`) is untouched — only the
 copied voyage inputs go.
 
+### The Profil de base is asked inside the voyage
+
+There is no form a person is sent to fill any more. Each block is asked at the
+point where they are already engaged enough to answer it, and
+`models/voyage.session_lock()` enforces the placement server-side — the same
+gate that returns the locked card's French string.
+
+| Where | Block | Enforced by |
+|---|---|---|
+| Signup | prénom, tranche d'âge | `LOCK_PROFILE` (S1) |
+| Hub gate, before S0 | ville, nom, situation | the « Commencer » button |
+| `/voyage/etape/parcours` | diplôme, type d'études, intitulé, appétence | `LOCK_PARCOURS` (S2–S5) |
+| `/voyage/etape/conditions` | contraintes pratiques, bloc 5 + OETH | `LOCK_CONDITIONS` (S5) |
+
+Each block is demanded by the session **after** the one it follows, so nobody
+meets a form before they have played anything and S1 is never held by either.
+
+`/profil` is « Mes informations »: unnumbered, reached from the app bar, and
+the place an answer is *changed*, never given for the first time. It also holds
+the erasure — `DELETE /api/profile` had existed since the profile shipped with
+nothing in the app calling it, so a profile could be read and corrected but not
+deleted (RGPD art. 17).
+
+**Bloc 3 (`projet`) is retired.** The analysis form's « cible visée » asks the
+same question with the same PDF drop zone, and the two were reaching the model
+as two lines saying the same thing. Nothing asks for it now; `_profile_block()`
+prints it only for rows that answered it while it was still asked, exactly like
+`rayon`. Both columns stay — a populated column is not dropped on a plan's
+say-so.
+
+Three rules that are easy to undo by accident:
+
+- **The conditions gate asks that the step was seen, not that anything was
+  declared.** Bloc 5 is optional for everyone; `Profile.conditions_seen` is the
+  one definition of "seen", and a row with answers but no consent record
+  predates the second consent and is taken at its word.
+- **Bloc 5 and OETH carry their own consent** (`consent_sensitive_at`), because
+  they are GDPR Art. 9 data and the signup CGV does not reach them. The gate
+  keys on the *presence* of `conditions` / `oeth` in the payload, never on
+  their values — refusing `oeth: true` while accepting `oeth: false` would be
+  a reaction to the flag, which is what the OETH invariant forbids. Any client
+  that sends one must send both, or neither.
+- **`GateProfile` names every field the client mirror reads.** A narrower type
+  still compiles — the fields are all optional — and simply makes `sessionLock()`
+  treat a block it never fetched as unanswered, locking a session the server
+  opens. `frontend/src/app/voyage/session/[n]/page.tsx` shipped that bug once.
+
+`rayon` is retired, not dropped: nothing asks for it, `_profile_block()` prints
+it for rows that already carry one, and `/profil` shows it read-only. Age
+brackets are seven (`14_17` … `55_plus`); `moins_25` is accepted on write and
+never offered.
+
+Spec: `docs/superpowers/plans/2026-09-18-profile-in-voyage.md`, with the open
+questions beside it in `…-QUESTIONS.md`.
+
 ### Le voyage is not le portrait
 
 **Do not touch these four lines.** Le portrait (Parcours doc §8) is the paid

@@ -32,8 +32,8 @@ PREMIUM_PRICE_EUR_CENTS = int(os.getenv("PREMIUM_PRICE_EUR_CENTS", "2400"))
 _OFFERS = {
     tiers.PAID: {
         "cents": PRICE_EUR_CENTS,
-        "name": "neoori — analyse de CV complète",
-        "description": "Déblocage des 9 sections + CV retravaillé + export conseiller",
+        "name": "neoori — analyse complète",
+        "description": "Déblocage du rapport complet + export conseiller",
     },
     tiers.PREMIUM: {
         "cents": PREMIUM_PRICE_EUR_CENTS,

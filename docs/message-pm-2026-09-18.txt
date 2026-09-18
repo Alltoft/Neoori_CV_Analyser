@@ -1,0 +1,40 @@
+Bonjour,
+
+Merci pour cet audit, il est vraiment précis et j'ai tout gardé. J'ai créé un document
+dédié dans le projet (docs/pm-feedback-2026-09-18-site-audit.md) où chaque point est
+consigné, classé par priorité, avec ce que ça coûte à corriger. Rien n'est perdu.
+
+Une seule correction factuelle : l'adresse nneoori@proton.me n'est pas une coquille.
+C'est bien l'adresse réelle, avec deux « n ». J'ai vérifié dans le code, elle est
+correcte aux deux endroits. En revanche ton autre remarque reste juste : passer à
+contact@neoori.tech serait plus crédible face à des structures publiques — c'est une
+simple config DNS, on le fera.
+
+Sur le reste, je veux être direct avec toi : l'application est prête à être utilisée.
+Elle tourne, elle est en ligne, elle est rapide, elle produit de vraies analyses. Ton
+propre verdict le dit : « les fondamentaux sont là ».
+
+Et c'est justement pour ça que je propose qu'on arrête d'auditer maintenant. Si on
+continue à chercher des détails, on en trouvera toujours — il y en aura encore dans six
+mois, et dans un an. On ne sortira jamais. Un produit qui n'est utilisé par personne ne
+s'améliore pas : il vieillit.
+
+Il y a aussi un point pratique. Les remarques les plus importantes de ta liste — les
+témoignages, les logos de partenaires, le chiffre « X analyses réalisées », le « en
+pilote avec X structures » — sont littéralement impossibles à faire aujourd'hui. Elles
+supposent des clients. On ne peut pas fabriquer une preuve sociale avant d'avoir des
+utilisateurs. Donc la seule façon de traiter la moitié de ton audit, c'est de lancer.
+
+Ma proposition :
+
+1. On utilise l'application maintenant, pour de vrai, avec de vrais candidats et de
+   vrais conseillers.
+2. On écoute ce que les premiers utilisateurs disent — c'est ça qui va nous dire quoi
+   corriger en priorité, mieux que n'importe quel audit, y compris le mien.
+3. Dès qu'on a des clients, on reprend ta liste et on la traite sérieusement : adresse
+   de marque, bannière cookies, SEO, exemple de rapport téléchargeable, témoignages.
+   Tout est déjà écrit, il n'y aura rien à redécouvrir.
+
+7/10 avec de vrais utilisateurs vaut mieux que 10/10 sans personne dessus.
+
+On lance.

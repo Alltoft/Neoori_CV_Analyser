@@ -24,7 +24,7 @@ This settles Parcours doc §11's open question "le parcours est-il offert ou ven
 | # | Decision | Why |
 |---|---|---|
 | 1 | Name: **le voyage** (Parcours doc §7). Route `/voyage`, tables `voyages`, `voyage_notes`. | PM's own vocabulary; the cahier's title ("Mon cahier d'exploration") is used as the on-screen subtitle. |
-| 2 ⚑ | The **cahier is the canonical question bank**. Parcours doc §7's Jules Verne tour (17 questions, escales, passport stamps) and the Académie des Ori variant are **skins for later**, not v1. Session structure, billet de sortie and permanent progress bar — which both documents share — are in v1. | The cahier is newer (Sept vs July), more detailed, and paper-tested. The bank is data-driven, so a skin changes presentation, not scoring. |
+| 2 ⚑ | The **cahier is the canonical question bank**. Parcours doc §7's Jules Verne tour (17 questions, escales, passport stamps) and the Académie des Ori variant are **skins for later**, not v1. Session structure and permanent progress bar — which both documents share — are in v1 (the billet de sortie too, until decision 23 removed it). | The cahier is newer (Sept vs July), more detailed, and paper-tested. The bank is data-driven, so a skin changes presentation, not scoring. |
 | 3 | New models, **not** `Analysis` rows. One `Voyage` per attempt, many per user, at most one *open* (`en_cours` / `s0_termine`). A retake = `POST` once the previous one is `termine`; the old row is kept because analyses reference it. Abandoning mid-way = `DELETE` (erase). | Multi-session, weeks-long, counselor-gated lifecycle — nothing like a one-shot analysis. Many-per-user gives retake + traceability (an analysis records which voyage fed it). |
 | 4 | **Everything content-bearing is encrypted at rest** with the existing Fernet util: answers, computed scores, micro-portrait, portrait. Plaintext columns hold only status, timestamps and FKs. | A psychometric profile (neuroticism, fear of judgment, what someone would sacrifice) is more sensitive than bloc 5. Same guarantee: never in `to_dict()`, never in a log, never in a PDF of an analysis. |
 | 5 | **Scoring is arithmetic in Python**, pure functions, no model. Scores are **recomputed from answers on read**, never stored separately; the portrait stores a snapshot of the synthesis it was written from. | No API cost, deterministic, unit-testable. Not storing scores avoids stale rows when a scoring table is corrected; the snapshot keeps traceability. |
@@ -43,6 +43,9 @@ This settles Parcours doc §11's open question "le parcours est-il offert ou ven
 | 18 | `PromptVersion.path` widened `String(1)` → `String(16)`; valid values become **prompt slots** = parcours ids ∪ `{voyage_micro, voyage_portrait}`. | Using "4"/"5" would make the two prompts show up as parcours everywhere the registry is iterated. |
 | 19 | Small admin addition: `PUT /api/admin/users/<id>/role`. | No endpoint today gives a user the `counselor` role; without one nobody can validate a portrait. |
 | 20 | Out of v1: Roue du Sens, simulateur d'aménagement, Conseiller chat, groupes, Jules Verne / Académie skins, counselor dashboard listing voyages by code, under-15 consent, selling the voyage. | See *Out of scope*. |
+| 21 ⚑ | **Session 0 « – » (Neutre)**, added 2026-09-15: counts 0, at most 5 per session, and an axis needs ≥ 2 ✓/✗ to be a tension. `SCORING_VERSION` not bumped. | Some statements neither attract nor repel; forcing ✓/✗ invented a pull. The cap keeps the instinctive five-minute read; stored answers stay valid, so ruling R10's warning must not fire. |
+| 22 ⚑ | **Ranked choices in sessions 1–5**, added 2026-09-15: up to 3 options in preference order; one vote per scene shared 1 · 2/3, 1/3 · 4/7, 2/7, 1/7; S4, S5 and S2-7 labels follow the first choice, later ones under `ensuite`. | Candidates hesitate between options. Sharing rather than adding keeps single-choice sheets identical, the computed maxima valid, and the first choice dominant. |
+| 23 ⚑ | **No billet de sortie**, removed 2026-09-15 from all six sessions (bank, API, player). Migration `b4c5d6e7f8a9` erased the stored billet text; a `billets` key from an older player is ignored. Sessions with an outro (S1, S5) end on a closing screen, the others on their last item. | PM ruling: the billet dated from when a counselor filled the cahier in for the candidate. Nothing read the text — no prompt, no counselor view — so it was erased rather than kept: data minimisation. |
 
 ---
 
@@ -58,7 +61,7 @@ voyages
   consent_version         String(16)                    ("voyage-v1")
   age_attested            Boolean
   counselor_code_id       fk counselor_codes, nullable  (set by /unlock; gates S1–S5)
-  responses_encrypted     Text  Fernet JSON {item_id: "A" | true | false, "billets": {session: {field: text}}}
+  responses_encrypted     Text  Fernet JSON {"answers": {item_id: "A" | ["A", "C"] | true | false | "neutre"}}
   micro_status            String(16): none | generating | success | error
   micro_encrypted         Text  Fernet JSON {phrase, prompt_version_id, tokens_in, tokens_out}
   portrait_status         String(16): none | generating | draft | validated | error
@@ -97,9 +100,7 @@ SESSIONS = [
    "intro": [...paragraphs verbatim...], "duration": "5 min", "kind": "checklist",
    "items": [{"id": "S0-01", "text": "Travailler dehors, sur le terrain, en mouvement",
               "axes": [("A9", +1)]}, ...,
-             {"id": "S0-11", "text": "Avoir un emploi stable avec un salaire régulier", "axes": [("A5", -1)]}, ...],
-   "billet": [{"key": "top3", "label": "Les 3 affirmations qui m'ont le plus parlé :"},
-              {"key": "surprise", "label": "Quelque chose qui m'a surpris(e) dans mes réponses :"}]},
+             {"id": "S0-11", "text": "Avoir un emploi stable avec un salaire régulier", "axes": [("A5", -1)]}, ...]},
   {"n": "1", "title": "Ce que tu faisais naturellement", ..., "kind": "scenes",
    "items": [{"id": "S1-1", "title": "La cabane", "subtitle": "Ce que tu construisais avec les autres",
               "narrative": [...], "question": "À cet âge-là… tu te reconnaissais dans quel groupe ?",
@@ -115,7 +116,7 @@ Per-option tag vocabulary, straight from the counselor manual's *Dimension* colu
 
 `bank.public()` returns the same structure **stripped of every tag key** — that is what `GET /api/voyage/bank` serves. A test walks the served JSON and asserts no scoring key survives.
 
-Item count: 20 (S0) + 6 + 7 + 7 + 6 + 7 = **53 scored items**, plus 20 optional free-text billet fields.
+Item count: 20 (S0) + 6 + 7 + 7 + 6 + 7 = **53 scored items**.
 
 ---
 
@@ -123,7 +124,9 @@ Item count: 20 (S0) + 6 + 7 + 7 + 6 + 7 = **53 scored items**, plus 20 optional 
 
 Pure functions over `(responses: dict) -> dict`. No DB, no I/O.
 
-**S0 — bipolar axes.** For each item loading on an axis with sign *s*: OUI contributes `+s`, NON contributes `−s` (manual: « ✓ OUI = +1, ✗ NON = −1 »; items marked `(−)` load on the negative pole — e.g. *Emploi stable* pushes A5 toward *Stabilité*). `resultant` = sum. **Tension** = resultant in [−2, +2] **and the axis has ≥ 2 items** ⚑ — A1 *Mobilité* has a single item (S0-08) so, as written, it would be a tension for every human being and be weighted ×1.5 in every portrait. Excluded until the PM adds items. Output per axis: `{oui, non, resultant, n_items, tension}`; `tensions`: ordered list; `top3`: axes by |resultant| desc (zero excluded), ties broken by axis id, each carrying the **pole label the sign points to** (resultant > 0 → `pos`, < 0 → `neg`) — that label is the only form the phrase prompt and the analyses block ever see.
+**S0 — bipolar axes.** *Amended 2026-09-15:* a third mark, « – » (`"neutre"`, at most 5 per session, checked on save and on completion), contributes `0`, is counted per axis as `neutre`, and lists its affirmations in `s0.neutres` (counselor sheet + a « Ni oui ni non sur : … » line in both prompts, never the analyses block). `SCORING_VERSION` is not bumped — every stored answer stays valid, and ruling R10's warning would flag every live row; a tension additionally needs `oui + non ≥ 2`, the A1 rule applied to what was actually marked. Booleans-only sheets score exactly as before. For each item loading on an axis with sign *s*: OUI contributes `+s`, NON contributes `−s` (manual: « ✓ OUI = +1, ✗ NON = −1 »; items marked `(−)` load on the negative pole — e.g. *Emploi stable* pushes A5 toward *Stabilité*). `resultant` = sum. **Tension** = resultant in [−2, +2] **and the axis has ≥ 2 items** ⚑ — A1 *Mobilité* has a single item (S0-08) so, as written, it would be a tension for every human being and be weighted ×1.5 in every portrait. Excluded until the PM adds items. Output per axis: `{oui, non, resultant, n_items, tension}`; `tensions`: ordered list; `top3`: axes by |resultant| desc (zero excluded), ties broken by axis id, each carrying the **pole label the sign points to** (resultant > 0 → `pos`, < 0 → `neg`) — that label is the only form the phrase prompt and the analyses block ever see.
+
+**S1–S5 — ranked choices.** *Amended 2026-09-15:* a scene takes up to 3 options in preference order (a bare letter stays a single choice). The scene stays **one vote**, shared 1 · 2/3, 1/3 · 4/7, 2/7, 1/7 — each rank twice the next — so a single choice scores exactly as the manual says, no RIASEC letter can pass its maximum, and the first choice outweighs the others combined. Tallies are exact fractions (ties and ±2 thresholds decided exactly), printed as integers when whole, else to 2 decimals. S4, S5 and the S2-7 probe are named by the first choice; later choices sit under `ensuite`.
 
 **S1 — RIASEC.** Sum points per letter over the six scenes. `max` per letter is **computed from the bank** — summing the best option per scene gives R 12 · I 11 · A 10 · S 10 · **E 11 · C 9**; the manual prints E 10 / C 10 ⚑. `normalized = score / max`; `top3` by normalized desc, ties by letter order R I A S E C. A test asserts the computed maxima against these numbers so a transcription slip in the bank is caught.
 
@@ -148,9 +151,9 @@ Candidate (all `@jwt_required`, owner-scoped to the user's open voyage):
 | GET | `/bank` | Text-only bank. |
 | GET | `` | Current (open or latest) voyage `to_dict()`, or `{"voyage": null}`. |
 | POST | `` | Create. Body `{consent: true, age_attested: true}` — both mandatory, else 400. 409 if an open voyage exists. |
-| GET | `/responses` | Decrypted answers + billets, owner only. For resume/re-render. |
-| PUT | `/responses` | Merge `{answers: {id: value}, billets: {...}}`. Ids and values validated against the bank; unknown ids dropped, bad values 400. Items of a locked session are rejected 403. |
-| POST | `/sessions/<n>/complete` | Requires every item of session *n* answered (400 listing missing ids) and S(n−1) complete (409). `n=0` → `status=s0_termine`, spawns micro generation. `n=5` → `status=termine`, `completed_at`, `share_token`, spawns portrait generation. |
+| GET | `/responses` | Decrypted answers, owner only. For resume/re-render. |
+| PUT | `/responses` | Merge `{answers: {id: value}}` (a `billets` key from an older player is ignored). Ids and values validated against the bank; unknown ids dropped, bad values 400. Items of a locked session are rejected 403. |
+| POST | `/sessions/<n>/complete` | Requires every item of session *n* answered (400 listing missing ids) and S(n−1) complete (409). `n=0` → `status=s0_termine`, spawns micro generation; refuses (400) more than 5 neutral answers. `n=5` → `status=termine`, `completed_at`, `share_token`, spawns portrait generation. |
 | POST | `/unlock` | `{code}` — same normalisation as `unlock_with_code`; active code → `counselor_code_id`, `uses_count += 1`. |
 | GET | `/portrait` | Sections + validated_at, **only when `portrait_status == validated`**; else 409 `{status}`. |
 | DELETE | `` | Erase the voyage (cascade notes). |
@@ -183,7 +186,7 @@ Reuses the analysis runner's shape: daemon thread, `db.session.remove()` before 
 accroche · qui_tu_es · vibrer · besoins · chemins · pas_encore   (each: string)
 ```
 
-User message = `--- PROFIL DE BASE ---` (prénom, tranche d'âge, situation, projet if any) + `--- CE QUE TU AS CHOISI ---` (per scene: the chosen option's `plain` descriptor — the person's own words, never the tag) + `--- SYNTHÈSE ---` (RIASEC universes as words, tensions as plain axis labels ×1.5 note, SDT need, style, S4 words, S5 words). **No numbers, no trait names, no framework names** — the same reduction discipline as bloc 5's `prompt_context()`.
+User message = `--- PROFIL DE BASE ---` (prénom, tranche d'âge, situation, projet if any) + `--- CE QUE TU AS CHOISI ---` (per scene: the chosen option's `plain` descriptor, later ranked choices after « puis » — the person's own words, never the tag) + `--- SYNTHÈSE ---` (RIASEC universes as words, tensions as plain axis labels ×1.5 note, SDT need, style, S4 words, S5 words). **No numbers, no trait names, no framework names** — the same reduction discipline as bloc 5's `prompt_context()`.
 
 After the call: `leak_check(sections)` (word-boundary, case-insensitive: névrotisme, neuroticisme, big five, riasec, schwartz, sdt, dunn, kahneman, dweck, frankl, logothérapie, conscienciosité, agréabilité, extraversion, introversion, \bscore\b, \btrait\b). Hit → one retry with an appended user turn quoting the offending words → still hit → keep, `flags=["vocabulaire"]`. Stored encrypted with the synthesis snapshot; `portrait_status=draft`.
 
@@ -229,13 +232,14 @@ Stored on the analysis as `inputs["_voyage"]` — reduced, plain, no numbers —
 frontend/src/app/voyage/page.tsx                 hub: intro, consent + age, 6-session progress, per-state CTA,
                                                   micro-phrase after S0, code entry, portrait link when validated
 frontend/src/app/voyage/session/[n]/page.tsx     the player: one scene per screen; S0 is one scrolling list of 20
-                                                  ✓/✗ rows; last screen = billet de sortie (optional) + « Terminer »
+                                                  ✓/–/✗ rows; « Terminer » on the last item, or on a closing
+                                                  screen when the session has an outro (S1, S5)
 frontend/src/app/voyage/portrait/page.tsx        candidate portrait (validated only), print CSS via .report-shell
 frontend/src/app/voyage/c/[token]/page.tsx       counselor: synthesis sheet (axes + tensions, RIASEC bars, S2–S5
                                                   boxes), draft editor (6 textareas), leak-flag banner, regenerate,
                                                   private notes, « Valider et transmettre », restitution guide
 frontend/src/components/voyage/*                 SessionProgress (6 stamps), SceneCard, OptionCard, ChecklistRow,
-                                                  BilletForm, MicroReveal, SynthesisSheet, RiasecBars
+                                                  MicroReveal, SynthesisSheet, RiasecBars
 frontend/src/types/voyage.ts                     bank + voyage + portrait types (bank shapes come from the API —
                                                   no French copy duplicated in TS)
 ```

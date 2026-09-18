@@ -197,3 +197,60 @@ def test_tags_sections_get_a_tags_description():
     tags_sec = schema["properties"]["3"]
     assert "tags" in tags_sec["properties"]["items"]["description"].lower()
     assert "Chaîne vide" in tags_sec["properties"]["body_markdown"]["description"]
+
+
+# ── _profile_block ────────────────────────────────────────────────────────────
+
+def _block(**inputs) -> str:
+    from app.services.anthropic_service import _profile_block
+    return "\n".join(_profile_block(inputs))
+
+
+def test_the_profile_block_carries_the_parcours_answers():
+    """« Ton parcours » reaches the model in the same block as the rest of the
+    Profil de base — it is one of its blocks now, not a voyage extra."""
+    text = _block(prenom="Marie", diplome="bac", type_etudes="technologiques",
+                  intitule_etudes="Bac STI2D", appetence_etudes="courtes")
+    assert "Dernier diplôme : bac" in text
+    assert "Type d'études : technologiques" in text
+    assert "Intitulé : Bac STI2D" in text
+    assert "Études envisagées : courtes" in text
+
+
+def test_an_unanswered_parcours_says_so_rather_than_vanishing():
+    """Same rule as every other line of the block: a missing answer is a fact
+    the model should see, not a line it never gets."""
+    text = _block(prenom="Marie")
+    assert "Dernier diplôme : Non renseigné." in text
+    assert "Études envisagées : Non renseigné." in text
+
+
+def test_the_optional_intitule_is_dropped_when_empty():
+    """It is free text and filters nothing, so an empty one is noise."""
+    assert "Intitulé" not in _block(prenom="Marie", diplome="bac")
+
+
+def test_the_radius_prints_only_for_rows_that_still_carry_one():
+    """Retired from every form: ville plus the bassin d'emploi replaces it.
+    Rows that answered it before keep sending it — the line is not re-asked,
+    and it is not thrown away either."""
+    assert "Rayon de recherche : 30km" in _block(prenom="Marie", rayon="30km")
+    assert "Rayon" not in _block(prenom="Marie")
+
+
+def test_the_projet_line_prints_only_when_the_profile_carries_one():
+    """Retired from /profil: the analysis form's « cible visée » asks the same
+    question, and the two were reaching the model as two lines saying the same
+    thing. Rows that answered it before keep sending it."""
+    assert "Projet : Devenir soudeur" in _block(prenom="Marie", projet="Devenir soudeur")
+    assert "Projet" not in _block(prenom="Marie")
+
+
+def test_a_bare_profile_block_has_no_placeholder_lines_left_over():
+    """What survives with nothing filled in: identity, the fields that filter,
+    and the constraints line. Never a « Projet : Non renseigné. » for a
+    question the person was not asked."""
+    text = _block(prenom="Marie")
+    assert "Non renseigné." in text          # tranche d'âge, ville, situation…
+    assert "Projet" not in text
+    assert "Rayon" not in text

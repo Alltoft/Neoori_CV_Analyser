@@ -13,12 +13,31 @@ same structure without leaking the mapping the product is built on.
 Pure data plus lookups. No DB, no I/O, no Flask import.
 """
 
+# Not bumped for the neutral mark or ranked choices (2026-09-15): both keep every
+# stored answer valid and scoring as before, and the counselor sheet warns on any
+# row whose version differs (ruling R10) — a bump would flag every live voyage for
+# nothing. voyages.scoring_version is String(16).
 SCORING_VERSION = "cahier-2026-09"
 
 SESSION_IDS = ("0", "1", "2", "3", "4", "5")
 
 KIND_CHECKLIST = "checklist"
 KIND_SCENES = "scenes"
+
+# Session 0's third mark, « – », beside ✓ (True) and ✗ (False): neither. Not in
+# the cahier — added 2026-09-15. A string rather than None, because None and ""
+# are what an unanswered row looks like on the client.
+NEUTRAL = "neutre"
+
+# The most neutral rows one session 0 may hold. Past a handful the sheet has no
+# pull left to read — twenty « – » leave no top three and nothing for the phrase.
+# PUT /api/voyage/responses enforces it; frontend/src/types/voyage.ts mirrors it.
+NEUTRAL_MAX = 5
+
+# The most ranked choices one scene of sessions 1-5 may hold — « 1er, 2e, 3e
+# choix ». scoring.rank_weights() shares the scene's one vote between them.
+# PUT /api/voyage/responses enforces it; frontend/src/types/voyage.ts mirrors it.
+RANK_MAX = 3
 
 # Every key that carries a weight or an interpretation.
 TAG_KEYS = ("riasec", "axes", "sdt", "schwartz", "big5", "style", "env", "risk", "sens")
@@ -188,7 +207,10 @@ _SESSION_0 = {
         "Dans 10 ans, tout s'est passé comme tu l'espérais. Tu travailles. "
         "Pas parce que tu le dois — mais parce que tu le veux. "
         "À quoi ressemble ta vie ?",
-        "Pour chaque affirmation : coche ✓ si ça te parle, ✗ si ce n'est pas toi.",
+        # The « – » clause is not the cahier's: added with NEUTRAL, and in the
+        # buttons' screen order.
+        "Pour chaque affirmation : coche ✓ si ça te parle, – si ça ne te fait "
+        f"ni chaud ni froid ({NEUTRAL_MAX} au maximum), ✗ si ce n'est pas toi.",
         "Fais confiance à ton premier ressenti. Pas de réflexion — instinctif.",
     ],
     "outro": [],
@@ -235,10 +257,6 @@ _SESSION_0 = {
          "axes": [("A5", 1)]},
         {"id": "S0-20", "text": "Être utile à ma communauté locale",
          "axes": [("A4", -1), ("A7", 1)]},
-    ],
-    "billet": [
-        {"key": "top3", "label": "Les 3 affirmations qui m'ont le plus parlé :"},
-        {"key": "surprise", "label": "Quelque chose qui m'a surpris(e) dans mes réponses :"},
     ],
 }
 
@@ -495,12 +513,6 @@ _SESSION_1 = {
             ],
         },
     ],
-    "billet": [
-        {"key": "cabane", "label": "Dans la cabane, tu étais plutôt :"},
-        {"key": "jeu", "label": "Au jeu, tu préférais :"},
-        {"key": "fierte", "label": "Ta fierté venait de :"},
-        {"key": "regard", "label": "Les autres disaient que tu étais :"},
-    ],
 }
 
 
@@ -513,7 +525,11 @@ _SESSION_2 = {
         "Pas ce qui est « bien » ou « raisonnable ». Ce qui, quand c'est là, "
         "te donne envie de te lever le matin. Et quand c'est absent, te vide de "
         "l'intérieur, même si tout va bien.",
-        "7 scènes. Dans chacune, entoure la lettre qui te correspond.",
+        # « …le mieux ; tu peux en ajouter… » is not the cahier's: added with
+        # ranked choices (2026-09-15), so this line does not ask for one letter
+        # on a screen that takes three.
+        "7 scènes. Dans chacune, entoure la lettre qui te correspond le mieux ; "
+        "tu peux en ajouter une 2e puis une 3e, par ordre de préférence.",
     ],
     "outro": [],
     "duration": "20 min",
@@ -760,11 +776,6 @@ _SESSION_2 = {
             ],
         },
     ],
-    "billet": [
-        {"key": "vibrer", "label": "Ce qui me fait vibrer, c'est quand :"},
-        {"key": "vide", "label": "Ce qui me vide, c'est quand :"},
-        {"key": "vingt_ans", "label": "Dans 20 ans, je veux pouvoir dire que :"},
-    ],
 }
 
 
@@ -1000,11 +1011,6 @@ _SESSION_3 = {
             ],
         },
     ],
-    "billet": [
-        {"key": "imprevu", "label": "Face à l'imprévu, je suis plutôt :"},
-        {"key": "meilleur", "label": "Je produis le mieux quand je suis :"},
-        {"key": "pression", "label": "Sous pression, mon premier réflexe est de :"},
-    ],
 }
 
 
@@ -1202,13 +1208,6 @@ _SESSION_4 = {
                  "env": "sentiment d'inachèvement"},
             ],
         },
-    ],
-    "billet": [
-        {"key": "environnement", "label": "Je me révèle dans un environnement :"},
-        {"key": "vide", "label": "Ce qui me vide, c'est :"},
-        {"key": "cadre_relationnel",
-         "label": "Le cadre relationnel dans lequel je donne le meilleur :"},
-        {"key": "rythme", "label": "Mon rythme naturel ressemble à :"},
     ],
 }
 
@@ -1484,12 +1483,6 @@ _SESSION_5 = {
             ],
         },
     ],
-    "billet": [
-        {"key": "risque", "label": "Face au risque, je suis plutôt :"},
-        {"key": "colere", "label": "Ce qui me met en colère, c'est :"},
-        {"key": "trace", "label": "La trace que je veux laisser, c'est :"},
-        {"key": "vivant", "label": "Je me sens vivant(e) quand :"},
-    ],
 }
 
 SESSIONS: list[dict] = [_SESSION_0, _SESSION_1, _SESSION_2, _SESSION_3, _SESSION_4, _SESSION_5]
@@ -1581,25 +1574,34 @@ def option(item_id: str, letter: str) -> dict | None:
     return None
 
 
-def billet_keys(n: str) -> list[str]:
-    return [field["key"] for field in session(n)["billet"]]
-
-
 def validate_answer(item_id: str, value) -> bool:
     """Is `value` an acceptable answer to `item_id`?
 
     The rule PUT /api/voyage/responses enforces. Deliberately strict about
     booleans: `1` and `"oui"` are rejected, because a truthy check here would
-    let a client's stray string score as OUI on every axis the item loads.
+    let a client's stray string score as OUI on every axis the item loads. The
+    neutral mark is the exact NEUTRAL string, never a case variant or None.
+    A scene takes one letter, or a list of 1..RANK_MAX distinct letters in
+    preference order.
     """
     entry = item(item_id)
     if entry is None:
         return False
     if "options" not in entry:                      # session 0 checklist item
-        return value is True or value is False
-    if not isinstance(value, str):
+        return value is True or value is False or (
+            isinstance(value, str) and value == NEUTRAL
+        )
+    # A bare letter is a single choice: every answer stored before ranked
+    # choices, and still what a client one deploy behind sends.
+    letters = [value] if isinstance(value, str) else value
+    if not isinstance(letters, list) or not 1 <= len(letters) <= RANK_MAX:
         return False
-    return any(candidate["letter"] == value for candidate in entry["options"])
+    if not all(isinstance(letter, str) for letter in letters):
+        return False
+    if len(set(letters)) != len(letters):
+        return False
+    valid = {candidate["letter"] for candidate in entry["options"]}
+    return all(letter in valid for letter in letters)
 
 
 # ── The public view ──────────────────────────────────────────────────────────

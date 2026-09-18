@@ -84,7 +84,7 @@ export default function EspacePage() {
         <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold text-navy">Mon espace</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Vos analyses et vos brouillons.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Votre voyage, vos analyses et vos brouillons.</p>
           </div>
           <Button render={<Link href="/analyse" />} size="lg">
             <PlusCircle /> Nouvelle analyse
@@ -169,7 +169,7 @@ export default function EspacePage() {
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary py-20 text-center">
             <span className="grid size-12 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-6" /></span>
             <p className="font-display font-semibold text-navy">Votre première analyse</p>
-            <p className="text-sm text-muted-foreground">~2 min · 8 champs</p>
+            <p className="text-sm text-muted-foreground">~2 min · avec ou sans CV</p>
             <Button render={<Link href="/analyse" />} size="lg" className="mt-2">
               Commencer <ArrowRight />
             </Button>

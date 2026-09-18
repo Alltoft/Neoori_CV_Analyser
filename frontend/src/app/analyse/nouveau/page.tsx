@@ -316,9 +316,12 @@ function NouvelleAnalyseForm() {
           </SectionCard>
 
           <p className="rounded-2xl bg-card p-4 text-xs text-muted-foreground ring-1 ring-foreground/10">
-            Le reste de l’analyse s’appuie sur votre{" "}
-            <Link href="/profil" className="link-underline text-navy">Profil de base</Link>{" "}
-            — prénom, localisation, situation, contraintes. Le compléter rend le rapport nettement plus précis.
+            Le reste de l’analyse s’appuie sur ce que vous avez déjà donné — prénom,
+            localisation, situation, contraintes. Ces questions sont posées à
+            l’inscription et au fil du{" "}
+            <Link href="/voyage" className="link-underline text-navy">voyage</Link> ; vous
+            pouvez les relire dans{" "}
+            <Link href="/profil" className="link-underline text-navy">mes informations</Link>.
           </p>
 
           {/* Footer */}

@@ -13,7 +13,7 @@ import type { Analysis } from "@/types"
 // Steps are keyed on the percentage the backend reports, not on a stopwatch:
 // `at` is the progress value at which the step becomes the active one.
 const STEPS: { label: string; at: number }[] = [
-  { label: "Lecture du CV",          at: 0  },
+  { label: "Lecture du parcours",    at: 0  },
   { label: "Analyse du profil",      at: 4  },
   { label: "Rédaction du rapport",   at: 12 },
   { label: "Finalisation",           at: 90 },

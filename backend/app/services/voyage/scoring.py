@@ -9,8 +9,11 @@ fix to a table takes effect for every voyage at once; the portrait keeps a
 snapshot of the sheet it was actually written from, which is what makes an old
 portrait explainable after a table changes.
 
-`bank` is the only import. Nothing here mutates it.
+`bank` is the only project import — `fractions` keeps ranked shares exact, so a
+tie or a threshold is never decided by float rounding. Nothing here mutates it.
 """
+from fractions import Fraction
+
 from . import bank
 
 STAGE_S0 = "s0"
@@ -24,6 +27,8 @@ TENSION_BAND = (-2, 2)
 # An axis carried by a single item is inside the band for everyone: one OUI puts
 # it at +1, one NON at -1, and it can never leave. A1 (Mobilité) is that axis.
 # Flagging it would print a tension on every sheet ever produced (spec errata 17a).
+# Counted over the ✓ and ✗ actually marked, not the items loaded: an axis whose
+# other items were left neutral is in the same position as A1.
 TENSION_MIN_ITEMS = 2
 
 BIG5_HIGH = 2
@@ -74,25 +79,87 @@ def completeness(responses: dict) -> dict[str, bool]:
     return {n: session_complete(responses, n) for n in bank.SESSION_IDS}
 
 
+def neutral_count(responses: dict) -> int:
+    """Rows marked NEUTRAL — the count both routes hold to bank.NEUTRAL_MAX.
+
+    Over every answer, not session 0's ids: validate_answer refuses NEUTRAL on
+    a scene, so only a session-0 row can hold it.
+    """
+    return sum(1 for value in _answers(responses).values() if value == bank.NEUTRAL)
+
+
+def rank_weights(k: int) -> tuple[Fraction, ...]:
+    """How one scene's vote is shared between `k` ranked choices.
+
+    The shares sum to 1: picking more spreads the vote and never adds to it, so
+    a single choice scores exactly as the manual's tables say and no letter can
+    pass its computed maximum. Each rank weighs twice the next — 1 · 2/3, 1/3 ·
+    4/7, 2/7, 1/7 — so the first choice always outweighs the others combined:
+    the cahier asks for « celle qui te correspond le mieux » first.
+    """
+    total = 2 ** k - 1
+    return tuple(Fraction(2 ** (k - 1 - i), total) for i in range(k))
+
+
+def ranked_options(responses: dict, item_id: str) -> list[tuple[dict, Fraction]]:
+    """The options picked on a scene, first choice first, with their shares.
+
+    A bare letter is a single choice — how every answer was stored before
+    ranked choices existed. [] when unanswered, invalid, or a checklist item.
+
+    Live references into the bank, not copies — do not mutate them.
+    """
+    value = _answers(responses).get(item_id)
+    if not isinstance(value, (str, list)) or not bank.validate_answer(item_id, value):
+        return []
+    letters = [value] if isinstance(value, str) else value
+    options = [bank.option(item_id, letter) for letter in letters]
+    if None in options:                 # "neutre" on a checklist row
+        return []
+    return list(zip(options, rank_weights(len(options))))
+
+
 def chosen_option(responses: dict, item_id: str) -> dict | None:
-    """The option dict the person picked, or None if unanswered or not a scene.
+    """The first choice on a scene, or None if unanswered or not a scene. The
+    label-type results — S4, S5 and the S2-7 probe — are named by it.
 
     A live reference into the bank, not a copy — do not mutate it. Use
     bank.public() if you need a safe copy.
     """
-    value = _answers(responses).get(item_id)
-    if not isinstance(value, str):
-        return None
-    return bank.option(item_id, value)
+    ranked = ranked_options(responses, item_id)
+    return ranked[0][0] if ranked else None
+
+
+def _num(value) -> int | float:
+    """A tally as the sheet prints it: an int when whole — every single-choice
+    sheet, unchanged — else rounded to two decimals. Output only: ranks, ties
+    and thresholds are decided on the exact fraction before this runs."""
+    return int(value) if value.denominator == 1 else round(float(value), 2)
+
+
+def _nums(counts: dict) -> dict:
+    return {key: _num(value) for key, value in counts.items()}
 
 
 # ── Session 0 — the ten bipolar axes ─────────────────────────────────────────
+
+def _pull(value, sign: int) -> int:
+    """One item's contribution to one axis: OUI +sign, NON -sign, neutre 0."""
+    if value is True:
+        return sign
+    if value is False:
+        return -sign
+    return 0
+
 
 def score_s0(responses: dict) -> dict | None:
     """The manual's page-1 grid: ten axes, their tensions, and the top three.
 
     Per item loading on an axis with sign s: OUI contributes +s, NON contributes
-    -s. `oui` / `non` count contributing items; `resultant` is the signed sum.
+    -s, a neutral answer contributes 0. `oui` / `non` / `neutre` count the items
+    carrying each mark; `resultant` is the signed sum. `neutres` lists the
+    neutral affirmations in the cahier's own words, for the counselor to
+    explore and for the two prompts.
     """
     if not session_complete(responses, "0"):
         return None
@@ -102,20 +169,25 @@ def score_s0(responses: dict) -> dict | None:
     for axis_id in bank.AXES:
         loadings = bank.axis_items(axis_id)
         oui = sum(1 for item_id, _ in loadings if given[item_id] is True)
-        non = len(loadings) - oui
-        resultant = sum(
-            sign if given[item_id] is True else -sign for item_id, sign in loadings
-        )
+        non = sum(1 for item_id, _ in loadings if given[item_id] is False)
+        resultant = sum(_pull(given[item_id], sign) for item_id, sign in loadings)
         axes[axis_id] = {
             "oui": oui,
             "non": non,
+            "neutre": len(loadings) - oui - non,
             "resultant": resultant,
             "n_items": len(loadings),
             "tension": (
                 TENSION_BAND[0] <= resultant <= TENSION_BAND[1]
-                and len(loadings) >= TENSION_MIN_ITEMS
+                and oui + non >= TENSION_MIN_ITEMS
             ),
         }
+
+    neutres = [
+        {"id": entry["id"], "text": entry["text"]}
+        for entry in bank.items("0")
+        if given[entry["id"]] == bank.NEUTRAL
+    ]
 
     tensions = [
         {
@@ -147,7 +219,7 @@ def score_s0(responses: dict) -> dict | None:
             "plain": meta[f"plain_{pole}"],
         })
 
-    return {"axes": axes, "tensions": tensions, "top3": top3}
+    return {"axes": axes, "tensions": tensions, "top3": top3, "neutres": neutres}
 
 
 # ── Session 1 — RIASEC ───────────────────────────────────────────────────────
@@ -162,33 +234,42 @@ def score_riasec(responses: dict) -> dict | None:
     if not session_complete(responses, "1"):
         return None
 
-    scores = {letter: 0 for letter in bank.RIASEC_LETTERS}
+    scores = {letter: Fraction(0) for letter in bank.RIASEC_LETTERS}
     for item_id in bank.item_ids("1"):
-        option = chosen_option(responses, item_id)
-        for letter, points in (option.get("riasec") or {}).items():
-            scores[letter] += points
+        for option, share in ranked_options(responses, item_id):
+            for letter, points in (option.get("riasec") or {}).items():
+                scores[letter] += share * points
 
     maxima = bank.riasec_maxima()
-    normalized = {
-        letter: round(scores[letter] / maxima[letter], 3) if maxima[letter] else 0.0
+    ratio = {
+        letter: scores[letter] / maxima[letter] if maxima[letter] else Fraction(0)
         for letter in bank.RIASEC_LETTERS
     }
+    normalized = {letter: round(float(ratio[letter]), 3) for letter in bank.RIASEC_LETTERS}
 
+    # Ranked on the exact ratio. With single choices this is the same order the
+    # rounded one gave: two distinct ratios over these ceilings differ by more
+    # than 0.001, so rounding never merged them.
     ranked = sorted(
         bank.RIASEC_LETTERS,
-        key=lambda letter: (-normalized[letter], bank.RIASEC_LETTERS.index(letter)),
+        key=lambda letter: (-ratio[letter], bank.RIASEC_LETTERS.index(letter)),
     )
     top3 = [
         {
             "letter": letter,
             "univers": bank.RIASEC_UNIVERS[letter],
-            "score": scores[letter],
+            "score": _num(scores[letter]),
             "normalized": normalized[letter],
         }
         for letter in ranked[:3]
     ]
 
-    return {"scores": scores, "maxima": maxima, "normalized": normalized, "top3": top3}
+    return {
+        "scores": _nums(scores),
+        "maxima": maxima,
+        "normalized": normalized,
+        "top3": top3,
+    }
 
 
 # ── Session 2 — needs (SDT) and values (Schwartz) ────────────────────────────
@@ -212,33 +293,37 @@ def score_s2(responses: dict) -> dict | None:
     if not session_complete(responses, "2"):
         return None
 
-    sdt = {need: 0 for need in bank.SDT}
-    schwartz = {value: 0 for value in bank.SCHWARTZ}
+    sdt = {need: Fraction(0) for need in bank.SDT}
+    schwartz = {value: Fraction(0) for value in bank.SCHWARTZ}
     for item_id in bank.item_ids("2"):
-        option = chosen_option(responses, item_id)
-        if option.get("sdt"):
-            sdt[option["sdt"]] += 1
-        for value in option.get("schwartz") or []:
-            schwartz[value] += 1
+        for option, share in ranked_options(responses, item_id):
+            if option.get("sdt"):
+                sdt[option["sdt"]] += share
+            for value in option.get("schwartz") or []:
+                schwartz[value] += share
 
-    probe = chosen_option(responses, "S2-7")
+    probe, *later = [option for option, _ in ranked_options(responses, "S2-7")]
     return {
-        "sdt": sdt,
+        "sdt": _nums(sdt),
         "sdt_dominant": _dominant(sdt, bank.SDT),
-        "schwartz": schwartz,
+        "schwartz": _nums(schwartz),
         "schwartz_dominant": _dominant(schwartz, bank.SCHWARTZ),
         "ambivalences": {
             "item_id": "S2-7",
             "letter": probe["letter"],
             "label": probe["label"],
             "plain": probe["plain"],
+            "ensuite": [
+                {"letter": o["letter"], "label": o["label"], "plain": o["plain"]}
+                for o in later
+            ],
         },
     }
 
 
 # ── Session 3 — Big Five and cognitive style ─────────────────────────────────
 
-def _level(net: int) -> str:
+def _level(net) -> str:
     if net >= BIG5_HIGH:
         return LEVEL_HIGH
     if net <= BIG5_LOW:
@@ -256,21 +341,21 @@ def score_s3(responses: dict) -> dict | None:
     if not session_complete(responses, "3"):
         return None
 
-    big5 = {trait: 0 for trait in bank.BIG5}
-    style = {name: 0 for name in bank.STYLES}
+    big5 = {trait: Fraction(0) for trait in bank.BIG5}
+    style = {name: Fraction(0) for name in bank.STYLES}
     for item_id in bank.item_ids("3"):
-        option = chosen_option(responses, item_id)
-        for trait, sign in (option.get("big5") or {}).items():
-            big5[trait] += sign
-        if option.get("style"):
-            style[option["style"]] += 1
+        for option, share in ranked_options(responses, item_id):
+            for trait, sign in (option.get("big5") or {}).items():
+                big5[trait] += share * sign
+            if option.get("style"):
+                style[option["style"]] += share
 
     levels = {trait: _level(net) for trait, net in big5.items()}
 
     return {
-        "big5": big5,
+        "big5": _nums(big5),
         "levels": levels,
-        "style": style,
+        "style": _nums(style),
         "style_dominant": _dominant(style, bank.STYLES),
         "intro_extra": INTRO_EXTRA[_LEVEL_TO_REGISTER[levels["extraversion"]]],
     }
@@ -280,13 +365,21 @@ def score_s3(responses: dict) -> dict | None:
 
 def score_s4(responses: dict) -> dict | None:
     """Six labels, by scene position. No arithmetic — S4 is a preference, not a
-    score, and averaging preferences would say nothing."""
+    score, and averaging preferences would say nothing.
+
+    Each slot is named by its first choice. Later choices sit under `ensuite`,
+    keyed by slot, only where there are any — a label cannot be shared out.
+    """
     if not session_complete(responses, "4"):
         return None
-    return {
-        slot: chosen_option(responses, item_id)["env"]
-        for slot, item_id in zip(bank.S4_SLOTS, bank.item_ids("4"))
-    }
+    result, ensuite = {}, {}
+    for slot, item_id in zip(bank.S4_SLOTS, bank.item_ids("4")):
+        first, *later = [option["env"] for option, _ in ranked_options(responses, item_id)]
+        result[slot] = first
+        if later:
+            ensuite[slot] = later
+    result["ensuite"] = ensuite
+    return result
 
 
 # ── Session 5 — risk and meaning ─────────────────────────────────────────────
@@ -301,18 +394,24 @@ def score_s5(responses: dict) -> dict | None:
     if not session_complete(responses, "5"):
         return None
 
-    def tag(item_id: str, key: str) -> str:
-        return chosen_option(responses, item_id)[key]
-
-    return {
-        "risque": tag("S5-1", "risk"),
-        "rapport_echec": tag("S5-2", "risk"),
-        "rapport_flou": tag("S5-3", "risk"),
-        "valeur_centrale": tag("S5-4", "sens"),
-        "trace": tag("S5-5", "sens"),
-        "sacrifice": tag("S5-6", "sens"),
-        "vivant": tag("S5-7", "sens"),
-    }
+    fields = (
+        ("risque", "S5-1", "risk"),
+        ("rapport_echec", "S5-2", "risk"),
+        ("rapport_flou", "S5-3", "risk"),
+        ("valeur_centrale", "S5-4", "sens"),
+        ("trace", "S5-5", "sens"),
+        ("sacrifice", "S5-6", "sens"),
+        ("vivant", "S5-7", "sens"),
+    )
+    # Named by the first choice, later ones under `ensuite` — score_s4's rule.
+    result, ensuite = {}, {}
+    for name, item_id, key in fields:
+        first, *later = [option[key] for option, _ in ranked_options(responses, item_id)]
+        result[name] = first
+        if later:
+            ensuite[name] = later
+    result["ensuite"] = ensuite
+    return result
 
 
 # ── The synthesis sheet ──────────────────────────────────────────────────────

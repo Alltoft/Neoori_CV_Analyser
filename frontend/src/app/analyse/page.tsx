@@ -115,9 +115,12 @@ export default function ChoisirParcoursPage() {
         </div>
 
         <p className="mt-8 text-xs text-muted-foreground">
-          Les trois parcours partent du même profil de base.{" "}
+          Les trois parcours partent des mêmes informations — demandées à
+          l&apos;inscription et au fil du{" "}
+          <Link href="/voyage" className="link-underline text-navy">voyage</Link>, jamais deux
+          fois. Vous pouvez les relire dans{" "}
           <Link href="/profil" className="link-underline text-navy">
-            Compléter mon profil
+            mes informations
           </Link>
         </p>
       </div>

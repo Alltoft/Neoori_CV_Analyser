@@ -47,6 +47,7 @@ voyage_bp = Blueprint("voyage", __name__)
 # The API's fixed French strings. app.url_map.strict_slashes is False globally,
 # so "" also answers "/" — do not add per-route slash handling.
 NO_VOYAGE = "Aucun voyage en cours."
+NEUTRAL_CAP = f"{bank.NEUTRAL_MAX} réponses neutres au maximum."
 
 # How long a phrase may sit on "generating" before the candidate may relaunch
 # it. The hub gives up polling after the same three minutes. Measured on
@@ -60,9 +61,6 @@ MICRO_RETRY_STALE_MINUTES = 3
 # clock. Longer, because a healthy portrait run is Sonnet at 3000 tokens and
 # possibly two calls (the leak retry).
 PORTRAIT_RETRY_STALE_MINUTES = 10
-
-# One exit-ticket box, in characters. The player mirrors it as its maxLength.
-BILLET_MAX_CHARS = 1000
 
 # responses_encrypted is a MySQL TEXT column: 65535 bytes. Past that, strict
 # mode raises error 1406 at commit -- an unhandled 500 -- while SQLite stores
@@ -208,7 +206,7 @@ def get_responses():
 @voyage_bp.put("/responses")
 @jwt_required()
 def put_responses():
-    """Merge answers and exit tickets into the voyage.
+    """Merge answers into the voyage.
 
     Merge, not replace: the player saves on every « Suivant », so a lost
     connection costs one scene rather than a session. Unknown ids are dropped
@@ -218,6 +216,10 @@ def put_responses():
 
     Only open sessions are writable: a request naming a session already
     completed is refused whole, with nothing merged.
+
+    A `billets` key — the billet de sortie, removed 2026-09-15, still sent by a
+    tab running the older player — is ignored like any unknown key: never
+    stored, never a 400, so that tab can still finish its session.
     """
     voyage = _current()
     if voyage is None:
@@ -233,16 +235,13 @@ def put_responses():
         return jsonify({"error": "Corps de requête invalide."}), 400
     data = data or {}
     raw_answers = data.get("answers")
-    raw_billets = data.get("billets")
     answers = raw_answers if isinstance(raw_answers, dict) else {}
-    billets = raw_billets if isinstance(raw_billets, dict) else {}
 
     known = {i: v for i, v in answers.items() if bank.item(i) is not None}
 
     # Locks are checked over every session the request touches, before any
     # merge — a refusal must leave the row exactly as it was.
     touched = {_session_of(i) for i in known}
-    touched |= {n for n in billets if n in bank.SESSION_IDS}
 
     # A completed session is read-only. Its answers have already been scored
     # into a status, a phrase or a portrait, and a write here would also move
@@ -268,62 +267,33 @@ def put_responses():
     if invalid:
         return jsonify({"errors": invalid}), 400
 
-    # The billet values exactly as they will be stored, worked out before the
-    # merge so the length cap measures what would be written and a refusal
-    # still leaves the row untouched.
-    kept_billets: dict[str, dict[str, str]] = {}
-    for n, fields in billets.items():
-        if n not in bank.SESSION_IDS or not isinstance(fields, dict):
-            continue
-        allowed = set(bank.billet_keys(n))
-        kept = {}
-        for key, value in fields.items():
-            if key not in allowed:
-                continue
-            if value is None:
-                kept[key] = ""
-            elif isinstance(value, (str, int, float, bool)):
-                # A scalar is what a person can type; anything else (a dict, a
-                # list) is dropped rather than stringified — the billet text
-                # is quoted into the portrait prompt as the candidate's own
-                # words, so `str({'nested': 'x'})` must never reach it looking
-                # like something a person wrote. Same disposal rule as an
-                # unknown field key (contract § E5).
-                kept[key] = str(value)
-        if kept:
-            # A session whose fields were all dropped contributes nothing,
-            # not an empty dict — otherwise a request carrying only unknown
-            # keys would still count as a change below.
-            kept_billets[n] = kept
-
-    if any(len(value) > BILLET_MAX_CHARS
-           for kept in kept_billets.values() for value in kept.values()):
-        return jsonify({"errors": [
-            f"Réponse trop longue : {BILLET_MAX_CHARS} caractères maximum."
-        ]}), 400
+    # Counted over the merged set, so the cap cannot be dodged one row per
+    # request.
+    merged_answers = {"answers": {**voyage.responses["answers"], **known}}
+    if scoring.neutral_count(merged_answers) > bank.NEUTRAL_MAX:
+        return jsonify({"errors": [NEUTRAL_CAP]}), 400
 
     stored = voyage.responses
     merged = copy.deepcopy(stored)
     merged["answers"].update(known)
-    for n, kept in kept_billets.items():
-        merged["billets"][n] = {**(merged["billets"].get(n) or {}), **kept}
 
     # A save that changes nothing writes nothing (contract § E5: a request
-    # with neither is a no-op 200). Assigning would re-encrypt the same answers
-    # under a new IV and commit, and that commit moves updated_at — the clock
-    # both stall rules and the startup sweep read. An empty body, only unknown
-    # ids, keys or sessions, and the player re-sending what is already saved
-    # all end here.
+    # without answers is a no-op 200). Assigning would re-encrypt the same
+    # answers under a new IV and commit, and that commit moves updated_at — the
+    # clock both stall rules and the startup sweep read. An empty body, only
+    # unknown ids or keys (an older player's `billets` among them), and the
+    # player re-sending what is already saved all end here.
     if merged == stored:
         return jsonify({"responses": stored}), 200
 
     voyage.responses = merged
 
-    # Backstop for the column, see RESPONSES_MAX_CHARS. Every field can be
-    # within its cap and the whole still too large (thirteen full boxes of
-    # four-byte characters are enough), and only the ciphertext's length says
-    # so. The rollback drops the assignment above so nothing of this request
-    # is written.
+    # Backstop for the column, see RESPONSES_MAX_CHARS. Validated answers alone
+    # stay far below it since the billet de sortie's free text left
+    # (2026-09-15); it stays so a future free-text field cannot bring back
+    # MySQL's unhandled 1406, which only the ciphertext's length can foresee.
+    # The rollback drops the assignment above so nothing of this request is
+    # written.
     if len(voyage.responses_encrypted or "") > RESPONSES_MAX_CHARS:
         db.session.rollback()
         return jsonify({"errors": ["Vos réponses dépassent la taille enregistrable."]}), 400
@@ -373,8 +343,8 @@ def _stalled(status: str, updated_at: datetime | None, minutes: int) -> bool:
 def complete_session(n):
     """Close a session.
 
-    Everything the session asks must be answered — the billet is optional, the
-    items are not. S0 flips the status and asks for the phrase; S5 finishes the
+    Every item of the session must be answered. S0 flips the status and asks
+    for the phrase; S5 finishes the
     voyage, mints the share token the person hands to their counselor, and asks
     for the portrait. Sessions 1-4 change no status.
     """
@@ -399,6 +369,11 @@ def complete_session(n):
     missing = scoring.missing_items(voyage.responses, n)
     if missing:
         return jsonify({"errors": ["Réponses manquantes.", *missing]}), 400
+
+    # PUT already holds the cap; this is where the sheet gets scored and handed
+    # to the phrase, so it does not trust the row.
+    if n == "0" and scoring.neutral_count(voyage.responses) > bank.NEUTRAL_MAX:
+        return jsonify({"errors": [NEUTRAL_CAP]}), 400
 
     # JSON column: reassign a new list. Appending in place leaves SQLAlchemy
     # unaware of the change (the same trap as unlock_service's dict(inputs)).
@@ -639,10 +614,9 @@ def counselor_edit_portrait(token):
     # A dict or a list is truthy and survives str(value or "").strip() as
     # non-empty, so the "manquante ou vide" check alone would let it through
     # -- and the assignment below would then store str({'nested': 'x'}) and
-    # serve it to the candidate as their own portrait text. Unlike
-    # put_responses's billets (:209-216), which only feed a prompt, this is
-    # rendered straight to the person, so a non-string value is refused
-    # outright rather than dropped or stringified.
+    # serve it to the candidate as their own portrait text. This is rendered
+    # straight to the person, so a non-string value is refused outright rather
+    # than dropped or stringified.
     for key in PORTRAIT_KEYS:
         value = sections.get(key)
         if key in sections and not isinstance(value, str):

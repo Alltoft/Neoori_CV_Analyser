@@ -19,7 +19,9 @@ import { copyToClipboard } from "@/lib/utils"
 import {
   createVoyage, deleteVoyage, getBank, getResponses, getVoyage, retryMicro, unlockVoyage,
 } from "@/lib/voyage"
-import type { Bank, Voyage, VoyageResponses } from "@/types/voyage"
+import { PROFILE_STEPS, stepIsComplete } from "@/lib/profile-steps"
+import { ProfileStepFields } from "@/components/voyage/ProfileStepFields"
+import type { Bank, GateProfile, Voyage, VoyageResponses } from "@/types/voyage"
 
 /** Normal poll cadence while a phrase or a portrait is being written; back off
  *  to 4 s after a failed read rather than hammering a possibly-down backend
@@ -31,7 +33,19 @@ const POLL_BACKOFF_MS = 4000
  *  analysis, not a one-sentence phrase or a six-section portrait. */
 const POLL_MAX_MS = 3 * 60 * 1000
 
-type Profile = { prenom?: string | null; tranche_age?: string | null }
+/** Everything the hub needs of a profile: the gate's fields, plus the consent
+ *  record — an account made before signup seeded a profile has none, and the
+ *  entry step has to collect it. */
+type Profile = GateProfile & {
+  nom?: string | null
+  ville?: string | null
+  situation?: string | null
+  consent_at?: string | null
+}
+
+/** The block asked before session 0, on this page: the PM's entry screen, one
+ *  screen with « Ce n'est pas un test » on it, not a form someone is sent to. */
+const ENTRY = PROFILE_STEPS.entree
 
 /** How many of each session's items already have an answer — drives the
  *  « Reprendre » vs « Commencer » label and the per-row counter. */
@@ -68,6 +82,11 @@ export default function VoyagePage() {
   const [consent, setConsent] = useState(false)
   const [age, setAge] = useState(false)
   const [creating, setCreating] = useState(false)
+
+  // The entry block, filled on the gate itself and saved just before the
+  // voyage is created. Seeded by the loader rather than by an effect, so a
+  // re-read cannot clobber what the person is in the middle of typing.
+  const [entry, setEntry] = useState<Record<string, string>>({})
 
   // Counselor code
   const [code, setCode] = useState("")
@@ -140,6 +159,11 @@ export default function VoyagePage() {
         setBank(b)
         setVoyage(v)
         setProfile(p)
+        if (!v) {
+          setEntry(Object.fromEntries(
+            ENTRY.fields.map((field) => [field.name, p?.[field.name as keyof Profile] ?? ""]),
+          ) as Record<string, string>)
+        }
         if (!v) {
           setResponses(null)
           return v
@@ -224,10 +248,15 @@ export default function VoyagePage() {
   const start = useCallback(() => {
     setError(null)
     setCreating(true)
-    createVoyage()
+    // The entry block first: it is part of « Je suis prêt(e) », not a form the
+    // person is sent to afterwards. The consent goes only with a profile that
+    // has none — signup seeds one, and re-sending it would restamp a consent
+    // the person gave once, moving the record off the moment they agreed.
+    api.put("/profile", profile?.consent_at ? entry : { ...entry, consent: true })
+      .then(() => createVoyage())
       .then((v) => {
         setVoyage(v)
-        setResponses({ answers: {}, billets: {} })
+        setResponses({ answers: {} })
       })
       .catch((e) => {
         // A 409 means this tab's "no voyage" view is stale — re-read instead
@@ -240,7 +269,7 @@ export default function VoyagePage() {
       .finally(() => {
         setCreating(false)
       })
-  }, [load])
+  }, [load, entry, profile])
 
   // F3: guarded with a ref, not codeState. State would also survive two
   // separate discrete events (React flushes those synchronously, so the
@@ -260,9 +289,14 @@ export default function VoyagePage() {
     checkingRef.current = true
     setCodeState("checking")
     unlockVoyage(code)
-      .then((v) => {
-        setVoyage(v)
+      .then(() => {
         setCode("")
+        // Re-read rather than keeping the unlock's own voyage: the code opens
+        // S1-S5, and what those rows say next depends on the profile too. With
+        // only setVoyage() the card went from « Avec un conseiller » to
+        // whatever a profile read minutes old implied, and stayed there until
+        // the person reloaded the page themselves.
+        return load()
       })
       .catch((e) => {
         // F6: a 409 means the voyage was already unlocked (e.g. in another
@@ -428,7 +462,19 @@ export default function VoyagePage() {
             {/* ── No voyage yet: consent + age gate ─────────────────────── */}
             {!voyage && (
               <div className="rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10 sm:p-6">
-                <h2 className="font-display text-base font-semibold text-navy">Votre accord</h2>
+                <h2 className="font-display text-base font-semibold text-navy">{ENTRY.title}</h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{ENTRY.intro}</p>
+
+                <div className="mt-4">
+                  <ProfileStepFields
+                    step={ENTRY}
+                    values={entry}
+                    disabled={creating}
+                    onChange={(name, value) => setEntry((v) => ({ ...v, [name]: value }))}
+                  />
+                </div>
+
+                <h2 className="mt-7 font-display text-base font-semibold text-navy">Votre accord</h2>
 
                 <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg bg-secondary/60 p-3">
                   <Checkbox className="mt-0.5" checked={consent} onCheckedChange={(v) => setConsent(v)} />
@@ -452,7 +498,11 @@ export default function VoyagePage() {
                     <ShieldCheck className="size-3.5 shrink-0 text-success" aria-hidden />
                     Données chiffrées, supprimables à tout moment.
                   </p>
-                  <Button size="lg" disabled={!consent || !age || creating} onClick={start}>
+                  <Button
+                    size="lg"
+                    disabled={!consent || !age || creating || !stepIsComplete(ENTRY, entry)}
+                    onClick={start}
+                  >
                     {creating ? "Création…" : "Commencer le voyage"} <ArrowRight className="size-4" />
                   </Button>
                 </div>
@@ -507,9 +557,10 @@ export default function VoyagePage() {
                     nudge to fill the profile no longer applies. */}
                 {!finished && (!profile?.prenom || !profile?.tranche_age) ? (
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Les sessions 1 à 5 utilisent le prénom et la tranche d&apos;âge de votre
-                    profil.{" "}
-                    <Link href="/profil" className="link-underline text-navy">Compléter mon profil</Link>
+                    Les sessions 1 à 5 utilisent votre prénom et votre tranche d&apos;âge.{" "}
+                    <Link href="/voyage/etape/entree" className="link-underline text-navy">
+                      Les renseigner
+                    </Link>
                   </p>
                 ) : null}
 

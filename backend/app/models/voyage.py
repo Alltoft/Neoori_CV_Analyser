@@ -44,7 +44,13 @@ PORTRAIT_KEYS = ("accroche", "qui_tu_es", "vibrer", "besoins", "chemins", "pas_e
 # (not created yet) must mirror them byte for byte.
 LOCK_CODE = "Avec un conseiller"
 LOCK_PROFILE = "Complétez votre profil"
+LOCK_PARCOURS = "Complétez votre parcours"
+LOCK_CONDITIONS = "Complétez vos conditions de travail"
 LOCK_ORDER = "Terminez la session précédente"
+
+# « Ton parcours », the block asked between S1 and S2. The exact name of the
+# diploma is not here: it is optional on the form and it filters nothing.
+PARCOURS_FIELDS = ("diplome", "type_etudes", "appetence_etudes")
 
 
 class Voyage(db.Model):
@@ -110,25 +116,22 @@ class Voyage(db.Model):
     # ── encrypted payloads ───────────────────────────────────────────────────
     @property
     def responses(self) -> dict:
-        """{"answers": {item_id: bool | str}, "billets": {session: {field: str}}}.
+        """{"answers": {item_id: bool | str | list[str]}}.
 
-        Both keys always present, so scoring can read them without a guard.
+        The key is always present, so scoring can read it without a guard.
+        Nothing else is kept: the billet de sortie is gone (PM ruling
+        2026-09-15), so neither side lets a "billets" key through — not even
+        from a row migration b4c5d6e7f8a9 could not rewrite.
         A DecryptionError propagates rather than being swallowed: silently
         returning {} would look like "never answered" and lose a session.
         """
         payload = crypto.decrypt_json(self.responses_encrypted) or {}
-        return {
-            "answers": payload.get("answers") or {},
-            "billets": payload.get("billets") or {},
-        }
+        return {"answers": payload.get("answers") or {}}
 
     @responses.setter
     def responses(self, value: dict | None) -> None:
         value = value or {}
-        self.responses_encrypted = crypto.encrypt_json({
-            "answers": value.get("answers") or {},
-            "billets": value.get("billets") or {},
-        })
+        self.responses_encrypted = crypto.encrypt_json({"answers": value.get("answers") or {}})
 
     @property
     def micro(self) -> dict:
@@ -296,6 +299,24 @@ class VoyageNote(db.Model):
         }
 
 
+def has_parcours(profile) -> bool:
+    """Whether « Ton parcours » was answered. Every field but the free-text
+    name of the diploma, which filters nothing."""
+    return all((getattr(profile, field, None) or "").strip() for field in PARCOURS_FIELDS)
+
+
+def has_seen_conditions(profile) -> bool:
+    """Whether the conditions step was played.
+
+    Seen, not filled: bloc 5 is optional for everyone, so what is asked is that
+    the person was shown the step, and the consent record is the proof of that.
+    A row carrying answers but no record predates the second consent — it was
+    written through /profil before the step existed — and is taken at its word
+    rather than sent back through a step it has already answered.
+    """
+    return bool(profile is not None and profile.conditions_seen)
+
+
 def session_lock(voyage: "Voyage | None", profile, n: str) -> str | None:
     """The server-side session gate.
 
@@ -309,10 +330,17 @@ def session_lock(voyage: "Voyage | None", profile, n: str) -> str | None:
       * n == "0"                       -> open once the voyage exists
       * n in "1".."5" and no code      -> LOCK_CODE
       * n in "1".."5" and the profile lacks prenom or tranche_age -> LOCK_PROFILE
+      * n in "2".."5" and no parcours block   -> LOCK_PARCOURS
+      * n == "5" and bloc 5 never seen        -> LOCK_CONDITIONS
       * S(n-1) not completed           -> LOCK_ORDER
 
     The order is the order the person can act in: get a code, then complete the
     profile, then play the session before this one.
+
+    The two middle rules are where the Profil de base now lives. Each block is
+    demanded by the session *after* the one it follows — the parcours block is
+    asked between S1 and S2, bloc 5 between S4 and S5 — so nobody meets a form
+    before they have played anything, and S1 is never held by either.
     """
     if voyage is None:
         return LOCK_ORDER
@@ -324,6 +352,10 @@ def session_lock(voyage: "Voyage | None", profile, n: str) -> str | None:
     tranche_age = (getattr(profile, "tranche_age", None) or "").strip()
     if not prenom or not tranche_age:
         return LOCK_PROFILE
+    if n != "1" and not has_parcours(profile):
+        return LOCK_PARCOURS
+    if n == "5" and not has_seen_conditions(profile):
+        return LOCK_CONDITIONS
     if str(int(n) - 1) not in (voyage.sessions_completed or []):
         return LOCK_ORDER
     return None
