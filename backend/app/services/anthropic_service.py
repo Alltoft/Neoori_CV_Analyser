@@ -47,12 +47,30 @@ def _profile_block(inputs: dict) -> list[str]:
         f"Nom : {(inputs.get('nom', '') or '').upper()}",
         f"Tranche d'âge : {_text(inputs, 'tranche_age')}",
         f"Localisation : {_text(inputs, 'ville') if inputs.get('ville') else _text(inputs, 'localisation')}",
-        f"Rayon de recherche : {_text(inputs, 'rayon')}",
-        f"Situation actuelle : {_text(inputs, 'situation') if inputs.get('situation') else _text(inputs, 'situation_actuelle')}",
     ]
+    # Retired from every form — ville plus the bassin d'emploi replaces it — so
+    # it is printed only for the rows that answered it while it was still asked.
+    # Not re-asked, not thrown away.
+    if inputs.get("rayon"):
+        lines.append(f"Rayon de recherche : {inputs['rayon']}")
+    lines.append(
+        f"Situation actuelle : {_text(inputs, 'situation') if inputs.get('situation') else _text(inputs, 'situation_actuelle')}"
+    )
     if inputs.get("reconversion_scope"):
         lines.append(f"Changement visé : {inputs['reconversion_scope']}")
+
+    # « Ton parcours » — asked between S1 and S2, stored on the same profile,
+    # so it travels in the same block. The exact name of the diploma is free
+    # text that filters nothing: it is printed when it is there and skipped
+    # when it is not, unlike the three that do filter.
     lines += [
+        f"Dernier diplôme : {_text(inputs, 'diplome')}",
+        f"Type d'études : {_text(inputs, 'type_etudes')}",
+    ]
+    if inputs.get("intitule_etudes"):
+        lines.append(f"Intitulé : {inputs['intitule_etudes']}")
+    lines += [
+        f"Études envisagées : {_text(inputs, 'appetence_etudes')}",
         f"Projet : {_text(inputs, 'projet')}",
         f"Contraintes pratiques : {_text(inputs, 'contraintes_pratiques', 'Aucune contrainte déclarée.')}",
     ]

@@ -210,7 +210,6 @@ def _voyage(user, *, answers=None, portrait_status="none", status="s0_termine",
         voyage.portrait_validated_at = datetime(2026, 9, 2)
     voyage.responses = {
         "answers": _s0_answers() if answers is None else answers,
-        "billets": {},
     }
     voyage.micro = {"phrase": phrase, "prompt_version_id": None,
                     "tokens_in": 0, "tokens_out": 0}
@@ -383,6 +382,26 @@ def test_the_profil_de_base_still_reaches_the_analysis(_start, client, app):
     assert stored["prenom"] == "Marie"
     assert stored["ville"] == "Lyon"
     assert stored["_voyage_id"]
+
+
+@patch("app.routes.analyses.start_analysis")
+def test_the_parcours_block_reaches_the_analysis(_start, client, app):
+    """« Ton parcours » is answered inside the voyage but stored on the
+    profile, so it folds in with the rest of the Profil de base — not through
+    the voyage reduction, which carries no field of its own."""
+    user = _user("parcours-fold@test.fr")
+    db.session.add(Profile(user_id=user.id, prenom="Marie", tranche_age="18_21",
+                           diplome="cap_bep", type_etudes="professionnelles",
+                           intitule_etudes="CAP Cuisine", appetence_etudes="travailler"))
+    db.session.commit()
+
+    res = client.post("/api/analyses/", json={"inputs": dict(P1_FULL)},
+                      headers=_auth(user))
+    stored = res.get_json()["analysis"]["inputs"]
+    assert stored["diplome"] == "cap_bep"
+    assert stored["type_etudes"] == "professionnelles"
+    assert stored["intitule_etudes"] == "CAP Cuisine"
+    assert stored["appetence_etudes"] == "travailler"
 
 
 @patch("app.routes.analyses.start_analysis")
@@ -786,14 +805,14 @@ SYNTHESIS = {
 # rulings R5's real-data half. Module-level, alongside SYNTHESIS: scoring.py is
 # pure arithmetic with no Flask/DB dependency, so this is as safe to compute at
 # import time as SYNTHESIS is to write out by hand.
-REAL_SYNTHESIS = scoring.synthesize({"answers": _all_answers(), "billets": {}})
+REAL_SYNTHESIS = scoring.synthesize({"answers": _all_answers()})
 
 # The all-NON mirror. Without this, every s0.top3 entry in every parametrised
 # synthesis above resolves through AXES[...]["plain_pos"] -- plain_neg is
 # never read, so a banned word planted only in plain_neg reaches a real block
 # (verbatim, in "Ce qui l'attire le plus dans dix ans") while the suite stays
 # green. See test_the_block_avoids_the_projects_banned_words below.
-REAL_SYNTHESIS_NON = scoring.synthesize({"answers": _all_answers_non(), "billets": {}})
+REAL_SYNTHESIS_NON = scoring.synthesize({"answers": _all_answers_non()})
 
 
 def test_the_fixture_has_the_shape_synthesize_really_returns():
@@ -802,7 +821,7 @@ def test_the_fixture_has_the_shape_synthesize_really_returns():
     is warning cannot, by itself, catch a leak planted into the bank. Kept
     honest here: if synthesize() grows or loses a top-level section, this is
     what notices."""
-    real = scoring.synthesize({"answers": {}, "billets": {}})
+    real = scoring.synthesize({"answers": {}})
     assert set(real) == set(SYNTHESIS)
 
 

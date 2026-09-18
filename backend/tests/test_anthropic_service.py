@@ -197,3 +197,42 @@ def test_tags_sections_get_a_tags_description():
     tags_sec = schema["properties"]["3"]
     assert "tags" in tags_sec["properties"]["items"]["description"].lower()
     assert "Chaîne vide" in tags_sec["properties"]["body_markdown"]["description"]
+
+
+# ── _profile_block ────────────────────────────────────────────────────────────
+
+def _block(**inputs) -> str:
+    from app.services.anthropic_service import _profile_block
+    return "\n".join(_profile_block(inputs))
+
+
+def test_the_profile_block_carries_the_parcours_answers():
+    """« Ton parcours » reaches the model in the same block as the rest of the
+    Profil de base — it is one of its blocks now, not a voyage extra."""
+    text = _block(prenom="Marie", diplome="bac", type_etudes="technologiques",
+                  intitule_etudes="Bac STI2D", appetence_etudes="courtes")
+    assert "Dernier diplôme : bac" in text
+    assert "Type d'études : technologiques" in text
+    assert "Intitulé : Bac STI2D" in text
+    assert "Études envisagées : courtes" in text
+
+
+def test_an_unanswered_parcours_says_so_rather_than_vanishing():
+    """Same rule as every other line of the block: a missing answer is a fact
+    the model should see, not a line it never gets."""
+    text = _block(prenom="Marie")
+    assert "Dernier diplôme : Non renseigné." in text
+    assert "Études envisagées : Non renseigné." in text
+
+
+def test_the_optional_intitule_is_dropped_when_empty():
+    """It is free text and filters nothing, so an empty one is noise."""
+    assert "Intitulé" not in _block(prenom="Marie", diplome="bac")
+
+
+def test_the_radius_prints_only_for_rows_that_still_carry_one():
+    """Retired from every form: ville plus the bassin d'emploi replaces it.
+    Rows that answered it before keep sending it — the line is not re-asked,
+    and it is not thrown away either."""
+    assert "Rayon de recherche : 30km" in _block(prenom="Marie", rayon="30km")
+    assert "Rayon" not in _block(prenom="Marie")

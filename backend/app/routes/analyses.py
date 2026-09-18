@@ -275,7 +275,12 @@ def _merge_profile(inputs: dict, user_id: str | None) -> None:
         if profile is not None:
             for field in ("prenom", "nom", "ville", "rayon", "tranche_age",
                           "situation", "reconversion_scope", "projet",
-                          "contraintes_pratiques"):
+                          "contraintes_pratiques",
+                          # « Ton parcours » — answered inside the voyage,
+                          # stored on the profile, folded in from here like
+                          # every other block of the Profil de base.
+                          "diplome", "type_etudes", "intitule_etudes",
+                          "appetence_etudes"):
                 inputs.setdefault(field, getattr(profile, field, None))
 
             sensitive = profile.sensitive
