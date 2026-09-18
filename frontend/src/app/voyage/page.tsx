@@ -289,9 +289,14 @@ export default function VoyagePage() {
     checkingRef.current = true
     setCodeState("checking")
     unlockVoyage(code)
-      .then((v) => {
-        setVoyage(v)
+      .then(() => {
         setCode("")
+        // Re-read rather than keeping the unlock's own voyage: the code opens
+        // S1-S5, and what those rows say next depends on the profile too. With
+        // only setVoyage() the card went from « Avec un conseiller » to
+        // whatever a profile read minutes old implied, and stayed there until
+        // the person reloaded the page themselves.
+        return load()
       })
       .catch((e) => {
         // F6: a 409 means the voyage was already unlocked (e.g. in another
@@ -552,10 +557,10 @@ export default function VoyagePage() {
                     nudge to fill the profile no longer applies. */}
                 {!finished && (!profile?.prenom || !profile?.tranche_age) ? (
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Les sessions 1 à 5 utilisent votre prénom et votre tranche d&apos;âge.
-                    Les comptes créés avant qu&apos;ils soient demandés à l&apos;inscription
-                    les renseignent ici.{" "}
-                    <Link href="/profil" className="link-underline text-navy">Mes informations</Link>
+                    Les sessions 1 à 5 utilisent votre prénom et votre tranche d&apos;âge.{" "}
+                    <Link href="/voyage/etape/entree" className="link-underline text-navy">
+                      Les renseigner
+                    </Link>
                   </p>
                 ) : null}
 

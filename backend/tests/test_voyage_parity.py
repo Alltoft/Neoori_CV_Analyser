@@ -153,3 +153,33 @@ def test_the_parcours_fields_match(source):
     )
     assert listed, "hasParcours()'s field list not found in the mirror"
     assert set(re.findall(r'"([^"]+)"', listed.group(1))) == set(voyage.PARCOURS_FIELDS)
+
+
+STEPS_TS = (
+    Path(__file__).resolve().parents[2]
+    / "frontend" / "src" / "lib" / "profile-steps.ts"
+)
+
+
+def test_every_remedy_link_names_a_real_lock():
+    """LOCK_TO_STEP keys the locked card's remedy link off the lock string
+    itself. A lock renamed on one side and not the other does not fail to
+    compile — it silently drops the link, and the card goes back to naming a
+    page the person has to go and find."""
+    assert STEPS_TS.exists(), f"missing {STEPS_TS}"
+    block = re.search(
+        r"export const LOCK_TO_STEP[^{]*\{(.*?)\}", STEPS_TS.read_text(encoding="utf-8"), re.S,
+    )
+    assert block, "LOCK_TO_STEP not found"
+
+    mapped = dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', block.group(1)))
+    assert mapped == {
+        voyage.LOCK_PROFILE: "entree",
+        voyage.LOCK_PARCOURS: "parcours",
+        voyage.LOCK_CONDITIONS: "conditions",
+    }
+
+    # The two with no step: a code comes from a counselor, an order is fixed by
+    # playing. Neither is something a form can answer.
+    assert voyage.LOCK_CODE not in mapped
+    assert voyage.LOCK_ORDER not in mapped

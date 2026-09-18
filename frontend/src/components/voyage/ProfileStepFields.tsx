@@ -6,7 +6,18 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import type { ProfileStep } from "@/lib/profile-steps"
+import { labelOf } from "@/lib/profile-options"
+import type { ProfileStep, StepField } from "@/lib/profile-steps"
+
+/** A select's options, plus whatever the person already has stored if it is no
+ *  longer offered — a retired age bracket, say. Without this the field renders
+ *  blank and reads as unanswered, and saving would quietly replace a real
+ *  answer with a different one. */
+function optionsFor(field: StepField, current: string) {
+  const options = field.options ?? []
+  if (!current || options.some((option) => option.value === current)) return options
+  return [{ value: current, label: labelOf(options, current) ?? current }, ...options]
+}
 
 /**
  * The plain fields of one profile step.
@@ -50,7 +61,7 @@ export function ProfileStepFields({
                   <SelectValue placeholder="Choisir…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(field.options ?? []).map((option) => (
+                  {optionsFor(field, value).map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

@@ -91,6 +91,12 @@ export const RAYONS: Option[] = [
   { value: "toute_la_france", label: "Toute la France" },
 ]
 
+/** Options no longer offered anywhere, kept so a row that still carries one
+ *  renders as words instead of a raw key. Add to this list when retiring a
+ *  value, rather than deleting it outright. */
+export const RETIRED_OPTIONS: Option[] = [LEGACY_TRANCHE]
+
 export function labelOf(options: Option[], value?: string | null): string | null {
-  return options.find((option) => option.value === value)?.label ?? value ?? null
+  if (!value) return null
+  return [...options, ...RETIRED_OPTIONS].find((option) => option.value === value)?.label ?? value
 }

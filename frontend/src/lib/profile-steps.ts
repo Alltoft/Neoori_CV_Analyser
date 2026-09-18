@@ -6,7 +6,7 @@
  *  same placement server-side:
  *
  *    signup      prénom, tranche d'âge          — what session 1 has always wanted
- *    entrée      ville, nom, situation          — before session 0, on the hub
+ *    entrée      prénom, âge, ville, nom, situation — before session 0, on the hub
  *    parcours    diplôme, études, appétence     — between sessions 1 and 2
  *    conditions  contraintes, bloc 5 + OETH     — between sessions 4 and 5
  *
@@ -17,7 +17,7 @@
  */
 
 import {
-  APPETENCES_ETUDES, DIPLOMES, SITUATIONS, TYPES_ETUDES, type Option,
+  APPETENCES_ETUDES, DIPLOMES, SITUATIONS, TRANCHES_AGE, TYPES_ETUDES, type Option,
 } from "./profile-options"
 
 export type StepKey = "entree" | "parcours" | "conditions"
@@ -54,7 +54,26 @@ export const PROFILE_STEPS: Record<StepKey, ProfileStep> = {
       "Ce n'est pas un test, et il n'y a pas de bonne réponse. Trois questions rapides, "
       + "puis la première session.",
     kind: "fields",
+    // Prénom and tranche d'âge are asked at signup and repeated here. Not
+    // redundancy: an account made before signup collected them has neither,
+    // and without them here the voyage's only remedy for LOCK_PROFILE was to
+    // send the person out to /profil — the bounce this placement exists to
+    // remove. Someone who gave them at signup sees them already filled.
     fields: [
+      {
+        name: "prenom",
+        label: "Votre prénom",
+        kind: "text",
+        required: true,
+        placeholder: "Marie",
+      },
+      {
+        name: "tranche_age",
+        label: "Votre tranche d'âge",
+        kind: "select",
+        options: TRANCHES_AGE,
+        required: true,
+      },
       {
         name: "ville",
         label: "Votre ville ou code postal",
@@ -150,12 +169,18 @@ export function isStepKey(value: string | undefined): value is StepKey {
 }
 
 /** Which step answers a lock, so a locked card can link to its remedy instead
- *  of naming a page the person then has to find. Mirrors the lock strings in
- *  `frontend/src/types/voyage.ts`. */
+ *  of naming a page the person then has to find. Every lock a person can clear
+ *  themselves has one — a code comes from a counselor and an order is fixed by
+ *  playing, so those two do not. The keys are byte-identical to
+ *  models/voyage.py; test_voyage_parity.py asserts it. */
+export const LOCK_TO_STEP: Record<string, StepKey> = {
+  "Complétez votre profil": "entree",
+  "Complétez votre parcours": "parcours",
+  "Complétez vos conditions de travail": "conditions",
+}
+
 export function stepForLock(lock: string | null): StepKey | null {
-  if (lock === "Complétez votre parcours") return "parcours"
-  if (lock === "Complétez vos conditions de travail") return "conditions"
-  return null
+  return lock ? LOCK_TO_STEP[lock] ?? null : null
 }
 
 /** Whether every required field of a step has a value. */
