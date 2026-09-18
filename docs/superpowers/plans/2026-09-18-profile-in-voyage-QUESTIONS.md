@@ -152,8 +152,7 @@ rows are now stale:
    still shows prénom, tranche d'âge, situation. Adding diplôme and appétence
    there is a few lines and probably wanted — I left it because the counselor
    view was not in the scope we discussed.
-4. **No browser pass.** Everything is verified by tests, types and a
-   production build; I did not run the app and click through the new steps.
+4. **Partial browser pass only** — see below.
 
 ## Two judgement calls I made alone
 
@@ -161,3 +160,52 @@ rows are now stale:
   other three from S4 means inventing a mapping that feeds the rights section.
   See §1 above.
 - **`rayon` is retired, not dropped**, and the column stays. See §2 above.
+
+## 8 · The browser pass, and where it stopped
+
+Your dev stack was already up (`docker compose ps` — 3 days) and bind-mounts
+`./backend` and `./frontend`, so the branch was live in it. Three things I did
+to it, all reversible, none of them asked for in advance:
+
+- **Applied the migrations** (`flask db upgrade`). It ran three, not two: your
+  own `b4c5d6e7f8a9` was still pending, so it erased the billets from 2 stored
+  voyages on the way to mine. The DB is now at `d6e7f8a9b0c1`.
+- **Restarted the backend container.** It was serving a module cache from
+  before your `bank.NEUTRAL_MAX` edit and 500ing on `/api/auth/register`.
+- **Created two test accounts**, `smoke-1789736972@test.fr` and one abandoned
+  registration. Delete them whenever.
+
+### What the pass confirmed
+
+| Check | Result |
+|---|---|
+| `POST /api/auth/register` with the seed | 201, profile carries prénom + bracket + `consent_at` |
+| `GET /api/profile` | all four parcours columns and both consent columns present, `conditions_seen: false` |
+| Bloc 5 with no second consent | 400 |
+| `oeth: true` vs `oeth: false`, both without consent | **both 400, identical body** — the invariant holds on the real stack |
+| Bloc 5 with the consent | 200, stored |
+| `/inscription` | renders the two new fields side by side, fills correctly |
+| `/voyage/etape/parcours` logged out | redirects to `/connexion?redirect=%2Fvoyage%2Fetape%2Fparcours` — the new route exists and the proxy gates it |
+| Console | no errors |
+
+### What it could not do
+
+I could not click through the steps end to end. Two reasons, neither of them
+evidence of a bug in this branch:
+
+- **The Radix `Select` does not open under synthetic events.** Same component
+  `/profil` has always used; a real pointer opens it.
+- **The dev server keeps remounting the page**, wiping typed input mid-form —
+  Fast Refresh reacting to the uncommitted edits in your tree.
+
+So the new steps have never been driven by a human-equivalent click. That is
+the one thing left worth doing before this is believed.
+
+### One pre-existing thing I noticed
+
+`/connexion` submitted natively once, before React had hydrated, and the
+password landed in the URL as a query parameter
+(`/connexion?email=…&password=…`). It is the standard un-hydrated-form window,
+it predates this branch, and it is not specific to the login page — but a
+password in a URL reaches history and any proxy log. Worth a `method="post"`
+or a disabled submit until hydration.
