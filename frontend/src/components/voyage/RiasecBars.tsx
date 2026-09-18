@@ -4,6 +4,9 @@ import { cn } from "@/lib/utils"
 import { RIASEC_ROWS } from "@/lib/voyage-labels"
 import type { RiasecScore } from "@/types/voyage"
 
+/** Ranked choices share a scene's points, so a score can be 6,67. */
+const tally = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 2 })
+
 /**
  * The counselor manual's page-18 block « Profil RIASEC — Barres de
  * visualisation »: one bar per letter, filled to score / max.
@@ -61,7 +64,7 @@ export function RiasecBars({ riasec }: { riasec: RiasecScore }) {
               />
             </span>
             <span className="text-right font-mono text-xs tabular-nums text-navy">
-              {score} / {max}
+              {tally(score)} / {max}
             </span>
           </li>
         )

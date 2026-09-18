@@ -43,7 +43,7 @@ function ConnexionForm() {
   return (
     <AuthLayout>
       <h1 className="font-display text-2xl font-bold text-navy">Se connecter</h1>
-      <p className="mt-1.5 text-sm text-muted-foreground">Accédez à vos analyses.</p>
+      <p className="mt-1.5 text-sm text-muted-foreground">Retrouvez vos analyses, votre profil et votre voyage.</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4">
         {error && (

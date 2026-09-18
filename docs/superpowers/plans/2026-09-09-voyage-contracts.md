@@ -75,7 +75,6 @@ frontend/src/components/voyage/SessionProgress.tsx
 frontend/src/components/voyage/SceneCard.tsx
 frontend/src/components/voyage/OptionCard.tsx
 frontend/src/components/voyage/ChecklistRow.tsx
-frontend/src/components/voyage/BilletForm.tsx
 frontend/src/components/voyage/MicroReveal.tsx
 frontend/src/components/voyage/SynthesisSheet.tsx
 frontend/src/components/voyage/RiasecBars.tsx
@@ -264,8 +263,7 @@ collectif ») has one authoritative home. Keys `A1`…`A10`, exactly ten, no mor
   "duration": str,          # "5 min" | "15–20 min" | "20 min" | "15 min"
   "kind":     str,          # KIND_CHECKLIST (session 0) | KIND_SCENES (sessions 1-5)
   "items":    list[dict],   # checklist items (kind=checklist) or scenes (kind=scenes)
-  "billet":   list[dict],   # exit-ticket fields, may be [] — in practice never is
-}
+}                           # no "billet" since 2026-09-15 — spec decision 23
 ```
 
 Pinned headers (verbatim from `neoori_cahier_papier.pdf`, do not paraphrase):
@@ -279,7 +277,7 @@ Pinned headers (verbatim from `neoori_cahier_papier.pdf`, do not paraphrase):
 | 4 | `Le cadre qui te permet de te révéler` | `Pas le métier — l'environnement · 6 situations` | `15 min` | scenes | 6 |
 | 5 | `Ton rapport à ce qui n'existe pas encore` | `Risque · Sens · 7 situations` | `20 min` | scenes | 7 |
 
-20 + 6 + 7 + 7 + 6 + 7 = **53 scored items**. Billet fields: 2 + 4 + 3 + 3 + 4 + 4 = **20**.
+20 + 6 + 7 + 7 + 6 + 7 = **53 scored items**. (The 20 billet fields were removed 2026-09-15.)
 
 **Checklist item (session 0 only) — exactly three keys:**
 
@@ -387,24 +385,6 @@ Best-per-scene sums: R `2+2+2+2+2+2 = 12` · I `1+2+2+2+2+2 = 11` · A `2+2+0+2+
 S `1+1+2+2+2+2 = 10` · E `1+2+2+2+2+2 = 11` · C `1+1+1+2+2+2 = 9`. S1-6 is the only eight-option
 scene; every other scene has six.
 
-**Billet field — exactly two keys:**
-
-```python
-{"key": "top3", "label": "Les 3 affirmations qui m'ont le plus parlé :"}
-```
-
-`key`: `str`, lowercase snake_case, unique **within its session**. `label`: `str`, verbatim cahier,
-trailing « : » included. Pinned key sets:
-
-| n | billet keys, in order |
-|---|---|
-| 0 | `top3`, `surprise` |
-| 1 | `cabane`, `jeu`, `fierte`, `regard` |
-| 2 | `vibrer`, `vide`, `vingt_ans` |
-| 3 | `imprevu`, `meilleur`, `pression` |
-| 4 | `environnement`, `vide`, `cadre_relationnel`, `rythme` |
-| 5 | `risque`, `colere`, `trace`, `vivant` |
-
 ### A.4 Public functions
 
 ```python
@@ -416,7 +396,6 @@ def item(item_id: str) -> dict | None
 def item_ids(n: str) -> list[str]
 def all_item_ids() -> list[str]                     # 53 ids, session order then item order
 def option(item_id: str, letter: str) -> dict | None
-def billet_keys(n: str) -> list[str]
 def axis(axis_id: str) -> dict                      # raises KeyError on an unknown id
 def axis_items(axis_id: str) -> list[tuple[str, int]]   # [(item_id, sign), ...]
 def validate_answer(item_id: str, value) -> bool
@@ -445,10 +424,15 @@ a **deep copy** — mutating the result must not touch `SESSIONS`.
 **`validate_answer(item_id, value) -> bool`** — the rule `PUT /responses` enforces:
 
 - `item_id` must exist in the bank, otherwise `False`.
-- Session-0 item: `value` must be `True` or `False` (Python `bool`, JSON `true`/`false`).
-  `0`/`1`/`"oui"` are rejected.
+- Session-0 item: `value` must be `True`, `False` (Python `bool`, JSON `true`/`false`) or
+  the exact string `NEUTRAL == "neutre"` (the « – » mark, added 2026-09-15).
+  `0`/`1`/`"oui"`/`"Neutre"`/`None` are rejected. `PUT /responses` also refuses (400, nothing
+  merged) a request that would leave more than `NEUTRAL_MAX == 5` neutral rows in the merged set,
+  and E6 re-checks the same cap before completing session 0.
 - Scene item: `value` must be a `str` equal to one of that scene's option `letter`s
-  (case-sensitive, single uppercase character).
+  (case-sensitive, single uppercase character), **or** (added 2026-09-15) a list of
+  1..`RANK_MAX == 3` distinct such letters, first choice first. `[]`, a repeat, a fourth letter or a
+  non-string element is rejected. A bare letter stays valid: it is a single choice.
 
 **`riasec_maxima() -> dict[str, int]`** — computed from `SESSIONS`, never a literal: for each S1
 scene take the best available points per letter, sum across the six scenes.
@@ -464,7 +448,8 @@ scene take the best available points per letter, sum across the six scenes.
 
 ## B · `backend/app/services/voyage/scoring.py`
 
-Pure functions. No DB, no I/O, no Flask import, no bank mutation. `bank` is the only import.
+Pure functions. No DB, no I/O, no Flask import, no bank mutation. `bank` is the only project
+import; `fractions` keeps ranked shares exact.
 
 ### B.1 Module constants
 
@@ -493,10 +478,10 @@ Every function in this module takes the **full** responses object, exactly as
 `Voyage.responses` returns it and exactly as `PUT /api/voyage/responses` accepts it:
 
 ```python
-Responses = dict     # {"answers": {item_id: bool | str}, "billets": {session_id: {field: str}}}
+Responses = dict     # {"answers": {item_id: bool | str | list[str]}}
 ```
 
-Both top-level keys are always present (possibly empty). Scorers read `responses.get("answers", {})`
+The `answers` key is always present (possibly empty). Scorers read `responses.get("answers", {})`
 themselves. No function anywhere takes a bare answers dict.
 
 ### B.3 Signatures
@@ -516,11 +501,23 @@ def prompt_context(synthesis: dict, micro_phrase: str | None, stage: str) -> lis
 def missing_items(responses: dict, n: str) -> list[str]
 def session_complete(responses: dict, n: str) -> bool
 def completeness(responses: dict) -> dict[str, bool]
-def chosen_option(responses: dict, item_id: str) -> dict | None
+def chosen_option(responses: dict, item_id: str) -> dict | None      # the first choice
+def rank_weights(k: int) -> tuple[Fraction, ...]                    # added 2026-09-15
+def ranked_options(responses: dict, item_id: str) -> list[tuple[dict, Fraction]]
+def neutral_count(responses: dict) -> int
 ```
 
 Every `score_*` returns `None` when its session is incomplete (any item of that session
 unanswered). `synthesize()` never returns `None`.
+
+**Ranked choices (added 2026-09-15).** A scene answer is one letter or up to `RANK_MAX` letters in
+preference order. `rank_weights(k)` shares the scene's single vote: `(1,)`, `(2/3, 1/3)`,
+`(4/7, 2/7, 1/7)` — it sums to 1 and each rank weighs twice the next, so the first choice outweighs
+the others combined and no RIASEC letter can pass its computed maximum. Tallies (`scores`, `sdt`,
+`schwartz`, `big5`, `style`) are summed as exact `Fraction`s; ranks, ties and the ±2 thresholds
+are decided on the exact values, then each tally is emitted as an `int` when whole (every
+single-choice sheet, unchanged) or a float rounded to 2 decimals. The label-type results (S4, S5,
+the S2-7 probe) are named by the first choice and carry later ones under `ensuite`.
 
 ### B.4 Return shapes, key by key
 
@@ -546,9 +543,13 @@ unanswered). `synthesize()` never returns `None`.
 }
 ```
 
-Rules: per item loading on an axis with sign *s*, OUI contributes `+s`, NON contributes `-s`.
-`oui` / `non` are **counts of contributing items**, `resultant` is the signed sum.
-`tension = TENSION_BAND[0] <= resultant <= TENSION_BAND[1] and n_items >= TENSION_MIN_ITEMS`.
+Rules: per item loading on an axis with sign *s*, OUI contributes `+s`, NON contributes `-s`,
+`NEUTRAL` contributes `0`. `oui` / `non` / `neutre` are **counts of items carrying each mark**
+(each axis entry has all three), `resultant` is the signed sum.
+`tension = TENSION_BAND[0] <= resultant <= TENSION_BAND[1] and oui + non >= TENSION_MIN_ITEMS`
+(identical to `n_items >= …` on a booleans-only sheet).
+`neutres` (added 2026-09-15): `[{"id": "S0-03", "text": "<cahier affirmation>"}, …]` in item order,
+`[]` when none.
 `pole` is `"pos"` when `resultant > 0`, `"neg"` when `< 0`; `label` and `plain` are that pole's
 `pos`/`plain_pos` or `neg`/`plain_neg`.
 
@@ -567,8 +568,9 @@ Rules: per item loading on an axis with sign *s*, OUI contributes `+s`, NON cont
 }
 ```
 
-`normalized = round(score / maxima[letter], 3)` ⚑. `top3` sorts by `normalized` desc, ties broken
-by `RIASEC_LETTERS` order (R I A S E C), always exactly three entries.
+`normalized = round(score / maxima[letter], 3)` ⚑. `top3` sorts by the exact `score / maxima` ratio
+desc — the same order `normalized` gives, since distinct ratios over these ceilings differ by more
+than 0.001 — ties broken by `RIASEC_LETTERS` order (R I A S E C), always exactly three entries.
 
 **`score_s2`**
 
@@ -587,7 +589,9 @@ by `RIASEC_LETTERS` order (R I A S E C), always exactly three entries.
 ```
 
 Counted over **S2-1 … S2-7 only**. Tags carried by options in other sessions are ignored here.
-`ambivalences` is the S2-7 choice (spec), never `None` when the section is not `None`.
+`ambivalences` is the S2-7 first choice (spec), never `None` when the section is not `None`. It
+also carries `ensuite` (added 2026-09-15): the later ranked choices as `{letter, label, plain}`,
+`[]` when none.
 
 **`score_s3`**
 
@@ -607,7 +611,7 @@ Counted over **S3-1 … S3-7 only**. `intro_extra` is `INTRO_EXTRA["high"|"mid"|
 of the extraversion net using the same ±2 thresholds. `levels` values and `big5` trait names are
 **counselor-facing only** — `prompt_context()` must never emit either.
 
-**`score_s4`** — exactly six string keys, no arithmetic:
+**`score_s4`** — six string keys, no arithmetic, plus `ensuite` (added 2026-09-15):
 
 ```python
 {
@@ -620,7 +624,10 @@ of the extraversion net using the same ±2 thresholds. `levels` values and `big5
 }
 ```
 
-**`score_s5`** — exactly seven string keys:
+Each label is the scene's **first** choice. `ensuite` maps a slot to its later ranked labels, only
+where there are any — `{}` on a single-choice sheet, `{"espace": ["open space vivant"]}` otherwise.
+
+**`score_s5`** — seven string keys plus `ensuite`, under `score_s4`'s rule:
 
 ```python
 {
@@ -854,16 +861,15 @@ SQLAlchemy will not see the change (same trap as `unlock_service`'s `new_inputs 
 `responses_encrypted` → `crypto.encrypt_json(...)` of:
 
 ```json
-{"answers": {"S0-01": true, "S0-11": false, "S1-1": "A", "S5-7": "A"},
- "billets": {"0": {"top3": "…", "surprise": "…"},
-             "1": {"cabane": "…", "jeu": "…", "fierte": "…", "regard": "…"}}}
+{"answers": {"S0-01": true, "S0-11": "neutre", "S1-1": "A", "S5-7": ["A", "C"]}}
 ```
 
-⚑ decided here. The spec's data-model line sketches a flat `{item_id: value, "billets": {...}}`
-map; its API line specifies `{answers: {...}, billets: {...}}`. The two-key form wins: it matches
+⚑ decided here. A flat `{item_id: value}` map was sketched first; the nested form wins: it matches
 the request body exactly, it cannot collide with an item id, and it means one shape flows
-model → scoring → synthesis with no translation. `Voyage.responses` always returns both keys,
-`{"answers": {}, "billets": {}}` when unset.
+model → scoring → synthesis with no translation. `Voyage.responses` always returns the `answers`
+key, `{"answers": {}}` when unset. *2026-09-15:* the second key, `billets`, left with the billet de
+sortie (spec decision 23). The getter and the setter both drop it, and migration `b4c5d6e7f8a9`
+erased it from every stored row.
 
 `micro_encrypted` →
 
@@ -894,7 +900,7 @@ sensitive lands in a plaintext column; it is **never** exposed by `to_dict()` �
 ```python
 # ── encrypted accessors ──────────────────────────────────────────────────────
 @property
-def responses(self) -> dict                      # {"answers": {...}, "billets": {...}}
+def responses(self) -> dict                      # {"answers": {...}}
 @responses.setter
 def responses(self, value: dict | None) -> None
 
@@ -1107,18 +1113,18 @@ of the API. Every error body is `{"error": "<French sentence>"}` unless stated o
 **E4 · `GET /api/voyage/responses`** — `@jwt_required()`
 
 - Request: none.
-- `200` → `{"responses": {"answers": {...}, "billets": {...}}}` for the user's current voyage.
+- `200` → `{"responses": {"answers": {...}}}` for the user's current voyage.
 - `404` `{"error": "Aucun voyage en cours."}` when there is no voyage.
 
 **E5 · `PUT /api/voyage/responses`** — `@jwt_required()`
 
-- Request: `{"answers": {"S1-1": "A", "S0-03": true}, "billets": {"1": {"cabane": "…"}}}`.
-  Both keys optional; a request with neither is a no-op `200`.
-- Merge semantics: supplied ids overwrite, absent ids are untouched. Billets merge per session
-  then per field.
+- Request: `{"answers": {"S1-1": "A", "S0-03": true}}`. The key is optional; a request without it
+  is a no-op `200`.
+- Merge semantics: supplied ids overwrite, absent ids are untouched.
 - Unknown item ids are **dropped silently** (spec) — a stale client must not lose the whole save.
-  Unknown billet session ids and unknown field keys are dropped the same way.
-- `200` → `{"responses": {"answers": {…all…}, "billets": {…all…}}}` — the full merged set, so the
+  A `billets` key (the billet de sortie, removed 2026-09-15, still sent by an older player) is
+  ignored the same way: never stored, never a 400.
+- `200` → `{"responses": {"answers": {…all…}}}` — the full merged set, so the
   player can reconcile after a lost connection. ⚑ decided here.
 - `400` `{"errors": ["Réponse invalide pour S1-1."]}` — one string per known id whose value fails
   `bank.validate_answer`.
@@ -1130,7 +1136,7 @@ of the API. Every error body is `{"error": "<French sentence>"}` unless stated o
 
 Route: `@voyage_bp.post("/sessions/<n>/complete")`, `n` is the string `"0"`..`"5"`.
 
-- Request: body ignored (billets are saved through E5).
+- Request: body ignored.
 - `200` → `{"voyage": <to_dict()>}`.
 - Side effects: append `n` to `sessions_completed` (reassigned list, no duplicates);
   `n == "0"` → `status = "s0_termine"` and `generation.start_micro(voyage.id, current_app._get_current_object())`
@@ -1141,6 +1147,8 @@ Route: `@voyage_bp.post("/sessions/<n>/complete")`, `n` is the string `"0"`..`"5
   Sessions 1–4 change no status.
 - `400` `{"errors": ["Réponses manquantes.", "S1-3", "S1-5"]}` — ⚑ decided here: `errors[0]` is the
   sentence, the remaining entries are the missing ids from `scoring.missing_items()`.
+- `400` `{"errors": ["5 réponses neutres au maximum."]}` — `n == "0"` only (added 2026-09-15), when
+  `scoring.neutral_count(responses) > bank.NEUTRAL_MAX`; nothing on the row changes.
 - `403` `{"error": "<LOCK_CODE|LOCK_PROFILE>"}`.
 - `404` `{"error": "Aucun voyage en cours."}`.
 - `409` `{"error": "Terminez la session précédente."}` (`LOCK_ORDER`) when S(n−1) is not complete,
@@ -1432,11 +1440,14 @@ Prénom : Marie
 --- SESSION 0 ---
 Ce qui l'attire le plus : le lien avec les gens, un impact visible, le terrain et l'action
 Autant coché des deux côtés sur : solo vs collectif · sécurité vs risque
+Ni oui ni non sur : Gagner beaucoup d'argent · Être utile à ma communauté locale
 ```
 
 `Prénom` is omitted when unknown. The attractions line joins `s0["top3"]` `plain` values with
 `", "`. The tensions line joins `s0["tensions"]` `tension` values with `" · "` and is omitted when
-there are none.
+there are none. The neutral line (added 2026-09-15) joins `s0["neutres"]` `text` values with
+`" · "`, is omitted when there are none, and follows the tensions line in the portrait's
+`--- SYNTHÈSE ---` block too, without the weight note.
 
 Portrait message, literal shape:
 
@@ -1468,7 +1479,8 @@ Se sent vivant(e) quand : elle crée
 ```
 
 `--- CE QUE TU AS CHOISI ---` uses the scene `title` as the line label and the chosen option's
-`plain` as the value ⚑. Session 0 contributes nothing here — it reaches the model through
+`plain` as the value ⚑; later ranked choices follow in order, with no rank number —
+`La cabane : <plain 1> (puis : <plain 2> · <plain 3>)` (added 2026-09-15). Session 0 contributes nothing here — it reaches the model through
 `--- SYNTHÈSE ---` only ⚑.
 
 `Façon de fonctionner` uses `bank.STYLE_PLAIN[style]`, never the tag ⚑. **No number, no trait name
@@ -1661,7 +1673,6 @@ export type PortraitKey =
   | "accroche" | "qui_tu_es" | "vibrer" | "besoins" | "chemins" | "pas_encore"
 
 // ── bank (GET /api/voyage/bank) ──────────────────────────────────────────────
-export interface BankBilletField { key: string; label: string }
 export interface BankChecklistItem { id: string; text: string }
 export interface BankOption { letter: string; label: string; text: string }
 export interface BankScene {
@@ -1682,7 +1693,6 @@ export interface BankSession {
   duration: string
   kind: SessionKind
   items: BankItem[]
-  billet: BankBilletField[]
 }
 export interface Bank { scoring_version: string; sessions: BankSession[] }
 export interface BankResponse { bank: Bank }
@@ -1710,7 +1720,6 @@ export interface VoyageResponse { voyage: Voyage | null }
 export type VoyageAnswer = boolean | string
 export interface VoyageResponses {
   answers: Record<string, VoyageAnswer>
-  billets: Record<string, Record<string, string>>
 }
 export interface ResponsesResponse { responses: VoyageResponses }
 
@@ -1868,7 +1877,7 @@ export type PromptSlot = Parcours | "voyage_micro" | "voyage_portrait"
 | API paths | French | `/api/voyage`, `/api/voyage/bank`, `/api/voyage/responses`, `/api/voyage/sessions/<n>/complete`, `/api/voyage/unlock`, `/api/voyage/portrait`, `/api/voyage/c/<token>` |
 | Python modules, functions, variables | English | `voyage/bank.py`, `start_portrait`, `leak_check`, `session_lock`, `missing_items` |
 | TS files, components, hooks | English | `voyage.ts`, `SessionProgress`, `SynthesisSheet`, `sessionLock` |
-| Domain nouns that have no English equivalent | French, in code | `voyage`, `billet`, `parcours`, `prenom`, `tranche_age`, `cible_visee` |
+| Domain nouns that have no English equivalent | French, in code | `voyage`, `parcours`, `prenom`, `tranche_age`, `cible_visee` |
 | Enum / tag values in data | French, ASCII snake_case, unaccented | `en_cours`, `s0_termine`, `autonomie`, `conscienciosite`, `sequentiel` |
 | User-visible strings | French | everything rendered, plus every API `error` / `errors` string |
 | Comments, docstrings, commit messages | English | — |
@@ -1941,8 +1950,8 @@ Every line marked ⚑ above, collected. These fill gaps the spec left open; none
 6. `sens` register is pinned per S5 scene; `env` is a free lowercase French noun phrase;
    `risk` is closed on S5-1 and free on S5-2/S5-3.
 7. Sessions carry an `outro` list so the cahier's closing paragraphs have a home.
-8. Billet key sets are pinned per session (20 fields total).
-9. Stored responses are `{"answers": {...}, "billets": {...}}`, not the spec's flat sketch; every
+8. ~~Billet key sets are pinned per session~~ — the billet de sortie was removed 2026-09-15.
+9. Stored responses are `{"answers": {...}}`, not the spec's flat sketch; every
    scoring function takes that same full object.
 10. `completeness` is `dict[str, bool]` keyed `"0"`..`"5"`; `normalized` is rounded to 3 decimals.
 11. `score_s5` key names `rapport_echec` and `rapport_flou`; `INTRO_EXTRA`'s three strings.

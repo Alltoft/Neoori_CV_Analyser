@@ -8,8 +8,8 @@ import { Logo } from "@/components/brand/Logo"
 import { Menu, X, ArrowRight } from "lucide-react"
 
 const LINKS = [
+  { href: "/#voyage", label: "Le voyage" },
   { href: "/#parcours", label: "Parcours" },
-  { href: "/#module", label: "Le module" },
   { href: "/#rapport", label: "Le rapport" },
   { href: "/#pour-qui", label: "Pour qui" },
   { href: "/#tarifs", label: "Tarifs" },
@@ -78,7 +78,7 @@ export function SiteNav() {
               {user ? "Mon espace" : "Se connecter"}
             </Button>
             <Button render={<Link href="/analyse" />} size="lg" onClick={() => setOpen(false)}>
-              Démarrer une analyse
+              Démarrer
               <ArrowRight />
             </Button>
           </div>

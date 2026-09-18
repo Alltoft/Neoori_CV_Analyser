@@ -182,8 +182,21 @@ def leak_check(sections: dict[str, str] | None) -> list[str]:
 # to say, so a rule can be enforced by a test rather than hoped for in prose.
 
 
+def _neutral_line(s0: dict) -> str | None:
+    """The session-0 affirmations left neutral, or None when there are none.
+
+    The affirmation text rather than its id: the person read these exact words,
+    and none of them carries a digit or a framework word (test_voyage_bank
+    walks them). None rather than a bare label, so the model is never handed a
+    blank to fill.
+    """
+    texts = [n.get("text") for n in s0.get("neutres") or [] if n.get("text")]
+    return f"Ni oui ni non sur : {' · '.join(texts)}" if texts else None
+
+
 def _micro_user_message(synthesis: dict, prenom: str | None) -> str:
-    """Session 0 in plain words: the three strongest pulls and the hesitations.
+    """Session 0 in plain words: the three strongest pulls, the hesitations and
+    the affirmations left neutral.
 
     No number, no axis id, no framework name. `plain` and `tension` come
     straight from the bank's AXES table, which is where that wording has its
@@ -202,6 +215,9 @@ def _micro_user_message(synthesis: dict, prenom: str | None) -> str:
     tensions = [t.get("tension") for t in s0.get("tensions") or [] if t.get("tension")]
     if tensions:
         session_0.append(f"Autant coché des deux côtés sur : {' · '.join(tensions)}")
+    neutral = _neutral_line(s0)
+    if neutral:
+        session_0.append(neutral)
     if session_0:
         blocks.append([HEADER_SESSION_0] + session_0)
 
@@ -249,14 +265,22 @@ def _choice_lines(responses: dict) -> list[str]:
     the scoring tag on that option never leaves the server (spec decision 6).
     Session 0 contributes nothing here — it reaches the model through the
     synthesis block only.
+
+    Later ranked choices follow the first, in order, under « puis » — no rank
+    number, so the digit rule on the person's words still holds.
     """
     lines = []
     for n in ("1", "2", "3", "4", "5"):
         for item in bank.items(n):
-            chosen = scoring.chosen_option(responses, item["id"]) or {}
-            plain = chosen.get("plain")
-            if plain:
-                lines.append(f"{item['title']} : {plain}")
+            plains = [option["plain"]
+                      for option, _ in scoring.ranked_options(responses, item["id"])
+                      if option.get("plain")]
+            if not plains:
+                continue
+            line = f"{item['title']} : {plains[0]}"
+            if plains[1:]:
+                line += f" (puis : {' · '.join(plains[1:])})"
+            lines.append(line)
     return lines
 
 
@@ -295,6 +319,10 @@ def _synthesis_lines(synthesis: dict) -> list[str]:
         lines.append(
             f"Autant coché des deux côtés sur : {' · '.join(tensions)}{WEIGHT_NOTE}")
 
+    neutral = _neutral_line(s0)
+    if neutral:
+        lines.append(neutral)
+
     besoins = [b for b in s2.get("sdt_dominant") or [] if b]
     if besoins:
         lines.append(f"Besoin dominant : {', '.join(besoins)}")
@@ -308,8 +336,8 @@ def _synthesis_lines(synthesis: dict) -> list[str]:
     # s4 and s5 strip before the emptiness test, exactly the way _profile_lines
     # does. Not because they are free text -- they are not: score_s4/score_s5
     # read bank-authored option labels off chosen_option(), the same as S1-S3,
-    # and the one channel the person actually composes (responses["billets"])
-    # never reaches either builder. They strip because they are the two blocks
+    # and nothing the person types reaches either builder. They strip because
+    # they are the two blocks
     # whose values a counselor may one day edit, and because one strip rule in
     # one place beats two rules that agree today.
     cadre = [v for v in (_clean(s4.get(k))

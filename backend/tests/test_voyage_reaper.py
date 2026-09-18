@@ -262,7 +262,7 @@ def _aged_player(email: str, **columns) -> tuple[str, dict, datetime]:
     db.session.add(user)
     db.session.commit()
 
-    responses = columns.pop("responses", {"answers": {}, "billets": {}})
+    responses = columns.pop("responses", {"answers": {}})
     voyage = Voyage(user_id=user.id, consent_at=datetime.utcnow(), age_attested=True,
                     **columns)
     voyage.responses = responses
@@ -325,7 +325,7 @@ def test_an_open_voyage_can_still_refresh_a_stranded_phrases_clock(app, client):
     voyage_id, headers, stale = _aged_player(
         "clock-open@test.com", status="s0_termine", micro_status="generating",
         sessions_completed=["0"], counselor_code_id=code.id,
-        responses={"answers": s0, "billets": {}})
+        responses={"answers": s0})
     user_id = db.session.get(Voyage, voyage_id).user_id
     db.session.add(Profile(user_id=user_id, prenom="Marie", tranche_age="25_34"))
     db.session.commit()

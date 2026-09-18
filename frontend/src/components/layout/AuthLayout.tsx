@@ -4,8 +4,9 @@ import { Logo, InfinityMark } from "@/components/brand/Logo"
 import { Check } from "lucide-react"
 
 const POINTS = [
-  "3 sections gratuites, sans carte bancaire",
-  "Export PDF et synthèse conseiller",
+  "Trois parcours d’analyse et le voyage",
+  "Gratuit pour commencer, sans carte bancaire",
+  "Export PDF et partage avec votre conseiller",
   "Données hébergées dans l’Union européenne",
 ]
 
@@ -25,10 +26,10 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <div>
             <p className="eyebrow inline-flex items-center gap-2 text-peach">
-              <InfinityMark tone="light" className="text-[1.05em]" /> Analyse stratégique de CV
+              <InfinityMark tone="light" className="text-[1.05em]" /> Orientation et emploi
             </p>
             <p className="mt-4 max-w-md font-display text-3xl font-bold leading-tight">
-              Une lecture claire de chaque CV, au regard de sa cible.
+              Une lecture claire de votre parcours, avec ou sans CV.
             </p>
             <ul className="mt-7 space-y-3 text-sm text-white/85">
               {POINTS.map((p) => (

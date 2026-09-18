@@ -262,18 +262,18 @@ banners, error messages — says *vous*.
 
 | # | Do | Expect |
 |---|---|---|
-| 12.4.1 | Click « Commencer » on session 0 | One scrolling list of **20** affirmations, each with a ✓ and a ✗ button. Not one question per screen |
+| 12.4.1 | Click « Commencer » on session 0 | One scrolling list of **20** affirmations, each with three buttons: ✓, – (neutre) and ✗. Not one question per screen |
 | 12.4.2 | Answer five rows, then reload the page | The five answers are still there — each row saves the moment you press it |
-| 12.4.3 | Answer all 20, click « Suivant » | The « Billet de sortie » screen: one « Facultatif. Rien ici n'est noté ni comparé. » line under the heading, then two free-text boxes |
-| 12.4.4 | Click « Terminer » with the billet empty | Accepted. Back on `/voyage`, session 0 stamped with a check |
+| 12.4.3 | Answer all 20 | The button at the bottom reads « Terminer » — there is no « Billet de sortie » screen any more |
+| 12.4.4 | Click « Terminer » | Back on `/voyage`, session 0 stamped with a check |
 | 12.4.5 | Watch the top of the hub | « Votre phrase » shows a spinner and "Nous la rédigeons. Quelques secondes.", then a single sentence a few seconds later. No page reload needed |
 | 12.4.6 | Read that sentence | One sentence about you. No score, no percentage, no psychology or framework word. An age is fine |
-| 12.4.7 | Reopen `/voyage/session/0` | It opens read-only on the **20 rows first** (not the billet screen) — greyed out, a banner reading « Session terminée. », and the last screen's button reading « Retour au voyage » |
+| 12.4.7 | Reopen `/voyage/session/0` | It opens read-only on the **20 rows** — greyed out, a banner reading « Session terminée. », and the button reading « Retour au voyage » |
 | 12.4.8 | With code + profile already set, look at row 1 now that session 0 is finished | It offers « Commencer » — session 0 was the last lock blocking it |
 | 12.4.9 | **Local stack only — never do this against the production prompt.** Stop the backend, set an invalid `ANTHROPIC_API_KEY` in the local env, start the backend, then finish a fresh session 0 | « Votre phrase » shows « La rédaction de votre phrase n'a pas abouti. Vos réponses sont enregistrées. » and a « Réessayer » button |
 | 12.4.10 | Restore the real key, restart the backend, click « Réessayer » | A sentence appears — no error, no jargon |
 | 12.4.11 | Leave a phrase on "generating" for more than 3 minutes (or simulate it) | « Votre phrase » switches to "La rédaction de votre phrase prend plus de temps que prévu. Vos réponses sont enregistrées." with a « Réessayer » button |
-| 12.4.12 | Try to type more than 1000 characters into a billet de sortie box | The field stops accepting input at 1000 characters |
+| 12.4.12 | Mark five rows « – », then try a sixth | The other rows' « – » buttons are greyed out and « 5 réponses neutres maximum : retirez-en une pour en choisir une autre. » shows above the list. Switching one « – » to ✓ frees a slot |
 
 ### 12.5 Sessions 1 to 5 — the player
 
@@ -286,9 +286,10 @@ banners, error messages — says *vous*.
 | 12.5.5 | Answer a scene, click « Suivant », and try to pick a different option before it replies | The options are frozen (disabled) until the save replies — you cannot pick a second answer for the same scene while the first is still saving |
 | 12.5.6 | Answer a scene, then turn off your network, then click « Suivant » | An error appears and the screen does not advance. Turn the network back on, click again — it saves and moves on. You lose at most the current scene |
 | 12.5.7 | Click « Précédent » | Back one scene, answer still selected. No re-save needed |
-| 12.5.8 | Reach the last screen of a session | The session's closing paragraphs, if it has any, then the billet de sortie for that session |
+| 12.5.8 | Reach the end of a session | Sessions 1 and 5: « Suivant » on the last scene opens a closing screen with the session's last paragraphs and « Terminer ». Sessions 2, 3 and 4: the last scene's own button reads « Terminer ». No « Billet de sortie » anywhere |
 | 12.5.9 | Finish sessions 1 to 5 | After « Terminer » on session 5 the hub shows all six stamped and « Votre portrait est en cours de rédaction. » while it is being written, then « Votre portrait est rédigé. Transmettez le lien ci-dessus à votre conseiller : vous y aurez accès une fois qu'il aura été relu avec vous. » once it is |
 | 12.5.10 | Right after that, look below the six stamps | A card « Lien à transmettre à votre conseiller » with a read-only URL field and a « Copier le lien » button; clicking it briefly shows « Lien copié » |
+| 12.5.11 | On a scene, tap three options, then a fourth, then tap the first one again | Badges « 1er choix », « 2e choix », « 3e choix » in tap order; the other options grey out at three; tapping the first removes it and the other two move up to « 1er » and « 2e » |
 
 ### 12.6 The portrait
 

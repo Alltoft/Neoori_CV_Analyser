@@ -24,7 +24,14 @@ const DASH = "—"
 const join = (parts: (string | undefined)[], sep = " · ") =>
   parts.filter(Boolean).join(sep) || DASH
 
-const signed = (n: number) => (n > 0 ? `+${n}` : String(n))
+/** Ranked choices share a scene's vote, so a session 1-3 tally can be 6,67. */
+const tally = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 2 })
+
+const signed = (n: number) => (n > 0 ? `+${tally(n)}` : tally(n))
+
+/** A label-type answer and, when the person ranked more than one, the rest. */
+const withLater = (first: string, later?: string[]) =>
+  later && later.length > 0 ? `${first} (puis : ${later.join(" · ")})` : first
 
 const sdtLabel = (key: string) => SDT_ROWS.find((r) => r.key === key)?.label ?? key
 const big5Label = (key: string) => BIG5_ROWS.find((r) => r.key === key)?.label ?? key
@@ -129,12 +136,12 @@ export function SynthesisSheet({
       dimension: "Axes bipolaires (S0)",
       session: "Session 0",
       resultat: s0 ? join(s0.top3.map((t) => t.label), " / ") : DASH,
-      signal: s0 ? `Tensions : ${s0.tensions.length}` : DASH,
+      signal: s0 ? `Tensions : ${s0.tensions.length} · Neutres : ${(s0.neutres ?? []).length}` : DASH,
     },
     {
       dimension: "RIASEC top 3",
       session: "Session 1",
-      resultat: riasec ? riasec.top3.map((t) => `${t.univers} ${t.score}`).join(" / ") : DASH,
+      resultat: riasec ? riasec.top3.map((t) => `${t.univers} ${tally(t.score)}`).join(" / ") : DASH,
       signal: riasec ? `Combinaison : ${riasec.top3.map((t) => t.letter).join("")}` : DASH,
     },
     {
@@ -153,7 +160,7 @@ export function SynthesisSheet({
       resultat: s2 ? join(s2.sdt_dominant.map(sdtLabel)) : DASH,
       signal:
         s2 && s2.sdt_dominant.length > 0
-          ? `Score : ${s2.sdt[s2.sdt_dominant[0]] ?? 0}`
+          ? `Score : ${tally(s2.sdt[s2.sdt_dominant[0]] ?? 0)}`
           : DASH,
     },
     {
@@ -224,7 +231,10 @@ export function SynthesisSheet({
         </p>
       ) : null}
 
-      <Block title="Tableau de synthèse — Toutes dimensions">
+      <Block
+        title="Tableau de synthèse — Toutes dimensions"
+        subtitle="Sessions 1 à 5 : quand la personne classe plusieurs choix, la scène compte pour une seule réponse, partagée 2/3 · 1/3 ou 4/7 · 2/7 · 1/7. Les étiquettes des sessions 4 et 5 suivent le 1er choix."
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[32rem] text-left text-xs">
             <thead>
@@ -255,7 +265,7 @@ export function SynthesisSheet({
 
       <Block
         title="Axes bipolaires — Session 0"
-        subtitle={"Résultante = OUI moins NON sur les affirmations qui chargent l'axe."}
+        subtitle={"Résultante = OUI moins NON sur les affirmations qui chargent l'axe ; une réponse neutre (–) compte 0."}
       >
         {s0 ? (
           <ul className="space-y-1.5">
@@ -275,7 +285,7 @@ export function SynthesisSheet({
                   </div>
                   <div className="flex items-center justify-end gap-2">
                     <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                      {axis ? `${axis.oui} ✓ / ${axis.non} ✗` : DASH}
+                      {axis ? `${axis.oui} ✓ / ${axis.non} ✗ / ${axis.neutre ?? 0} –` : DASH}
                     </span>
                     <span
                       className={cn(
@@ -302,7 +312,7 @@ export function SynthesisSheet({
 
       <Block
         title="Tensions S0 — Ambivalences à explorer"
-        subtitle="Les tensions (score S0 entre −2 et +2) sont les signaux les plus informatifs. Elles pondèrent ×1.5 le portrait."
+        subtitle="Les tensions (score S0 entre −2 et +2, sur au moins deux ✓/✗) sont les signaux les plus informatifs. Elles pondèrent ×1.5 le portrait."
       >
         {!s0 ? (
           <Missing n="0" />
@@ -329,6 +339,28 @@ export function SynthesisSheet({
         )}
       </Block>
 
+      {/* A plain list: the restitution guide has no question for « – », and
+          this sheet does not invent one. */}
+      <Block
+        title="Affirmations laissées neutres — Session 0"
+        subtitle="Marquées « – » : ni ✓ ni ✗. Elles comptent 0 sur leurs axes."
+      >
+        {!s0 ? (
+          <Missing n="0" />
+        ) : (s0.neutres ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {(s0.neutres ?? []).map((item) => (
+              <li key={item.id} className="rounded-md bg-secondary px-3 py-2 text-xs text-navy">
+                {item.text}{" "}
+                <span className="font-mono text-muted-foreground">({item.id})</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Block>
+
       <Block title="Synthèse — Besoins SDT dominants">
         {s2 ? (
           <div className="space-y-3">
@@ -343,7 +375,7 @@ export function SynthesisSheet({
                 >
                   <p className="text-xs font-semibold text-navy">{label}</p>
                   <p className="mt-1 font-mono text-lg font-bold tabular-nums text-navy">
-                    {s2.sdt[key] ?? 0}
+                    {tally(s2.sdt[key] ?? 0)}
                   </p>
                 </div>
               ))}
@@ -360,7 +392,10 @@ export function SynthesisSheet({
             />
             <Field
               label={"Ambivalences identifiées (S2-7) — à explorer en restitution"}
-              value={`${s2.ambivalences.label} — ${s2.ambivalences.plain}`}
+              value={[
+                `${s2.ambivalences.label} — ${s2.ambivalences.plain}`,
+                ...(s2.ambivalences.ensuite ?? []).map((o) => `puis ${o.label} — ${o.plain}`),
+              ].join(" · ")}
             />
           </div>
         ) : (
@@ -402,7 +437,7 @@ export function SynthesisSheet({
         {s4 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {S4_ROWS.map(({ key, label }) => (
-              <Field key={key} label={label} value={s4[key]} />
+              <Field key={key} label={label} value={withLater(s4[key], s4.ensuite?.[key])} />
             ))}
           </div>
         ) : (
@@ -414,7 +449,7 @@ export function SynthesisSheet({
         {s5 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {S5_ROWS.map(({ key, label }) => (
-              <Field key={key} label={label} value={s5[key]} />
+              <Field key={key} label={label} value={withLater(s5[key], s5.ensuite?.[key])} />
             ))}
           </div>
         ) : (
