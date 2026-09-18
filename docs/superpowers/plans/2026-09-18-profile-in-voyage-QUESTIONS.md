@@ -209,3 +209,39 @@ password landed in the URL as a query parameter
 it predates this branch, and it is not specific to the login page — but a
 password in a URL reaches history and any proxy log. Worth a `method="post"`
 or a disabled submit until hydration.
+
+---
+
+# Round 2 — /profil retired as a form (same day)
+
+You asked whether `/profil` was mandatory. It is not, but the two things that
+blocked deleting the page were not the CV orientation:
+
+- **Bloc 4 `contraintes_pratiques`** had no other home. Moved into the
+  conditions step, where it shares a screen with the matrix asking the same
+  thing in eight rows.
+- **Rectification (RGPD art. 16).** Once a step is answered, `/profil` is the
+  only way to change it. That is why the page survives — as a surface, not a
+  form.
+
+**Bloc 3 `projet` was the CV-shaped part, and it was redundant.**
+`/analyse/nouveau` bloc 2 already asks the same question as `cible_visee`, with
+the same `/upload/projet` drop zone, and both reached the model — `Projet :` in
+the profile block and `--- CIBLE VISÉE ---` in the parcours-1 message. Removed
+from the page; the column and its prompt line survive for rows that answered it.
+
+While there: `DELETE /api/profile` had existed since the profile shipped and
+**nothing in the frontend ever called it**. A profile could be read and
+corrected but not erased — RGPD art. 17, missing since before this branch. The
+page now has it, outside the form, saying plainly that sessions 1 to 5 close
+behind it. Verified against the live stack: profile null, encrypted conditions
+cascaded away.
+
+## Still open after round 2
+
+- `projet` is now collected **only** per-analysis. Nothing carries a standing
+  project across analyses any more. If the PM wanted a persistent one, it needs
+  a home — but per the Parcours doc « une information, une seule fois », asking
+  it once per analysis is arguably the correct reading.
+- `SectionCard`'s `n` is now optional. The three analysis forms still number
+  their steps; the profile does not.
