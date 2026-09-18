@@ -6,7 +6,6 @@ import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, ArrowRight, Check, Lock } from "lucide-react"
 
 import { AppBar } from "@/components/layout/AppBar"
-import { BilletForm } from "@/components/voyage/BilletForm"
 import { ChecklistRow } from "@/components/voyage/ChecklistRow"
 import { SceneCard } from "@/components/voyage/SceneCard"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -18,20 +17,43 @@ import {
   completeSession, getBank, getResponses, getVoyage, missingItems, putResponses,
 } from "@/lib/voyage"
 import {
-  isScene, sessionLock, LOCK_CODE, LOCK_PROFILE,
-  type BankChecklistItem, type BankSession,
-  type Voyage, type VoyageAnswer, type VoyageResponses,
+  isScene, sessionLock, LOCK_CODE, LOCK_PROFILE, NEUTRAL, NEUTRAL_MAX,
+  type BankChecklistItem, type BankSession, type ChecklistAnswer,
+  type GateProfile, type Voyage, type VoyageAnswer, type VoyageResponses,
 } from "@/types/voyage"
+import { stepForLock } from "@/lib/profile-steps"
 
-type Profile = { prenom?: string | null; tranche_age?: string | null }
+/** Every field sessionLock() reads. A narrower type here would not fail to
+ *  compile — they are all optional — it would just make the mirror decide that
+ *  a block it never fetched is unanswered, and lock a session the server
+ *  opens. */
+type Profile = GateProfile
 
-const asBool = (v: VoyageAnswer | undefined) => (typeof v === "boolean" ? v : undefined)
-const asLetter = (v: VoyageAnswer | undefined) => (typeof v === "string" ? v : undefined)
+/** The server's read-only refusal, byte-identical to routes/voyage.py. */
+const SESSION_CLOSED = "Cette session est terminée : ses réponses ne sont plus modifiables."
+
+const asMark = (v: VoyageAnswer | undefined): ChecklistAnswer | undefined =>
+  typeof v === "boolean" || v === NEUTRAL ? v : undefined
+/** A scene's choices, first choice first. A bare letter is a single choice —
+ *  how every answer was stored before ranked choices. */
+const asLetters = (v: VoyageAnswer | undefined): string[] =>
+  typeof v === "string" ? [v] : Array.isArray(v) ? v : []
+
+/** Screens that hold answers: the checklist is one, each scene is one. */
+const itemSteps = (session: BankSession) =>
+  session.kind === "checklist" ? 1 : session.items.length
+
+/** The screen « Terminer » sits on. A session with closing paragraphs (S1, S5)
+ *  ends on a screen of its own for them; the others end on their last item.
+ *  The billet de sortie that used to close every session is gone (PM ruling
+ *  2026-09-15 — it dated from when a counselor filled the cahier in). */
+const lastStepOf = (session: BankSession) =>
+  session.outro.length > 0 ? itemSteps(session) : itemSteps(session) - 1
 
 /** The step to land on when resuming: the first item with no answer, or the
- *  billet screen when every item is answered. R11: a completed session
- *  always resumes at step 0 instead — reopening one shows its rows/scenes
- *  read-only first rather than jumping straight to the billet screen. */
+ *  last screen when every item is answered. R11: a completed session always
+ *  resumes at step 0 instead — reopening one shows its rows/scenes read-only
+ *  first rather than jumping straight to the end. */
 function resumeStep(
   session: BankSession,
   answers: Record<string, VoyageAnswer>,
@@ -39,10 +61,10 @@ function resumeStep(
 ): number {
   if (done) return 0
   if (session.kind === "checklist") {
-    return session.items.every((it) => answers[it.id] !== undefined) ? 1 : 0
+    return session.items.every((it) => answers[it.id] !== undefined) ? lastStepOf(session) : 0
   }
-  const idx = session.items.findIndex((it) => answers[it.id] === undefined)
-  return idx === -1 ? session.items.length : idx
+  const idx = session.items.findIndex((it) => asLetters(answers[it.id]).length === 0)
+  return idx === -1 ? lastStepOf(session) : idx
 }
 
 export default function SessionPlayerPage() {
@@ -54,7 +76,6 @@ export default function SessionPlayerPage() {
   const [voyage, setVoyage] = useState<Voyage | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [answers, setAnswers] = useState<Record<string, VoyageAnswer>>({})
-  const [billets, setBillets] = useState<Record<string, string>>({})
   const [step, setStep] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -116,7 +137,7 @@ export default function SessionPlayerPage() {
       getBank(),
       getVoyage(),
       getResponses().catch((e: unknown): VoyageResponses => {
-        if (e instanceof ApiError && e.status === 404) return { answers: {}, billets: {} }
+        if (e instanceof ApiError && e.status === 404) return { answers: {} }
         throw e
       }),
       api.get<{ profile: Profile | null }>("/profile", { skipRedirect: true }).then((r) => r.profile),
@@ -130,7 +151,6 @@ export default function SessionPlayerPage() {
         setVoyage(v)
         setProfile(p)
         setAnswers(r.answers)
-        setBillets(r.billets[n] ?? {})
         const isDone = v ? (v.sessions_completed as string[]).includes(s.n) : false
         setStep(resumeStep(s, r.answers, isDone))
       })
@@ -165,6 +185,10 @@ export default function SessionPlayerPage() {
       : []),
     [session],
   )
+  const neutralCount = useMemo(
+    () => rows.filter((it) => answers[it.id] === NEUTRAL).length,
+    [rows, answers],
+  )
 
   const done = session && voyage
     ? (voyage.sessions_completed as string[]).includes(session.n)
@@ -172,8 +196,9 @@ export default function SessionPlayerPage() {
   // R12: the same exemption SessionProgress uses — a completed session is
   // never shown a lock screen, so "Revoir mes réponses" can never dead-end.
   const lock = session ? (done ? null : sessionLock(voyage, profile, session.n)) : null
-  const lastStep = session ? (session.kind === "checklist" ? 1 : session.items.length) : 0
-  const onBillet = step >= lastStep
+  const lastStep = session ? lastStepOf(session) : 0
+  const onOutro = session ? session.outro.length > 0 && step === itemSteps(session) : false
+  const onLast = step >= lastStep
 
   const setAnswer = useCallback((id: string, value: VoyageAnswer) => {
     setAnswers((prev) => ({ ...prev, [id]: value }))
@@ -186,19 +211,53 @@ export default function SessionPlayerPage() {
    *
    *  ALSO frozen by `busy`, via ChecklistRow's `disabled={done || busy}`
    *  below (K6): the one moment `busy` is true while these rows are still on
-   *  screen is `next()`'s reconcile save, which resends every row's current
-   *  answer once all twenty are filled in. A toggle made during that window
-   *  races the reconcile's own patch — if the toggle's own save then fails,
-   *  the row is left scored at the old value on the server even though the
-   *  screen already shows the new one. Freezing the rows for that single
+   *  screen is `saveCurrent()`'s reconcile save, which resends every row's
+   *  current answer once all twenty are filled in. A toggle made during that
+   *  window races the reconcile's own patch — if the toggle's own save then
+   *  fails, the row is left scored at the old value on the server even though
+   *  the screen already shows the new one. Freezing the rows for that single
    *  round trip closes the window; a row's own toggle is still its own save
    *  the rest of the time (chained through `save` above, so two rapid
    *  toggles of the same row still land in click order). */
-  const toggleRow = useCallback((id: string, value: boolean) => {
+  const toggleRow = useCallback((id: string, value: ChecklistAnswer) => {
     if (done) return
     setAnswer(id, value)
     void save({ answers: { [id]: value } })
   }, [done, save, setAnswer])
+
+  /** Save the screen on show, with the checks that gate leaving it. Resolves
+   *  false when an answer is missing or the write failed — the caller must
+   *  not move on. The closing screen holds no answer, so it saves nothing.
+   *  Used by « Suivant » and by « Terminer » alike: the last item is saved by
+   *  whichever of the two leaves it. */
+  const saveCurrent = useCallback(async (): Promise<boolean> => {
+    if (!session) return false
+    if (session.kind === "checklist") {
+      if (step !== 0) return true
+      // R14: block before any write — no save while rows are unanswered.
+      const missing = session.items.filter((it) => answers[it.id] === undefined)
+      if (missing.length > 0) {
+        setError(missing.length === 1
+          ? "1 affirmation sans réponse."
+          : `${missing.length} affirmations sans réponse.`)
+        document.getElementById(`item-${missing[0].id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+        return false
+      }
+      // Reconcile the whole screen: individual rows were already sent, this
+      // catches anything a failed per-row write left behind.
+      const patch: Record<string, VoyageAnswer> = {}
+      for (const it of session.items) patch[it.id] = answers[it.id]
+      return save({ answers: patch })
+    }
+    const item = session.items[step]
+    if (!item) return true
+    if (asLetters(answers[item.id]).length === 0) {
+      setError("Choisissez une réponse pour continuer.")
+      return false
+    }
+    return save({ answers: { [item.id]: answers[item.id] } })
+  }, [answers, save, session, step])
 
   const next = useCallback(async () => {
     if (!session) return
@@ -213,42 +272,15 @@ export default function SessionPlayerPage() {
     }
     setBusy(true)
     try {
-      let ok: boolean
-      if (session.kind === "checklist") {
-        // R14: block before any write — no save, no advance, while rows are
-        // still unanswered.
-        const missing = session.items.filter((it) => answers[it.id] === undefined)
-        if (missing.length > 0) {
-          setError(missing.length === 1
-            ? "1 affirmation sans réponse."
-            : `${missing.length} affirmations sans réponse.`)
-          document.getElementById(`item-${missing[0].id}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "center" })
-          return
-        }
-        // Reconcile the whole screen: individual rows were already sent, this
-        // catches anything a failed per-row write left behind.
-        const patch: Record<string, VoyageAnswer> = {}
-        for (const it of session.items) patch[it.id] = answers[it.id]
-        ok = await save({ answers: patch })
-      } else {
-        const item = session.items[step]
-        if (!item) return
-        if (answers[item.id] === undefined) {
-          setError("Choisissez une réponse pour continuer.")
-          return
-        }
-        ok = await save({ answers: { [item.id]: answers[item.id] } })
-      }
       // A failed write must not advance: the promise is « a dropped connection
       // loses one scene, not a session », and advancing would lose this one.
-      if (!ok) return
+      if (!(await saveCurrent())) return
       setStep((s) => Math.min(s + 1, lastStep))
       window.scrollTo({ top: 0, behavior: "smooth" })
     } finally {
       setBusy(false)
     }
-  }, [answers, done, lastStep, save, session, step])
+  }, [done, lastStep, saveCurrent, session])
 
   const back = useCallback(() => {
     setError(null)
@@ -260,18 +292,19 @@ export default function SessionPlayerPage() {
     if (!session) return
     setBusy(true)
     setError(null)
-    // save() swallows its own rejection and reports a boolean, so the billet
-    // write is checked here rather than by the try/catch below.
-    const saved = await save({ billets: { [session.n]: billets } })
+    lastSaveErrorRef.current = null
+    // saveCurrent() swallows its own rejection and reports a boolean, so the
+    // last write is checked here rather than by the try/catch below.
+    const saved = await saveCurrent()
     if (!saved) {
       // Same dead end as the completeSession 409 below, reached from the
-      // billet write instead: the session was completed in another tab
-      // between opening this screen and pressing "Terminer". Any other save
-      // error (network, a too-long billet, …) keeps today's behaviour —
-      // the message from `save` is already on screen via `error`.
-      if (lastSaveErrorRef.current?.status === 409
-        && lastSaveErrorRef.current.message
-          === "Cette session est terminée : ses réponses ne sont plus modifiables.") {
+      // save instead: the session was completed in another tab between
+      // opening this screen and pressing "Terminer". Any other refusal (a
+      // missing answer, the network, …) keeps its message on screen.
+      // Read through a cast: TypeScript still narrows the ref to the null
+      // assigned above, unaware that the await wrote to it.
+      const failure = lastSaveErrorRef.current as ApiError | null
+      if (failure?.status === 409 && failure.message === SESSION_CLOSED) {
         router.push("/voyage")
         return
       }
@@ -303,7 +336,7 @@ export default function SessionPlayerPage() {
       }
       setBusy(false)
     }
-  }, [billets, router, save, session])
+  }, [router, saveCurrent, session])
 
   if (authLoading || !user || !loaded) {
     return (
@@ -370,11 +403,16 @@ export default function SessionPlayerPage() {
     // Spec § Frontend: the remedy depends on the reason, not a blanket "back"
     // button — LOCK_ORDER (the fallback below) is the only one that actually
     // means "go back to the voyage"; the other two point at where to fix it.
-    const remedy = lock === LOCK_CODE
-      ? { href: "/voyage", label: "Saisir mon code" }
-      : lock === LOCK_PROFILE
-        ? { href: "/profil", label: "Compléter mon profil" }
-        : { href: "/voyage", label: "Retour au voyage" }
+    // The two profile blocks asked inside the voyage have a step of their own;
+    // it is a better remedy than /profil, which would ask for all six.
+    const step = stepForLock(lock)
+    const remedy = step
+      ? { href: `/voyage/etape/${step}`, label: "Répondre maintenant" }
+      : lock === LOCK_CODE
+        ? { href: "/voyage", label: "Saisir mon code" }
+        : lock === LOCK_PROFILE
+          ? { href: "/profil", label: "Compléter mon profil" }
+          : { href: "/voyage", label: "Retour au voyage" }
     return (
       <div className="min-h-screen bg-secondary">
         <AppBar />
@@ -399,9 +437,9 @@ export default function SessionPlayerPage() {
     )
   }
 
-  const scene = session.kind === "scenes" ? scenes[step] : undefined
-  const position = onBillet
-    ? "Billet de sortie"
+  const scene = session.kind === "scenes" && !onOutro ? scenes[step] : undefined
+  const position = onOutro
+    ? "Fin de session"
     : session.kind === "checklist"
       ? `${session.items.length} affirmations`
       : `Scène ${step + 1} sur ${scenes.length}`
@@ -453,15 +491,25 @@ export default function SessionPlayerPage() {
         )}
 
         {/* ── Session 0: one scrolling list of 20 rows ─────────────────── */}
-        {!onBillet && session.kind === "checklist" && (
+        {!onOutro && session.kind === "checklist" && (
           <div className="space-y-1.5">
+            {/* Always mounted, so the live region exists before its first
+                announcement; empty until the first « – ». */}
+            <p aria-live="polite" className="text-right font-mono text-[11px] text-muted-foreground">
+              {neutralCount === 0
+                ? ""
+                : neutralCount >= NEUTRAL_MAX && !done
+                  ? `${NEUTRAL_MAX} réponses neutres maximum : retirez-en une pour en choisir une autre.`
+                  : `Neutre : ${neutralCount} sur ${NEUTRAL_MAX}`}
+            </p>
             {rows.map((item, i) => (
               <div key={item.id} id={`item-${item.id}`}>
                 <ChecklistRow
                   n={i + 1}
                   text={item.text}
-                  value={asBool(answers[item.id])}
+                  value={asMark(answers[item.id])}
                   disabled={done || busy}
+                  neutralLocked={neutralCount >= NEUTRAL_MAX}
                   onChange={(v) => toggleRow(item.id, v)}
                 />
               </div>
@@ -470,45 +518,28 @@ export default function SessionPlayerPage() {
         )}
 
         {/* ── Sessions 1–5: one scene per screen ──────────────────────── */}
-        {!onBillet && session.kind === "scenes" && scene && (
+        {scene && (
           <div id={`item-${scene.id}`}>
             <SceneCard
               scene={scene}
-              value={asLetter(answers[scene.id])}
-              // Frozen while `next()`'s save is in flight, not only once
-              // `done` — without this a person can pick A, press "Suivant",
-              // then pick B before the save replies: the server keeps A
-              // while "Précédent" shows B. ChecklistRow does NOT get the same
-              // freeze — see the comment on toggleRow above.
+              value={asLetters(answers[scene.id])}
+              // Frozen while a save is in flight, not only once `done` —
+              // without this a person can pick A, press « Suivant » or
+              // « Terminer », then pick B before the save replies: the server
+              // keeps A while the screen shows B. ChecklistRow does NOT get
+              // the same freeze — see the comment on toggleRow above.
               disabled={done || busy}
-              onSelect={(letter) => setAnswer(scene.id, letter)}
+              onChange={(letters) => setAnswer(scene.id, letters)}
             />
           </div>
         )}
 
-        {/* ── Last screen: outro + the optional billet ─────────────────── */}
-        {onBillet && (
-          <div className="space-y-5">
-            {session.outro.length > 0 && (
-              <div className="space-y-2.5 rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10">
-                {session.outro.map((paragraph, i) => (
-                  <p key={i} className="text-sm leading-relaxed text-navy-700">{paragraph}</p>
-                ))}
-              </div>
-            )}
-
-            <div className="rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10 sm:p-6">
-              <h2 className="font-display text-base font-semibold text-navy">Billet de sortie</h2>
-              <p className="mb-4 mt-1 text-xs text-muted-foreground">
-                Facultatif. Rien ici n&apos;est noté ni comparé.
-              </p>
-              <BilletForm
-                fields={session.billet}
-                values={billets}
-                disabled={done}
-                onChange={(key, value) => setBillets((prev) => ({ ...prev, [key]: value }))}
-              />
-            </div>
+        {/* ── Closing screen: the session's own last paragraphs (S1, S5) ── */}
+        {onOutro && (
+          <div className="space-y-2.5 rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10">
+            {session.outro.map((paragraph, i) => (
+              <p key={i} className="text-sm leading-relaxed text-navy-700">{paragraph}</p>
+            ))}
           </div>
         )}
 
@@ -518,7 +549,7 @@ export default function SessionPlayerPage() {
             <ArrowLeft className="size-4" /> Précédent
           </Button>
 
-          {!onBillet ? (
+          {!onLast ? (
             <Button size="lg" onClick={next} disabled={busy}>
               {busy ? "Enregistrement…" : "Suivant"} <ArrowRight className="size-4" />
             </Button>

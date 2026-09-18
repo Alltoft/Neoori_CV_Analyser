@@ -21,7 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError } from "@/lib/api"
 import {
-  RAYONS, RECONVERSION_SCOPES, SITUATIONS, trancheOptions,
+  APPETENCES_ETUDES, DIPLOMES, RAYONS, RECONVERSION_SCOPES, SITUATIONS,
+  TYPES_ETUDES, labelOf, trancheOptions,
 } from "@/lib/profile-options"
 import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
@@ -31,15 +32,25 @@ const schema = z.object({
   prenom: z.string().min(1, "Prénom requis."),
   nom: z.string().min(1, "Nom requis."),
   ville: z.string().min(1, "Ville requise."),
-  rayon: z.string().min(1, "Rayon de recherche requis."),
+  // Retired: ville plus the bassin d'emploi replaces it. Still in the schema
+  // because a row that answered it while it was asked keeps sending it back.
+  rayon: z.string().optional(),
   tranche_age: z.string().min(1, "Tranche d'âge requise."),
   situation: z.string().min(1, "Situation requise."),
   reconversion_scope: z.string().optional(),
+  // « Ton parcours » — asked inside the voyage, changed here.
+  diplome: z.string(),
+  type_etudes: z.string(),
+  intitule_etudes: z.string(),
+  appetence_etudes: z.string(),
   projet: z.string(),
   projet_document: z.string(),
   contraintes_pratiques: z.string(),
   oeth: z.boolean(),
   consent: z.boolean().refine((v) => v === true, "Le consentement est requis."),
+  // Bloc 5 and the OETH flag are GDPR Art. 9 data: the ordinary consent above
+  // does not reach them, and the server refuses to store either without this.
+  consent_sensitive: z.boolean(),
 })
 type Fields = z.infer<typeof schema>
 
@@ -59,13 +70,16 @@ export default function ProfilPage() {
       defaultValues: {
         prenom: "", nom: "", ville: "", rayon: "", tranche_age: "",
         situation: "", reconversion_scope: "",
+        diplome: "", type_etudes: "", intitule_etudes: "", appetence_etudes: "",
         projet: "", projet_document: "", contraintes_pratiques: "",
-        oeth: false, consent: false,
+        oeth: false, consent: false, consent_sensitive: false,
       },
     })
 
   const situation = watch("situation")
   const consent = watch("consent")
+  const consentSensitive = watch("consent_sensitive")
+  const rayon = watch("rayon")
 
   // The proxy already gates /profil on cookie *presence*, which misses an
   // expired or invalid token. Without this, that case renders the whole form
@@ -89,11 +103,15 @@ export default function ProfilPage() {
             prenom: v.prenom ?? "", nom: v.nom ?? "", ville: v.ville ?? "",
             rayon: v.rayon ?? "", tranche_age: v.tranche_age ?? "",
             situation: v.situation ?? "", reconversion_scope: v.reconversion_scope ?? "",
+            diplome: v.diplome ?? "", type_etudes: v.type_etudes ?? "",
+            intitule_etudes: v.intitule_etudes ?? "",
+            appetence_etudes: v.appetence_etudes ?? "",
             projet: v.projet ?? "", projet_document: v.projet_document ?? "",
             contraintes_pratiques: v.contraintes_pratiques ?? "",
             // Travels only on the sensitive endpoint, never on this payload.
             oeth: Boolean(c?.oeth),
             consent: Boolean(v.consent_at),
+            consent_sensitive: Boolean(v.consent_sensitive_at),
           })
         }
         if (c?.conditions) setConditions(c.conditions)
@@ -122,7 +140,14 @@ export default function ProfilPage() {
     setSaveError(null)
     setSaving(true)
     try {
-      await api.put("/profile", { ...data, conditions })
+      // conditions and oeth are sent together or not at all, and only once the
+      // second consent exists. Deciding on the consent rather than on the value
+      // of `oeth` keeps the omission symmetric: a payload that dropped the flag
+      // when it was true and kept it when false would leak it.
+      const { consent_sensitive, oeth, ...rest } = data
+      await api.put("/profile", consent_sensitive
+        ? { ...rest, oeth, conditions, consent_sensitive: true }
+        : rest)
       router.push("/analyse/nouveau")
     } catch (e) {
       setSaveError(e instanceof ApiError ? e.message : "Erreur inattendue.")
@@ -195,22 +220,18 @@ export default function ProfilPage() {
                 <Input id="ville" className="mt-1.5" {...register("ville")} />
                 {err("ville")}
               </div>
-              <div>
-                <Label>Rayon de recherche</Label>
-                <Controller
-                  name="rayon"
-                  control={control}
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger className="mt-1.5 w-full"><SelectValue placeholder="Choisir…" /></SelectTrigger>
-                      <SelectContent>
-                        {RAYONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {err("rayon")}
-              </div>
+              {/* Retired — ville plus le bassin d'emploi replaces it. Still
+                  shown, read-only, to whoever answered it while it was asked:
+                  the value keeps reaching the prompt, so hiding it outright
+                  would be data the person can no longer see. */}
+              {rayon ? (
+                <div>
+                  <Label>Rayon de recherche</Label>
+                  <p className="mt-1.5 flex h-10 items-center rounded-md bg-secondary/60 px-3 text-sm text-muted-foreground">
+                    {labelOf(RAYONS, rayon)}
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <Label>Tranche d&apos;âge</Label>
                 <Controller
@@ -263,6 +284,67 @@ export default function ProfilPage() {
                 />
               </div>
             )}
+          </SectionCard>
+
+          {/* ── « Ton parcours » ───────────────────────────────────────
+              Asked between sessions 1 and 2 of the voyage. Here to be changed,
+              never to be given for the first time. */}
+          <SectionCard
+            n="2 bis"
+            title="Votre parcours"
+            hint="Il n'y a pas de bon ni de mauvais niveau. Ces réponses servent à dire si une piste est atteignable pour vous."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Votre dernier diplôme ou niveau</Label>
+                <Controller
+                  name="diplome"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="mt-1.5 w-full"><SelectValue placeholder="Choisir…" /></SelectTrigger>
+                      <SelectContent>
+                        {DIPLOMES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div>
+                <Label>Le type d&apos;études suivi</Label>
+                <Controller
+                  name="type_etudes"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="mt-1.5 w-full"><SelectValue placeholder="Choisir…" /></SelectTrigger>
+                      <SelectContent>
+                        {TYPES_ETUDES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div>
+                <Label htmlFor="intitule_etudes">L&apos;intitulé exact</Label>
+                <Input id="intitule_etudes" className="mt-1.5" placeholder="Facultatif — ex. Bac STI2D" {...register("intitule_etudes")} />
+              </div>
+              <div>
+                <Label>Les études que vous envisagez</Label>
+                <Controller
+                  name="appetence_etudes"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="mt-1.5 w-full"><SelectValue placeholder="Choisir…" /></SelectTrigger>
+                      <SelectContent>
+                        {APPETENCES_ETUDES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            </div>
           </SectionCard>
 
           {/* ── Bloc 3 ─────────────────────────────────────────────────── */}
@@ -336,6 +418,12 @@ export default function ProfilPage() {
             <div className="mt-4">
               <LiveSynthesis value={conditions} />
             </div>
+            {!consentSensitive && (
+              <p className="mt-3 rounded-lg bg-secondary/60 p-3 text-xs leading-relaxed text-muted-foreground">
+                Ces réponses ne seront conservées qu&apos;une fois l&apos;accord du bloc 6
+                donné, plus bas.
+              </p>
+            )}
           </SectionCard>
 
           {/* ── Bloc 6 ─────────────────────────────────────────────────── */}
@@ -359,6 +447,29 @@ export default function ProfilPage() {
                   Cap Emploi, financement d&apos;aménagements par l&apos;Agefiph. Cette
                   information est stockée séparément et chiffrée. Elle n&apos;apparaît jamais
                   dans votre rapport ni dans les documents que vous partagez.
+                </span>
+              </span>
+            </label>
+
+            {/* Bloc 5 and the OETH box are GDPR Art. 9 data. The consent
+                below is for the ordinary half and does not reach them, so
+                they have one of their own — and neither is stored without it.
+                Gating on the tick rather than on the OETH value is what keeps
+                the omission symmetric. */}
+            <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg bg-secondary/60 p-3 has-[:checked]:bg-peach-soft/60">
+              <Controller
+                name="consent_sensitive"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox className="mt-0.5" checked={field.value} onCheckedChange={field.onChange} />
+                )}
+              />
+              <span className="text-xs leading-relaxed text-navy-700">
+                J&apos;accepte que mes réponses sur mes conditions de travail soient
+                conservées, chiffrées et séparées du reste de mon profil, pour rendre mon
+                rapport plus précis.
+                <span className="mt-1 block text-muted-foreground">
+                  Sans cet accord, le bloc 5 et la case ci-dessus ne sont pas enregistrés.
                 </span>
               </span>
             </label>
