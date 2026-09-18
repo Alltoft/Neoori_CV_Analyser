@@ -57,13 +57,18 @@ Everything else below should work end to end.
 | 2.1 | Open `/analyse` | Three cards: "J'ai une cible", "Je cherche ma direction", "Je pars de zéro" |
 | 2.2 | Read the badges | Cards 1 and 2 say "CV requis", card 3 says "Aucun CV nécessaire" |
 | 2.3 | Click each card | → `/analyse/nouveau`, `/analyse/direction`, `/analyse/depart` |
-| 2.4 | Check the footer link | "Compléter mon profil" → `/profil` |
+| 2.4 | Check the footer line | Links to `/voyage` (where the questions are asked) and to `/profil` as "mes informations" (where they are re-read). Nothing says "compléter mon profil" any more |
 
 ---
 
-## 3 · Profil de base — `/profil`
+## 3 · Mes informations — `/profil`
 
 **You need to be logged in.** Create an account first if needed.
+
+**This page is no longer where answers are given.** Signup asks prénom and
+tranche d'âge; the voyage asks the rest (§12.x). `/profil` is where an answer
+is re-read, corrected, or erased — nothing in the app sends anyone here to
+fill it in.
 
 | # | Do | Expect |
 |---|---|---|
@@ -73,16 +78,21 @@ Everything else below should work end to end.
 
 | # | Do | Expect |
 |---|---|---|
-| 3.1.1 | Open `/profil` | Six numbered blocks: Vous · Votre situation · Votre projet · Contraintes pratiques · Conditions de travail · Droits et accord |
-| 3.1.2 | Bloc 1 | Prénom, Nom, **Ville**, **Rayon de recherche** (4 options), **Tranche d'âge** (5 brackets). Radius and age bracket are both new |
+| 3.1.1 | Open `/profil` | Six **unnumbered** blocks: Vous · Votre situation · Votre parcours · Contraintes pratiques · Conditions de travail · Droits et accord. **No "Votre projet"** — the analysis form asks the same thing as « cible visée » |
+| 3.1.2 | Bloc 1 | Prénom, Nom, Ville, **Tranche d'âge — 7 brackets** (14–17 · 18–21 · 22–24 · 25–34 · 35–44 · 45–54 · 55+). **Rayon de recherche is gone**, unless your row already had one — then it shows read-only |
 | 3.1.3 | Type a lowercase name | Forces itself to UPPERCASE as you type |
 | 3.1.4 | Bloc 2 | Five situations. **There is no separate "type de mobilité" field any more** — the PM merged it in here |
 | 3.1.5 | Bloc 2 → pick "En reconversion" | A sub-question appears: rester dans mon domaine / changer de métier / changer de secteur |
 | 3.1.6 | Switch away from "En reconversion" | The sub-question disappears and the answer is cleared |
-| 3.1.7 | Bloc 3 | Free-text projet **plus** an optional PDF drop zone for a job ad / fiche de poste |
+| 3.1.7 | Votre parcours | Dernier diplôme · type d'études · intitulé (facultatif) · études envisagées. Same four the voyage asks between S1 and S2 |
 | 3.1.8 | Bloc 4 | Amber warning box: "N'indiquez aucune information de santé, aucun diagnostic, aucun traitement…" |
 
 ### 3.2 Bloc 5 — the conditions matrix (this is the biggest new piece)
+
+**Before any of 3.2 saves:** bloc 6 now carries a second tick — « J'accepte que
+mes réponses sur mes conditions de travail soient conservées… ». Bloc 5 and the
+OETH box are GDPR art. 9 data, and the server refuses to store either without
+it. Untick it and save: the matrix is simply not written, and nothing errors.
 
 | # | Do | Expect |
 |---|---|---|
@@ -218,9 +228,10 @@ Generation is blocked (no prompt). Test the form itself.
 
 ## 12 · Le voyage
 
-**You need to be logged in.** Sessions 1 to 5 additionally need a counselor code
-and a Profil de base with at least a prénom and a tranche d'âge — that is the
-gate, not a bug.
+**You need to be logged in.** Sessions 1 to 5 need a counselor code. Sessions 2
+to 5 also need « Ton parcours », and session 5 needs the conditions step — each
+is asked *inside* the voyage, and a locked card links straight to the step that
+opens it. Those are gates, not bugs; none of them sends you to `/profil`.
 
 Text that comes from the paper cahier — session titles, scenes, the portrait —
 says *tu* wherever it appears. Everything the app adds — buttons, cards,
@@ -385,3 +396,31 @@ Worth flagging to the PM specifically, whatever the outcome:
 2. **A profile now requires an account.** Neither document says this explicitly; it follows from the persistent-profile decision.
 3. **Premium is priced at 24 € by default** — the middle of their "2–3× the paid tier". They should confirm or change it.
 4. **The verdict section needs prompt text.** The free tier now asks for it and the schema guarantees the key exists, but no prompt describes what belongs in it yet.
+
+
+### 3.4 Erasure — « Supprimer mes informations »
+
+New. `DELETE /api/profile` had existed since the profile shipped with nothing
+in the app calling it: a profile could be read and corrected but never erased
+(RGPD art. 17).
+
+| # | Do | Expect |
+|---|---|---|
+| 3.4.1 | Scroll to the bottom of `/profil` | A card outside the form, red-ringed, saying what goes and what stays |
+| 3.4.2 | Click « Supprimer mes informations » | A browser confirm. Cancel it — nothing happens |
+| 3.4.3 | Confirm it | Every field blanks, including both consent ticks. No redirect |
+| 3.4.4 | Reload | Still empty — `GET /api/profile` returns `{"profile": null}` |
+| 3.4.5 | Open `/voyage` | Sessions 1 to 5 are locked on « Complétez votre profil », linking to `/voyage/etape/entree`. **Your voyage answers, phrase and portrait are untouched** |
+| 3.4.6 | Open a report you already generated | Unchanged. Erasing the profile does not rewrite a report already delivered |
+
+### 3.5 What the steps write, and where
+
+| # | Do | Expect |
+|---|---|---|
+| 3.5.1 | Sign up with a prénom and a bracket | `/profil` already shows both — signup seeds them |
+| 3.5.2 | Open `/voyage` with no voyage yet | The gate asks prénom, tranche d'âge, ville, nom (facultatif) and situation before « Commencer le voyage » |
+| 3.5.3 | Finish S1, open S2 | Locked on « Complétez votre parcours ». The chip is a link, not dead text |
+| 3.5.4 | Click it | `/voyage/etape/parcours` — the four questions, then back to the voyage with S2 open |
+| 3.5.5 | Finish S4, open S5 | Locked on « Complétez vos conditions de travail » → `/voyage/etape/conditions`: contraintes pratiques, the eight-family matrix, the OETH box, the art. 9 tick |
+| 3.5.6 | Leave the whole conditions step empty, tick only the consent, continue | Accepted. Bloc 5 is optional for everyone — what the gate asks is that the step was *seen* |
+| 3.5.7 | Enter a counselor code on the hub | The card updates **without a reload** |
