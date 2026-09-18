@@ -11,7 +11,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
 from ..models.profile import (
-    AGE_BRACKETS,
+    ACCEPTED_AGE_BRACKETS,
     RECONVERSION_SCOPES,
     SEARCH_RADIUS,
     SITUATIONS,
@@ -30,7 +30,7 @@ CONSENT_VERSION = "v1.2"
 # the Académie des Ori variant) and a wrong value is not a cosmetic issue.
 _ENUMS = {
     "rayon": SEARCH_RADIUS,
-    "tranche_age": AGE_BRACKETS,
+    "tranche_age": ACCEPTED_AGE_BRACKETS,
     "situation": SITUATIONS,
     "reconversion_scope": RECONVERSION_SCOPES,
 }

@@ -37,7 +37,21 @@ RECONVERSION_SCOPES = ("meme_domaine", "changer_de_metier", "changer_de_secteur"
 
 # Bloc 1 — brackets, never a date of birth. Routes the Académie des Ori
 # variant and gates the youth schemes in parcours 3.
-AGE_BRACKETS = ("moins_25", "25_34", "35_44", "45_54", "55_plus")
+#
+# Seven since the voyage brought school-age candidates in: "moins_25" was one
+# bucket where the youth schemes need three. The two sets meet at 25 without
+# overlapping — 22_24 stops exactly where 25_34 starts — so a 25-year-old has
+# one bucket and no row written under the five-bracket set changes meaning.
+AGE_BRACKETS = ("14_17", "18_21", "22_24", "25_34", "35_44", "45_54", "55_plus")
+
+# Written before the split and still on rows. Accepted on write so that editing
+# any other field does not reject a bracket the person never touched, but never
+# offered in a select: the form re-asks. Until they answer, the stored value
+# stays usable — voyage.session_lock only requires a non-empty bracket, so the
+# re-ask never locks anyone out of S1-S5 mid-journey.
+LEGACY_AGE_BRACKETS = ("moins_25",)
+
+ACCEPTED_AGE_BRACKETS = AGE_BRACKETS + LEGACY_AGE_BRACKETS
 
 # Bloc 5 — the eight families, each rated on three states.
 CONDITION_FAMILIES = (

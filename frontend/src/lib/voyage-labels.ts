@@ -18,7 +18,7 @@
  * or a framework name — so /voyage, /voyage/session/[n] and /voyage/portrait may
  * never import this module. The same test enforces that.
  */
-import type { S4Score, S5Score } from "@/types/voyage"
+import type { S4Labels, S5Labels } from "@/types/voyage"
 
 /** The ten S0 bipolar axes, in axis-id order. Mirrors bank.AXES. */
 export const AXIS_ROWS: { id: string; label: string; neg: string; pos: string }[] = [
@@ -95,7 +95,7 @@ export const STYLE_LABELS: Record<string, string> = {
 /** The manual's « Synthèse environnementale » box. Its four printed cells come
  *  first (S4-1, S4-2, S4-3, S4-5); S4-4 and S4-6 follow, because the paper sheet
  *  has no room for them and the scorer returns all six. */
-export const S4_ROWS: { key: keyof S4Score; label: string }[] = [
+export const S4_ROWS: { key: keyof S4Labels; label: string }[] = [
   { key: "espace", label: "Espace physique idéal (S4-1)" },
   { key: "rythme", label: "Rythme & chronotype (S4-2)" },
   { key: "equipe", label: "Configuration d'équipe (S4-3)" },
@@ -105,7 +105,7 @@ export const S4_ROWS: { key: keyof S4Score; label: string }[] = [
 ]
 
 /** The manual's « Synthèse Risque & Sens » box, S5-1 through S5-7. */
-export const S5_ROWS: { key: keyof S5Score; label: string }[] = [
+export const S5_ROWS: { key: keyof S5Labels; label: string }[] = [
   { key: "risque", label: "Appétence au risque (S5-1)" },
   { key: "rapport_echec", label: "L'échec possible (S5-2)" },
   { key: "rapport_flou", label: "Le flou (S5-3)" },
@@ -119,11 +119,16 @@ export const S5_ROWS: { key: keyof S5Score; label: string }[] = [
  *  backend/app/models/profile.py AGE_BRACKETS / SITUATIONS and the labels
  *  frontend/src/app/profil/page.tsx:36-52 already shows the candidate. */
 export const TRANCHE_LABELS: Record<string, string> = {
-  moins_25: "Moins de 25 ans",
+  "14_17": "14 – 17 ans",
+  "18_21": "18 – 21 ans",
+  "22_24": "22 – 24 ans",
   "25_34": "25 – 34 ans",
   "35_44": "35 – 44 ans",
   "45_54": "45 – 54 ans",
   "55_plus": "55 ans et plus",
+  // Retired from the form, kept here so an old row still reads as words on
+  // the counselor sheet rather than as a raw key.
+  moins_25: "Moins de 25 ans",
 }
 
 export const SITUATION_LABELS: Record<string, string> = {

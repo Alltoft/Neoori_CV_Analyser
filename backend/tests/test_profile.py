@@ -4,6 +4,8 @@ import pytest
 
 from app.extensions import db as _db
 from app.models.profile import (
+    ACCEPTED_AGE_BRACKETS,
+    AGE_BRACKETS,
     Profile,
     SensitiveProfile,
     normalize_conditions,
@@ -195,6 +197,35 @@ def test_create_and_read_back(client, auth):
 def test_rejects_unknown_enum_values(client, auth):
     res = client.put("/api/profile", json={**BASE, "rayon": "la_galaxie"}, headers=auth)
     assert res.status_code == 400
+
+
+# ── age brackets ─────────────────────────────────────────────────────────────
+
+def test_youth_brackets_are_accepted(client, auth):
+    """The voyage brought school-age candidates in; "moins_25" was one bucket
+    where the youth schemes need three."""
+    for bracket in ("14_17", "18_21", "22_24"):
+        res = client.put("/api/profile", json={**BASE, "tranche_age": bracket}, headers=auth)
+        assert res.status_code in (200, 201), bracket
+        assert res.get_json()["profile"]["tranche_age"] == bracket
+
+
+def test_brackets_meet_at_25_without_overlapping(app):
+    """22_24 stops exactly where 25_34 starts. A 25-year-old has one bucket,
+    not two, and no row written under the five-bracket set changes meaning."""
+    assert "22_25" not in AGE_BRACKETS
+    assert AGE_BRACKETS.index("22_24") + 1 == AGE_BRACKETS.index("25_34")
+    for bracket in ("25_34", "35_44", "45_54", "55_plus"):
+        assert bracket in AGE_BRACKETS
+
+
+def test_legacy_bracket_is_accepted_but_never_offered(client, auth):
+    """Someone who answered before the split edits another field. The bracket
+    they never touched must not reject the write — and the form re-asks."""
+    assert "moins_25" not in AGE_BRACKETS
+    assert "moins_25" in ACCEPTED_AGE_BRACKETS
+    res = client.put("/api/profile", json={**BASE, "tranche_age": "moins_25"}, headers=auth)
+    assert res.status_code in (200, 201)
 
 
 def test_reconversion_scope_requires_a_reconversion(client, auth):

@@ -33,13 +33,26 @@ const RAYONS = [
   { value: "toute_la_france", label: "Toute la France" },
 ]
 
+// Mirrors backend AGE_BRACKETS. Seven since the voyage brought school-age
+// candidates in; 22–24 stops where 25–34 starts, so 25 sits in one bucket.
 const TRANCHES_AGE = [
-  { value: "moins_25", label: "Moins de 25 ans" },
+  { value: "14_17", label: "14 – 17 ans" },
+  { value: "18_21", label: "18 – 21 ans" },
+  { value: "22_24", label: "22 – 24 ans" },
   { value: "25_34", label: "25 – 34 ans" },
   { value: "35_44", label: "35 – 44 ans" },
   { value: "45_54", label: "45 – 54 ans" },
   { value: "55_plus", label: "55 ans et plus" },
 ]
+
+// Written before the split. Offered only to the person who already carries it,
+// so opening the form does not blank a bracket they never touched — picking a
+// new one is what retires it. Never shown to anyone else.
+const LEGACY_TRANCHE = { value: "moins_25", label: "Moins de 25 ans" }
+
+function trancheOptions(current: string | undefined) {
+  return current === LEGACY_TRANCHE.value ? [LEGACY_TRANCHE, ...TRANCHES_AGE] : TRANCHES_AGE
+}
 
 // Mobility used to be a separate chip field; the PM merged it in here because
 // the two were asking the same question twice.
@@ -250,7 +263,7 @@ export default function ProfilPage() {
                     <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger className="mt-1.5 w-full"><SelectValue placeholder="Choisir…" /></SelectTrigger>
                       <SelectContent>
-                        {TRANCHES_AGE.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        {trancheOptions(field.value).map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   )}
