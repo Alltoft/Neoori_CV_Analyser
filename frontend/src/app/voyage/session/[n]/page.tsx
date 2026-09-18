@@ -411,7 +411,7 @@ export default function SessionPlayerPage() {
       : lock === LOCK_CODE
         ? { href: "/voyage", label: "Saisir mon code" }
         : lock === LOCK_PROFILE
-          ? { href: "/profil", label: "Compléter mon profil" }
+          ? { href: "/profil", label: "Mes informations" }
           : { href: "/voyage", label: "Retour au voyage" }
     return (
       <div className="min-h-screen bg-secondary">

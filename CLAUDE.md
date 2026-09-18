@@ -245,12 +245,23 @@ gate that returns the locked card's French string.
 | Signup | prénom, tranche d'âge | `LOCK_PROFILE` (S1) |
 | Hub gate, before S0 | ville, nom, situation | the « Commencer » button |
 | `/voyage/etape/parcours` | diplôme, type d'études, intitulé, appétence | `LOCK_PARCOURS` (S2–S5) |
-| `/voyage/etape/conditions` | bloc 5 + OETH | `LOCK_CONDITIONS` (S5) |
+| `/voyage/etape/conditions` | contraintes pratiques, bloc 5 + OETH | `LOCK_CONDITIONS` (S5) |
 
 Each block is demanded by the session **after** the one it follows, so nobody
 meets a form before they have played anything and S1 is never held by either.
-`/profil` keeps all six blocs and is where an answer is *changed* — never where
-it is given for the first time.
+
+`/profil` is « Mes informations »: unnumbered, reached from the app bar, and
+the place an answer is *changed*, never given for the first time. It also holds
+the erasure — `DELETE /api/profile` had existed since the profile shipped with
+nothing in the app calling it, so a profile could be read and corrected but not
+deleted (RGPD art. 17).
+
+**Bloc 3 (`projet`) is retired.** The analysis form's « cible visée » asks the
+same question with the same PDF drop zone, and the two were reaching the model
+as two lines saying the same thing. Nothing asks for it now; `_profile_block()`
+prints it only for rows that answered it while it was still asked, exactly like
+`rayon`. Both columns stay — a populated column is not dropped on a plan's
+say-so.
 
 Three rules that are easy to undo by accident:
 

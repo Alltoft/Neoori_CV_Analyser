@@ -236,3 +236,21 @@ def test_the_radius_prints_only_for_rows_that_still_carry_one():
     and it is not thrown away either."""
     assert "Rayon de recherche : 30km" in _block(prenom="Marie", rayon="30km")
     assert "Rayon" not in _block(prenom="Marie")
+
+
+def test_the_projet_line_prints_only_when_the_profile_carries_one():
+    """Retired from /profil: the analysis form's « cible visée » asks the same
+    question, and the two were reaching the model as two lines saying the same
+    thing. Rows that answered it before keep sending it."""
+    assert "Projet : Devenir soudeur" in _block(prenom="Marie", projet="Devenir soudeur")
+    assert "Projet" not in _block(prenom="Marie")
+
+
+def test_a_bare_profile_block_has_no_placeholder_lines_left_over():
+    """What survives with nothing filled in: identity, the fields that filter,
+    and the constraints line. Never a « Projet : Non renseigné. » for a
+    question the person was not asked."""
+    text = _block(prenom="Marie")
+    assert "Non renseigné." in text          # tranche d'âge, ville, situation…
+    assert "Projet" not in text
+    assert "Rayon" not in text

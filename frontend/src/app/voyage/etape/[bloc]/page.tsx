@@ -178,6 +178,14 @@ export default function ProfileStepPage() {
           </div>
         ) : (
           <div className="mt-7 space-y-6">
+            {/* Plain fields first wherever a step has them. The conditions
+                step has one — bloc 4 asks in free text what the matrix asks in
+                eight rows, so they share a screen. */}
+            {step.fields.length > 0 && (
+              <ProfileStepFields step={step} values={values} disabled={saving}
+                onChange={(name, value) => setValues((v) => ({ ...v, [name]: value }))} />
+            )}
+
             {isConditions ? (
               <>
                 <ConditionsMatrix value={conditions} onChange={setConditions} />
@@ -220,10 +228,7 @@ export default function ProfileStepPage() {
                   </label>
                 )}
               </>
-            ) : (
-              <ProfileStepFields step={step} values={values} disabled={saving}
-                onChange={(name, value) => setValues((v) => ({ ...v, [name]: value }))} />
-            )}
+            ) : null}
 
             {needsConsent && (
               <label className="flex cursor-pointer items-start gap-3 rounded-lg bg-secondary/60 p-3 has-[:checked]:bg-peach-soft/60">

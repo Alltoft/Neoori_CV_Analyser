@@ -1,11 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowRight, Check, FileText, ShieldCheck, UploadCloud } from "lucide-react"
+import { Check, ShieldCheck, Trash2 } from "lucide-react"
 
 import { AppBar } from "@/components/layout/AppBar"
 import { ConditionsMatrix } from "@/components/profil/ConditionsMatrix"
@@ -25,7 +25,6 @@ import {
   TYPES_ETUDES, labelOf, trancheOptions,
 } from "@/lib/profile-options"
 import { useAuth } from "@/lib/auth"
-import { cn } from "@/lib/utils"
 import type { ConditionsValue } from "@/types/conditions"
 
 const schema = z.object({
@@ -43,8 +42,6 @@ const schema = z.object({
   type_etudes: z.string(),
   intitule_etudes: z.string(),
   appetence_etudes: z.string(),
-  projet: z.string(),
-  projet_document: z.string(),
   contraintes_pratiques: z.string(),
   oeth: z.boolean(),
   consent: z.boolean().refine((v) => v === true, "Le consentement est requis."),
@@ -60,9 +57,9 @@ export default function ProfilPage() {
   const [conditions, setConditions] = useState<ConditionsValue>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [docState, setDocState] = useState<"idle" | "uploading" | "done" | "error">("idle")
-  const [docName, setDocName] = useState("")
 
   const { register, handleSubmit, control, setValue, watch, reset, formState: { errors } } =
     useForm<Fields>({
@@ -71,7 +68,7 @@ export default function ProfilPage() {
         prenom: "", nom: "", ville: "", rayon: "", tranche_age: "",
         situation: "", reconversion_scope: "",
         diplome: "", type_etudes: "", intitule_etudes: "", appetence_etudes: "",
-        projet: "", projet_document: "", contraintes_pratiques: "",
+        contraintes_pratiques: "",
         oeth: false, consent: false, consent_sensitive: false,
       },
     })
@@ -106,7 +103,6 @@ export default function ProfilPage() {
             diplome: v.diplome ?? "", type_etudes: v.type_etudes ?? "",
             intitule_etudes: v.intitule_etudes ?? "",
             appetence_etudes: v.appetence_etudes ?? "",
-            projet: v.projet ?? "", projet_document: v.projet_document ?? "",
             contraintes_pratiques: v.contraintes_pratiques ?? "",
             // Travels only on the sensitive endpoint, never on this payload.
             oeth: Boolean(c?.oeth),
@@ -121,21 +117,6 @@ export default function ProfilPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleDoc = useCallback(async (file: File) => {
-    if (file.type !== "application/pdf") { setDocState("error"); return }
-    setDocState("uploading")
-    const fd = new FormData()
-    fd.append("file", file)
-    try {
-      const res = await api.upload<{ projet_text: string }>("/upload/projet", fd)
-      setValue("projet_document", res.projet_text, { shouldValidate: true })
-      setDocName(file.name)
-      setDocState("done")
-    } catch {
-      setDocState("error")
-    }
-  }, [setValue])
-
   const onSubmit = async (data: Fields) => {
     setSaveError(null)
     setSaving(true)
@@ -148,10 +129,41 @@ export default function ProfilPage() {
       await api.put("/profile", consent_sensitive
         ? { ...rest, oeth, conditions, consent_sensitive: true }
         : rest)
-      router.push("/analyse/nouveau")
+      // Stays put. This page is where an answer is corrected, so pushing the
+      // person into the analysis form would be answering a question they did
+      // not ask.
+      setSaved(true)
     } catch (e) {
       setSaveError(e instanceof ApiError ? e.message : "Erreur inattendue.")
+    } finally {
       setSaving(false)
+    }
+  }
+
+  const remove = async () => {
+    if (!window.confirm(
+      "Supprimer vos informations ? Votre profil et vos conditions de travail seront "
+      + "effacés. Cette action est définitive.",
+    )) return
+    setSaveError(null)
+    setDeleting(true)
+    try {
+      await api.delete("/profile")
+      // Everything back to blank, consent included: what is on screen must be
+      // what is stored, and nothing is stored any more.
+      reset({
+        prenom: "", nom: "", ville: "", rayon: "", tranche_age: "",
+        situation: "", reconversion_scope: "",
+        diplome: "", type_etudes: "", intitule_etudes: "", appetence_etudes: "",
+        contraintes_pratiques: "",
+        oeth: false, consent: false, consent_sensitive: false,
+      })
+      setConditions({})
+      setSaved(false)
+    } catch (e) {
+      setSaveError(e instanceof ApiError ? e.message : "Erreur lors de la suppression.")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -179,13 +191,13 @@ export default function ProfilPage() {
       <AppBar />
       <div className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6">
-          <p className="eyebrow text-orange-dark">Profil de base</p>
+          <p className="eyebrow text-orange-dark">Mes informations</p>
           <h1 className="mt-1 font-display text-2xl font-bold text-navy sm:text-3xl">
-            On commence par vous
+            Ce que nous savons de vous
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Rempli une fois. Aucune de ces questions ne vous sera reposée : votre analyse et
-            votre parcours s&apos;appuient dessus.
+            Ces réponses sont demandées au fil du voyage, pas ici. Cette page sert à les
+            relire, les corriger, ou tout supprimer.
           </p>
         </div>
 
@@ -196,8 +208,7 @@ export default function ProfilPage() {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          {/* ── Bloc 1 ─────────────────────────────────────────────────── */}
-          <SectionCard n={1} title="Vous">
+          <SectionCard title="Vous">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="prenom">Prénom</Label>
@@ -251,8 +262,7 @@ export default function ProfilPage() {
             </div>
           </SectionCard>
 
-          {/* ── Bloc 2 ─────────────────────────────────────────────────── */}
-          <SectionCard n={2} title="Votre situation" hint="Où en êtes-vous aujourd'hui ? Une seule réponse.">
+          <SectionCard title="Votre situation" hint="Où en êtes-vous aujourd'hui ? Une seule réponse.">
             <Controller
               name="situation"
               control={control}
@@ -286,11 +296,8 @@ export default function ProfilPage() {
             )}
           </SectionCard>
 
-          {/* ── « Ton parcours » ───────────────────────────────────────
-              Asked between sessions 1 and 2 of the voyage. Here to be changed,
-              never to be given for the first time. */}
+
           <SectionCard
-            n="2 bis"
             title="Votre parcours"
             hint="Il n'y a pas de bon ni de mauvais niveau. Ces réponses servent à dire si une piste est atteignable pour vous."
           >
@@ -347,47 +354,7 @@ export default function ProfilPage() {
             </div>
           </SectionCard>
 
-          {/* ── Bloc 3 ─────────────────────────────────────────────────── */}
           <SectionCard
-            n={3}
-            title="Votre projet"
-            hint="Secteur, type de poste, ce que vous voulez retrouver au quotidien. Si vous ne savez pas encore, dites-le : le parcours est fait pour ça."
-          >
-            <Textarea rows={4} placeholder="Décrivez votre projet, ou ce qui compte pour vous dans un travail…" {...register("projet")} />
-
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium text-navy">
-                Vous avez une cible précise ? Ajoutez une offre d&apos;emploi, une fiche de poste
-                ou une fiche métier.
-              </p>
-              <div
-                onClick={() => document.getElementById("projet-doc")?.click()}
-                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleDoc(f) }}
-                onDragOver={(e) => e.preventDefault()}
-                className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-input p-4 transition-colors hover:border-orange/50",
-                  docState === "done" && "border-success/40 bg-success/5",
-                  docState === "error" && "border-destructive/40",
-                )}
-              >
-                {docState === "done"
-                  ? <FileText className="size-4 shrink-0 text-success" />
-                  : <UploadCloud className="size-4 shrink-0 text-muted-foreground" />}
-                <span className="text-xs text-muted-foreground">
-                  {docState === "uploading" && "Lecture du document…"}
-                  {docState === "done" && `${docName} — le rapport comparera votre profil à ses exigences, point par point.`}
-                  {docState === "error" && "PDF illisible. Réessayez avec un autre fichier."}
-                  {docState === "idle" && "Glissez un PDF ici, ou cliquez pour choisir (10 Mo max)."}
-                </span>
-                <input id="projet-doc" type="file" accept="application/pdf" className="hidden"
-                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDoc(f) }} />
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* ── Bloc 4 ─────────────────────────────────────────────────── */}
-          <SectionCard
-            n={4}
             title="Vos contraintes pratiques"
             hint="Horaires, transport, disponibilité, salaire minimum, temps partiel."
           >
@@ -402,9 +369,7 @@ export default function ProfilPage() {
             </div>
           </SectionCard>
 
-          {/* ── Bloc 5 ─────────────────────────────────────────────────── */}
           <SectionCard
-            n={5}
             title="Vos conditions de travail"
             hint={
               <>
@@ -426,8 +391,7 @@ export default function ProfilPage() {
             )}
           </SectionCard>
 
-          {/* ── Bloc 6 ─────────────────────────────────────────────────── */}
-          <SectionCard n={6} title="Vos droits et votre accord">
+          <SectionCard title="Vos droits et votre accord">
             {/* The OETH box must trigger nothing visible: no new field, no
                 re-layout, no extra request. The effect appears only in the
                 generated report. Nothing here may react to it. */}
@@ -494,15 +458,38 @@ export default function ProfilPage() {
           <div className="flex flex-col items-start justify-between gap-3 rounded-2xl bg-card p-5 ring-1 ring-foreground/10 sm:flex-row sm:items-center">
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <ShieldCheck className="size-3.5 shrink-0 text-success" />
-              Données chiffrées, supprimables à tout moment.
+              {saved ? "Modifications enregistrées." : "Données chiffrées, supprimables à tout moment."}
             </p>
             {/* CDC §3.1: the button stays inactive until consent is ticked. */}
             <Button type="submit" size="lg" disabled={!consent || saving || !loaded}>
-              {saving ? "Enregistrement…" : "Enregistrer et continuer"}
-              {saving ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
+              {saving ? "Enregistrement…" : "Enregistrer"}
+              <Check className="size-4" />
             </Button>
           </div>
         </form>
+
+        {/* RGPD art. 17. The route has always existed; nothing in the app
+            called it, so a profile could be read and corrected but never
+            erased. Kept apart from the form so a mis-click cannot reach it. */}
+        <div className="mt-5 rounded-2xl bg-card p-5 ring-1 ring-destructive/20 sm:p-6">
+          <h2 className="font-display text-base font-semibold text-navy">Supprimer mes informations</h2>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            Efface votre profil et vos conditions de travail, définitivement. Vos analyses déjà
+            produites et votre voyage ne sont pas touchés — mais les sessions 1 à 5 se
+            refermeront tant que le prénom et la tranche d&apos;âge ne sont pas redonnés.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="mt-4 border-destructive/30 text-destructive hover:bg-destructive/5"
+            disabled={deleting || !loaded}
+            onClick={remove}
+          >
+            <Trash2 className="size-4" />
+            {deleting ? "Suppression…" : "Supprimer mes informations"}
+          </Button>
+        </div>
       </div>
     </div>
   )

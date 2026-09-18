@@ -8,7 +8,7 @@
  *    signup      prénom, tranche d'âge          — what session 1 has always wanted
  *    entrée      ville, nom, situation          — before session 0, on the hub
  *    parcours    diplôme, études, appétence     — between sessions 1 and 2
- *    conditions  bloc 5 + OETH                  — between sessions 4 and 5
+ *    conditions  contraintes, bloc 5 + OETH     — between sessions 4 and 5
  *
  *  One declaration, because two surfaces render these: the hub inlines
  *  « entrée » on its consent gate, and /voyage/etape/<clé> serves the other
@@ -25,7 +25,7 @@ export type StepKey = "entree" | "parcours" | "conditions"
 export interface StepField {
   name: string
   label: string
-  kind: "text" | "select"
+  kind: "text" | "textarea" | "select"
   options?: Option[]
   /** Required fields gate the step's submit button. The optional ones are
    *  optional on the server too — see models/voyage.PARCOURS_FIELDS. */
@@ -123,7 +123,22 @@ export const PROFILE_STEPS: Record<StepKey, ProfileStep> = {
       "Les mêmes questions pour tout le monde. On ne demande jamais la cause d'une "
       + "limitation, seulement son effet sur le travail. Vous pouvez tout laisser vide.",
     kind: "conditions",
-    fields: [],
+    // Bloc 4 asks the same thing in free text that the matrix below asks in
+    // eight rows, so the two belong on one screen. It is the only block with
+    // no other home now that /profil has stopped being the place answers are
+    // given for the first time.
+    fields: [
+      {
+        name: "contraintes_pratiques",
+        label: "Ce qui pèse sur votre quotidien",
+        kind: "textarea",
+        required: false,
+        placeholder: "Facultatif — ex. « je ne suis pas disponible avant 9h »",
+        hint:
+          "Décrivez l'effet sur le travail, jamais la cause : pas de diagnostic, "
+          + "pas de traitement, aucune information de santé.",
+      },
+    ],
     done: "/voyage",
   },
 }

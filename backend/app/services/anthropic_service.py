@@ -69,11 +69,17 @@ def _profile_block(inputs: dict) -> list[str]:
     ]
     if inputs.get("intitule_etudes"):
         lines.append(f"Intitulé : {inputs['intitule_etudes']}")
-    lines += [
-        f"Études envisagées : {_text(inputs, 'appetence_etudes')}",
-        f"Projet : {_text(inputs, 'projet')}",
-        f"Contraintes pratiques : {_text(inputs, 'contraintes_pratiques', 'Aucune contrainte déclarée.')}",
-    ]
+    lines.append(f"Études envisagées : {_text(inputs, 'appetence_etudes')}")
+
+    # Retired from the profile: the analysis form's « cible visée » asks the
+    # same question, and the two reached the model as two lines saying the same
+    # thing. Printed for rows that answered it while it was still asked.
+    if inputs.get("projet"):
+        lines.append(f"Projet : {inputs['projet']}")
+
+    lines.append(
+        f"Contraintes pratiques : {_text(inputs, 'contraintes_pratiques', 'Aucune contrainte déclarée.')}"
+    )
     return lines
 
 

@@ -48,7 +48,7 @@ export function AppBar() {
                 </DropdownMenuItem>
                 <DropdownMenuItem render={<Link href="/profil" />}>
                   <UserRound />
-                  Profil de base
+                  Mes informations
                 </DropdownMenuItem>
                 <DropdownMenuItem render={<Link href="/voyage" />}>
                   <MapIcon />

@@ -552,9 +552,10 @@ export default function VoyagePage() {
                     nudge to fill the profile no longer applies. */}
                 {!finished && (!profile?.prenom || !profile?.tranche_age) ? (
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Les sessions 1 à 5 utilisent le prénom et la tranche d&apos;âge de votre
-                    profil.{" "}
-                    <Link href="/profil" className="link-underline text-navy">Compléter mon profil</Link>
+                    Les sessions 1 à 5 utilisent votre prénom et votre tranche d&apos;âge.
+                    Les comptes créés avant qu&apos;ils soient demandés à l&apos;inscription
+                    les renseignent ici.{" "}
+                    <Link href="/profil" className="link-underline text-navy">Mes informations</Link>
                   </p>
                 ) : null}
 
