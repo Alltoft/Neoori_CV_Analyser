@@ -72,6 +72,19 @@ def test_a_legacy_code_is_never_exhausted(app):
     assert found.id == c.id
 
 
+def test_resolve_ignores_a_drifted_uses_count(app):
+    """The reason resolve() counts rows instead of reading uses_count: that
+    column is an increment that can drift, and a code whose counter ran ahead
+    of its real redemptions must still work."""
+    c = _code(max_uses=3, uses_count=97)
+    db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-1"))
+    db.session.commit()
+
+    found, refusal = code_service.resolve(c.code)
+    assert refusal is None
+    assert found.id == c.id
+
+
 def test_record_writes_the_row_and_bumps_the_counter(app):
     c = _code()
     code_service.record(c, user_id=None, target_type="analysis", target_id="a-1")
