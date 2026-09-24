@@ -1,11 +1,9 @@
 import os
-import re
 
 from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from ..extensions import db
 from ..models.analysis import Analysis
-from ..models.counselor_code import CounselorCode
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..models.voyage import Voyage
@@ -13,6 +11,7 @@ from ..services.voyage.scoring import STAGE_S0, STAGE_VALIDATED
 from ..services.voyage.scoring import prompt_context as voyage_prompt_context
 from ..utils.tokens import generate_share_token
 from ..utils.request_body import json_object, text_field, dict_field
+from ..services import code_service
 from ..services import section_registry as registry
 from ..services import tiers
 from ..services.anthropic_service import start_analysis
@@ -196,21 +195,24 @@ def unlock_with_code(analysis_id):
         return jsonify({"error": "Accès non autorisé."}), 403
     data = json_object()
 
-    # Accept "ABCD1234", "abcd 1234", "ABCD-1234"… — codes are 8 alnum chars
-    raw = text_field(data, "code")
-    code_str = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+    code_str = code_service.normalize(text_field(data, "code"))
     if not code_str:
         return jsonify({"error": "Code requis."}), 400
 
-    code = CounselorCode.query.filter_by(code=code_str).first()
-    if not code or not code.is_active:
-        return jsonify({"error": "Code invalide ou désactivé."}), 400
+    code, refusal = code_service.resolve(code_str)
+    if refusal:
+        return jsonify({"error": refusal}), 400
 
     ok, reason = unlock_analysis(analysis, method="code")
     if not ok:
         return jsonify({"error": reason}), 409
 
-    code.uses_count += 1
+    # analysis.user_id, not the JWT: this route has no auth decorator and the
+    # anonymous flow is supported. An unowned analysis logs a NULL person and
+    # still counts against the code.
+    code_service.record(
+        code, user_id=analysis.user_id, target_type="analysis", target_id=analysis.id
+    )
     db.session.commit()
     return jsonify({"analysis": analysis.to_dict()}), 200
 
