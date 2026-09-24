@@ -97,6 +97,22 @@ def test_voyage_unlock_logs_the_person(client, app):
     assert row.target_id == v.id
 
 
+def test_voyage_unlock_refuses_an_expired_code(client, app):
+    user, headers = _candidate()
+    # consent_at is NOT NULL with no default (models/voyage.py:71) — omit it and
+    # the commit dies on IntegrityError before any assertion runs.
+    v = Voyage(user_id=user.id, consent_at=datetime.utcnow())
+    db.session.add(v)
+    db.session.commit()
+    c = _code(expires_at=datetime.utcnow() - timedelta(days=1))
+
+    r = client.post("/api/voyage/unlock", json={"code": c.code}, headers=headers)
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "Ce code a expiré."
+    db.session.refresh(v)
+    assert v.counselor_code_id is None
+
+
 def test_voyage_unlock_refuses_an_exhausted_code(client, app):
     user, headers = _candidate()
     # consent_at is NOT NULL with no default (models/voyage.py:71) — omit it and
