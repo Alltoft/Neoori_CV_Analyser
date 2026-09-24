@@ -23,7 +23,9 @@ from ..extensions import bcrypt, db
 from ..models.code_redemption import CodeRedemption
 from ..models.counselor_code import CounselorCode
 from ..models.counselor_profile import CounselorProfile
+from ..models.profile import Profile
 from ..models.user import User
+from ..models.voyage import Voyage
 from ..services import code_service
 from ..utils.decorators import approved_counselor_required
 from ..utils.request_body import json_object, raw_text_field, text_field
@@ -268,3 +270,78 @@ def revoke_code(code_id):
     code.revoked_at = datetime.utcnow()
     db.session.commit()
     return jsonify({"code": _code_row(code, 0)}), 200
+
+
+def _my_code_ids(user_id: str) -> list[str]:
+    return [row.id for row in CounselorCode.query.filter_by(owner_id=user_id).all()]
+
+
+@counselor_space_bp.get("/stats")
+@approved_counselor_required
+def stats():
+    """The four tiles.
+
+    « Bénéficiaires » counts redemptions and « Accompagnements » counts
+    portraits this conseiller validated. Kept apart on purpose: handing out a
+    code is not the same as doing the work.
+    """
+    profile = _profile_or_none()
+    if profile is None:
+        return jsonify({"error": "Accès non autorisé."}), 403
+    user_id = profile.user_id
+
+    codes = CounselorCode.query.filter_by(owner_id=user_id).all()
+    counts = _use_counts([c.id for c in codes])
+    now = datetime.utcnow()
+
+    in_circulation = sum(
+        1
+        for c in codes
+        if c.is_active
+        and c.revoked_at is None
+        and (c.expires_at is None or c.expires_at > now)
+        and (c.max_uses is None or counts.get(c.id, 0) < c.max_uses)
+    )
+
+    return jsonify({
+        "beneficiaires": sum(counts.values()),
+        "accompagnements": Voyage.query.filter_by(validated_by_id=user_id).count(),
+        "codes_crees": len(codes),
+        "max_codes": profile.max_codes,
+        "codes_restants": (
+            None if profile.max_codes is None else max(0, profile.max_codes - len(codes))
+        ),
+        "codes_en_circulation": in_circulation,
+        "max_uses_per_code": profile.max_uses_per_code,
+    }), 200
+
+
+@counselor_space_bp.get("/beneficiaires")
+@approved_counselor_required
+def beneficiaires():
+    """Who used my codes, and when. Nothing they wrote.
+
+    Reaching a voyage or a report still requires the person to hand over their
+    own token — spec decision 9. No id and no token leaves this route.
+    """
+    code_ids = _my_code_ids(get_jwt_identity())
+    if not code_ids:
+        return jsonify({"beneficiaires": []}), 200
+
+    rows = (
+        db.session.query(CodeRedemption, User, Profile)
+        .outerjoin(User, User.id == CodeRedemption.user_id)
+        .outerjoin(Profile, Profile.user_id == User.id)
+        .filter(CodeRedemption.code_id.in_(code_ids))
+        .order_by(CodeRedemption.redeemed_at.desc())
+        .all()
+    )
+    return jsonify({"beneficiaires": [
+        {
+            "prenom": profile.prenom if profile else None,
+            "email": user.email if user else None,
+            "target_type": redemption.target_type,
+            "redeemed_at": redemption.redeemed_at.isoformat(),
+        }
+        for redemption, user, profile in rows
+    ]}), 200
