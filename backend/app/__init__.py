@@ -148,7 +148,10 @@ def create_app(env: str | None = None) -> Flask:
     )
 
     # Models must be imported before migrate can detect them
-    from .models import user, analysis, prompt_version, counselor_note, counselor_code, profile, price_feedback, voyage  # noqa: F401
+    from .models import (  # noqa: F401
+        user, analysis, prompt_version, counselor_note, counselor_code,
+        counselor_profile, code_redemption, profile, price_feedback, voyage,
+    )
 
     # Blueprints
     from .routes.auth import auth_bp
