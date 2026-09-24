@@ -53,7 +53,11 @@ def test_the_approval_mail_goes_to_the_login_address(app):
 
 def test_the_rejection_mail_carries_the_reason(app):
     app.config["RESEND_API_KEY"] = "re_test"
-    profile = _profile(status="rejected", reason="Structure non reconnue.")
+    profile = _profile(status="rejected", reason='<b>x</b> & "y"')
     with patch("app.services.email_service.resend.Emails.send") as mock_send:
         email_service.send_counselor_rejected(profile)
-    assert "Structure non reconnue." in mock_send.call_args[0][0]["html"]
+    html = mock_send.call_args[0][0]["html"]
+    # The reason's visible text still reaches the body, but escaped: the raw
+    # tag must not survive, or an injected reason could break out of the <p>.
+    assert "&lt;b&gt;x&lt;/b&gt; &amp; &quot;y&quot;" in html
+    assert "<b>" not in html
