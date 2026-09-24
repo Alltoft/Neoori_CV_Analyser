@@ -43,9 +43,20 @@ def _columns(bind, table: str) -> set[str]:
     return {c["name"] for c in sa.inspect(bind).get_columns(table)}
 
 
+def _indexes(bind, table: str) -> set[str]:
+    return {i["name"] for i in sa.inspect(bind).get_indexes(table)}
+
+
+def _foreign_keys(bind, table: str) -> set[str]:
+    return {fk["name"] for fk in sa.inspect(bind).get_foreign_keys(table) if fk["name"]}
+
+
 def upgrade():
     # Idempotent: entrypoint.sh runs `db upgrade` at container start, and a
-    # half-applied revision must not wedge the backend down.
+    # half-applied revision must not wedge the backend down. Each guard below
+    # checks the existence of the object it is about to create — never a
+    # stand-in for it — so a crash between two DDL statements resumes at the
+    # one that didn't happen instead of skipping past it forever.
     bind = op.get_bind()
     tables = _tables(bind)
 
@@ -73,14 +84,17 @@ def upgrade():
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.UniqueConstraint("user_id", name="uq_counselor_profiles_user"),
         )
+    if "ix_counselor_profiles_status" not in _indexes(bind, "counselor_profiles"):
         op.create_index("ix_counselor_profiles_status", "counselor_profiles", ["status"])
 
     have = _columns(bind, "counselor_codes")
     for name, type_ in CODE_COLUMNS:
         if name not in have:
             op.add_column("counselor_codes", sa.Column(name, type_, nullable=True))
-    if "owner_id" not in have:
+
+    if "ix_counselor_codes_owner_id" not in _indexes(bind, "counselor_codes"):
         op.create_index("ix_counselor_codes_owner_id", "counselor_codes", ["owner_id"])
+    if "fk_counselor_codes_owner_id" not in _foreign_keys(bind, "counselor_codes"):
         # batch_alter_table for the FK alone. SQLite has no ALTER-of-constraint, and
         # replaying this chain against a scratch SQLite file is a rehearsal this repo
         # supports today (a3b4c5d6e7f8 and e1f2a3b4c5d6 keep it working the same way).
@@ -114,8 +128,13 @@ def upgrade():
                 "code_id", "target_type", "target_id", name="uq_code_redemptions_target"
             ),
         )
+
+    redemption_indexes = _indexes(bind, "code_redemptions")
+    if "ix_code_redemptions_code_id" not in redemption_indexes:
         op.create_index("ix_code_redemptions_code_id", "code_redemptions", ["code_id"])
+    if "ix_code_redemptions_user_id" not in redemption_indexes:
         op.create_index("ix_code_redemptions_user_id", "code_redemptions", ["user_id"])
+    if "ix_code_redemptions_redeemed_at" not in redemption_indexes:
         op.create_index("ix_code_redemptions_redeemed_at", "code_redemptions", ["redeemed_at"])
 
 
@@ -126,11 +145,13 @@ def downgrade():
     if "code_redemptions" in tables:
         op.drop_table("code_redemptions")
 
-    have = _columns(bind, "counselor_codes")
-    if "owner_id" in have:
+    if "fk_counselor_codes_owner_id" in _foreign_keys(bind, "counselor_codes"):
         with op.batch_alter_table("counselor_codes") as batch_op:
             batch_op.drop_constraint("fk_counselor_codes_owner_id", type_="foreignkey")
+    if "ix_counselor_codes_owner_id" in _indexes(bind, "counselor_codes"):
         op.drop_index("ix_counselor_codes_owner_id", table_name="counselor_codes")
+
+    have = _columns(bind, "counselor_codes")
     for name, _ in reversed(CODE_COLUMNS):
         if name in have:
             op.drop_column("counselor_codes", name)
