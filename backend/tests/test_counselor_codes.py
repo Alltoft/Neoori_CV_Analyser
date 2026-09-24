@@ -54,6 +54,29 @@ def test_a_lower_number_is_kept(client, app):
     assert r.get_json()["code"]["max_uses"] == 1
 
 
+def test_an_absurd_expiry_is_clamped_not_a_500(client, app):
+    _user, headers = _conseiller()
+    r = client.post(
+        "/api/counselor/codes",
+        json={"label": "Karim", "expires_in_days": 999999999999},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    expires_at = datetime.fromisoformat(r.get_json()["code"]["expires_at"])
+    assert expires_at <= datetime.utcnow() + timedelta(days=3650 + 1)
+
+
+def test_an_absurd_max_uses_is_clamped_to_the_hard_ceiling(client, app):
+    _user, headers = _conseiller()  # max_uses_per_code is None: illimité
+    r = client.post(
+        "/api/counselor/codes",
+        json={"label": "Karim", "max_uses": 999999999999},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    assert r.get_json()["code"]["max_uses"] == 1000
+
+
 def test_max_codes_counts_codes_ever_created(client, app):
     """Decision 5: revoking an unused code must not refill the budget."""
     _user, headers = _conseiller(max_codes=1)

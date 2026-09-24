@@ -139,6 +139,13 @@ def me():
 DEFAULT_MAX_USES = 1
 DEFAULT_EXPIRY_DAYS = 90
 
+# A code nobody could outlive is not a feature, and an int wide enough to
+# overflow timedelta() or the INTEGER column is a 500 waiting to happen.
+# Both are clamped rather than refused, for the same reason max_uses already
+# is: the caller gets the nearest sane value they would have typed.
+MAX_USES_CEILING = 1000       # far past any atelier
+MAX_EXPIRY_DAYS = 3650        # ten years, far past any accompagnement
+
 
 def _profile_or_none():
     return CounselorProfile.query.filter_by(user_id=get_jwt_identity()).first()
@@ -193,7 +200,19 @@ def create_code():
     typed had they known it. max_codes is refused, because there is no
     smaller version of "one more code".
     """
-    profile = _profile_or_none()
+    # Locked for the rest of this transaction on MySQL, so two concurrent
+    # POSTs from the same conseiller cannot both read the same
+    # count-so-far and both pass the max_codes check below — the same shape
+    # code_service.resolve() already closes on the code row
+    # (code_service.py:44). SQLite (tests) omits the clause silently; the
+    # check itself still runs, so the race is only actually closed in
+    # production.
+    profile = (
+        CounselorProfile.query
+        .filter_by(user_id=get_jwt_identity())
+        .with_for_update()
+        .first()
+    )
     if profile is None:
         return jsonify({"error": "Accès non autorisé."}), 403
 
@@ -216,9 +235,11 @@ def create_code():
     max_uses = max(1, max_uses)
     if profile.max_uses_per_code is not None:
         max_uses = min(max_uses, profile.max_uses_per_code)
+    max_uses = min(max_uses, MAX_USES_CEILING)
 
     days = data.get("expires_in_days")
     days = days if isinstance(days, int) and not isinstance(days, bool) and days > 0 else DEFAULT_EXPIRY_DAYS
+    days = min(days, MAX_EXPIRY_DAYS)
 
     code = CounselorCode(
         label=label,
