@@ -44,6 +44,11 @@ def _no_live_anthropic_key(monkeypatch):
 @pytest.fixture
 def app():
     application = create_app("testing")
+    # Same guarantee as _no_live_anthropic_key above, different mechanism:
+    # email_service.send() reads this off app.config, and Config binds it from
+    # os.environ when the module is imported — so blanking the environment in a
+    # fixture would be too late to matter. Blank the config instead.
+    application.config["RESEND_API_KEY"] = None
     with application.app_context():
         _db.create_all()
         yield application

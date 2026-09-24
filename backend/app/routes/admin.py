@@ -9,6 +9,7 @@ from ..models.prompt_version import PromptVersion
 from ..models.counselor_code import CounselorCode
 from ..models.counselor_profile import CounselorProfile
 from ..models.voyage import STATUS_S0, STATUS_TERMINE, Voyage
+from ..services import email_service
 from ..services import section_registry as registry
 from ..services import tiers
 from ..utils.decorators import admin_required
@@ -264,7 +265,7 @@ def approve_counselor_application(profile_id):
     _decide(profile, "approved", None, get_jwt_identity())
     db.session.commit()
 
-    # Task 7 adds the approval mail here, after the commit.
+    email_service.send_counselor_approved(profile)
     return jsonify({"application": profile.to_dict(with_user=True)}), 200
 
 
@@ -282,7 +283,7 @@ def reject_counselor_application(profile_id):
     _decide(profile, "rejected", reason, get_jwt_identity())
     db.session.commit()
 
-    # Task 7 adds the rejection mail here, after the commit.
+    email_service.send_counselor_rejected(profile)
     return jsonify({"application": profile.to_dict(with_user=True)}), 200
 
 

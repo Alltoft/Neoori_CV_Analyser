@@ -1,5 +1,7 @@
 """Approval is the only thing that grants the counselor role, and revocation
 is the only thing that takes it back."""
+from unittest.mock import patch
+
 from flask_jwt_extended import create_refresh_token
 
 from app.extensions import db
@@ -169,3 +171,27 @@ def test_a_decided_demande_cannot_be_approved_twice(client, admin_headers):
         json={}, headers=admin_headers,
     )
     assert r.status_code == 409
+
+
+def test_approving_mails_the_conseiller(client, admin_headers, app):
+    _user, profile = _demande()
+    with patch("app.services.email_service.send") as mock_send:
+        client.post(
+            f"/api/admin/counselor-applications/{profile.id}/approve",
+            json={}, headers=admin_headers,
+        )
+    assert mock_send.called
+    assert mock_send.call_args[0][0] == "conseiller@test.com"
+
+
+def test_a_mail_failure_does_not_undo_the_approval(client, admin_headers, app):
+    """send() is fail-soft, but pin it: the decision has already committed."""
+    user, profile = _demande()
+    with patch("app.services.email_service.send", return_value=False):
+        r = client.post(
+            f"/api/admin/counselor-applications/{profile.id}/approve",
+            json={}, headers=admin_headers,
+        )
+    assert r.status_code == 200
+    db.session.refresh(user)
+    assert user.role == "counselor"

@@ -26,6 +26,9 @@ class Config:
 
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
     RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+    # Resend refuses a From on an unverified domain, so neoori.tech must carry
+    # the DNS records before the first mail goes out.
+    MAIL_FROM = os.environ.get("MAIL_FROM", "neoori <bonjour@neoori.tech>")
     FRONTEND_ORIGINS = [
         o.strip()
         for o in os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:3001").split(",")
