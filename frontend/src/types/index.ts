@@ -183,3 +183,63 @@ export const SECTION_TITLES: Record<string, string> = {
 // MOBILITY_OPTIONS / AGE_BRACKETS / SITUATION_OPTIONS lived here for the
 // parcours 1 form. That form no longer asks — the Profil de base owns those
 // fields, with its own option lists mirroring backend models/profile.py.
+
+/** The demande, and the four states /conseiller renders from.
+ *  'rejected' never passed review; 'revoked' was approved and withdrawn. */
+export type CounselorStatus = "pending" | "approved" | "rejected" | "revoked"
+
+export interface CounselorProfile {
+  id: string
+  user_id: string
+  structure: string
+  fonction: string
+  telephone: string
+  email_pro: string | null
+  message: string | null
+  status: CounselorStatus
+  /** null = illimité, on both. The admin's two dials. */
+  max_codes: number | null
+  max_uses_per_code: number | null
+  decision_reason: string | null
+  reviewed_at: string | null
+  created_at: string
+}
+
+/** A demande as the admin queue sees it: the file plus the account. */
+export interface CounselorApplication extends CounselorProfile {
+  user: User
+}
+
+export type CodeStatut = "actif" | "utilise" | "expire" | "revoque"
+
+export interface CounselorCodeRow {
+  id: string
+  code: string
+  label: string
+  is_active: boolean
+  max_uses: number | null
+  expires_at: string | null
+  revoked_at: string | null
+  created_at: string
+  /** Real count from code_redemptions, not the legacy uses_count. */
+  uses: number
+  statut: CodeStatut
+}
+
+/** Identified, and nothing more: no id, no token, no content (spec decision 9). */
+export interface Beneficiaire {
+  prenom: string | null
+  email: string | null
+  target_type: "analysis" | "voyage"
+  redeemed_at: string
+}
+
+export interface CounselorStats {
+  beneficiaires: number
+  accompagnements: number
+  codes_crees: number
+  max_codes: number | null
+  codes_restants: number | null
+  codes_en_circulation: number
+  max_uses_per_code: number | null
+}
