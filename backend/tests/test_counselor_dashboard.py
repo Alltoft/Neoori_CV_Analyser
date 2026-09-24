@@ -112,13 +112,47 @@ def test_an_anonymous_redemption_still_appears(client, app):
 
 
 def test_another_conseillers_beneficiaires_are_invisible(client, app):
-    _mine, headers = _conseiller(email="mine@test.com")
+    mine, headers = _conseiller(email="mine@test.com")
     other, _ = _conseiller(email="other@test.com")
-    code = CounselorCode(label="pas à moi", owner_id=other.id)
-    db.session.add(code)
+
+    my_code = CounselorCode(label="à moi", owner_id=mine.id)
+    their_code = CounselorCode(label="pas à moi", owner_id=other.id)
+    db.session.add_all([my_code, their_code])
     db.session.commit()
-    db.session.add(CodeRedemption(code_id=code.id, target_type="voyage", target_id="v-9"))
+
+    karim = _beneficiaire("Karim", "karim@test.com")
+    db.session.add(CodeRedemption(
+        code_id=my_code.id, user_id=karim.id, target_type="voyage", target_id="v-1",
+    ))
+    db.session.add(CodeRedemption(
+        code_id=their_code.id, target_type="voyage", target_id="v-9",
+    ))
     db.session.commit()
 
     rows = client.get("/api/counselor/beneficiaires", headers=headers).get_json()["beneficiaires"]
-    assert rows == []
+    assert len(rows) == 1
+    assert rows[0]["prenom"] == "Karim"
+
+
+def test_stats_ignore_another_conseillers_activity(client, app):
+    mine, headers = _conseiller(email="mine@test.com")
+    other, _ = _conseiller(email="other@test.com")
+
+    my_code = CounselorCode(label="à moi", owner_id=mine.id, max_uses=1)
+    their_code = CounselorCode(label="pas à moi", owner_id=other.id, max_uses=1)
+    db.session.add_all([my_code, their_code])
+    db.session.commit()
+
+    db.session.add(CodeRedemption(
+        code_id=their_code.id, target_type="voyage", target_id="v-9",
+    ))
+    candidate = _beneficiaire("Sonia", "sonia@test.com")
+    db.session.add(Voyage(
+        user_id=candidate.id, validated_by_id=other.id, consent_at=datetime.utcnow(),
+    ))
+    db.session.commit()
+
+    stats = client.get("/api/counselor/stats", headers=headers).get_json()
+    assert stats["beneficiaires"] == 0
+    assert stats["accompagnements"] == 0
+    assert stats["codes_crees"] == 1
