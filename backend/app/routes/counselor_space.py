@@ -4,7 +4,7 @@ Not to be confused with routes/counselor.py, mounted at /api/c — that one
 serves an analysis share link to whoever holds the token, with no account at
 all. This blueprint is the account.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify
 from flask_jwt_extended import (
@@ -20,8 +20,12 @@ from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt import PyJWTError
 
 from ..extensions import bcrypt, db
+from ..models.code_redemption import CodeRedemption
+from ..models.counselor_code import CounselorCode
 from ..models.counselor_profile import CounselorProfile
 from ..models.user import User
+from ..services import code_service
+from ..utils.decorators import approved_counselor_required
 from ..utils.request_body import json_object, raw_text_field, text_field
 
 counselor_space_bp = Blueprint("counselor_space", __name__)
@@ -126,3 +130,120 @@ def me():
     """
     profile = CounselorProfile.query.filter_by(user_id=get_jwt_identity()).first()
     return jsonify({"profile": profile.to_dict() if profile else None}), 200
+
+
+# A conseiller-minted code is for one person unless they say otherwise, and it
+# stops being valid after this long. An unredeemed single-use code would
+# otherwise stay live for ever: mint fifty, use twelve, and thirty-eight are
+# still in circulation a year later.
+DEFAULT_MAX_USES = 1
+DEFAULT_EXPIRY_DAYS = 90
+
+
+def _profile_or_none():
+    return CounselorProfile.query.filter_by(user_id=get_jwt_identity()).first()
+
+
+def _code_row(code: CounselorCode, uses: int) -> dict:
+    """The code, its real use count, and one French status for the table."""
+    if code.revoked_at is not None or not code.is_active:
+        statut = "revoque"
+    elif code.max_uses is not None and uses >= code.max_uses:
+        statut = "utilise"
+    elif code.expires_at is not None and code.expires_at <= datetime.utcnow():
+        statut = "expire"
+    else:
+        statut = "actif"
+    return {**code.to_dict(), "uses": uses, "statut": statut}
+
+
+def _use_counts(code_ids: list[str]) -> dict[str, int]:
+    """One grouped query instead of a count per row."""
+    if not code_ids:
+        return {}
+    rows = (
+        db.session.query(CodeRedemption.code_id, db.func.count(CodeRedemption.id))
+        .filter(CodeRedemption.code_id.in_(code_ids))
+        .group_by(CodeRedemption.code_id)
+        .all()
+    )
+    return {code_id: count for code_id, count in rows}
+
+
+@counselor_space_bp.get("/codes")
+@approved_counselor_required
+def list_codes():
+    codes = (
+        CounselorCode.query
+        .filter_by(owner_id=get_jwt_identity())
+        .order_by(CounselorCode.created_at.desc())
+        .all()
+    )
+    counts = _use_counts([c.id for c in codes])
+    return jsonify({"codes": [_code_row(c, counts.get(c.id, 0)) for c in codes]}), 200
+
+
+@counselor_space_bp.post("/codes")
+@approved_counselor_required
+def create_code():
+    """Mint a code, inside the admin's two dials.
+
+    max_uses is clamped rather than refused: a conseiller asking for more
+    places than their ceiling gets the ceiling, which is what they would have
+    typed had they known it. max_codes is refused, because there is no
+    smaller version of "one more code".
+    """
+    profile = _profile_or_none()
+    if profile is None:
+        return jsonify({"error": "Accès non autorisé."}), 403
+
+    data = json_object()
+    label = text_field(data, "label")
+    if not label:
+        return jsonify({"error": "Un libellé est requis."}), 400
+
+    if profile.max_codes is not None:
+        # Codes ever created, not codes still active: counting active ones lets
+        # a revoked code be re-minted for ever (spec decision 5).
+        created = CounselorCode.query.filter_by(owner_id=profile.user_id).count()
+        if created >= profile.max_codes:
+            return jsonify({
+                "error": "Vous avez atteint votre nombre de codes autorisé."
+            }), 409
+
+    requested = data.get("max_uses")
+    max_uses = requested if isinstance(requested, int) and not isinstance(requested, bool) else DEFAULT_MAX_USES
+    max_uses = max(1, max_uses)
+    if profile.max_uses_per_code is not None:
+        max_uses = min(max_uses, profile.max_uses_per_code)
+
+    days = data.get("expires_in_days")
+    days = days if isinstance(days, int) and not isinstance(days, bool) and days > 0 else DEFAULT_EXPIRY_DAYS
+
+    code = CounselorCode(
+        label=label,
+        owner_id=profile.user_id,
+        created_by_id=profile.user_id,
+        max_uses=max_uses,
+        expires_at=datetime.utcnow() + timedelta(days=days),
+    )
+    db.session.add(code)
+    db.session.commit()
+    return jsonify({"code": _code_row(code, 0)}), 201
+
+
+@counselor_space_bp.delete("/codes/<code_id>")
+@approved_counselor_required
+def revoke_code(code_id):
+    """Revoke an unredeemed code. A redeemed one stays: the bénéficiaire has
+    already been unlocked by it, and the row is their trace on the dashboard."""
+    code = CounselorCode.query.get_or_404(code_id)
+    if code.owner_id != get_jwt_identity():
+        return jsonify({"error": "Accès non autorisé."}), 403
+    if code_service.redemption_count(code.id) > 0:
+        return jsonify({"error": "Ce code a déjà été utilisé."}), 409
+
+    code.is_active = False
+    code.revoked_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"code": _code_row(code, 0)}), 200
