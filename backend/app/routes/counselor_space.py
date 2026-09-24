@@ -16,6 +16,8 @@ from flask_jwt_extended import (
     set_refresh_cookies,
     verify_jwt_in_request,
 )
+from flask_jwt_extended.exceptions import JWTExtendedException
+from jwt import PyJWTError
 
 from ..extensions import bcrypt, db
 from ..models.counselor_profile import CounselorProfile
@@ -41,8 +43,17 @@ def apply():
     enqueues admin work. v1 leans on the unique-email constraint and on a human
     reading the queue; a rate limit belongs here if demandes are ever spammed.
     """
-    verify_jwt_in_request(optional=True)
-    user_id = get_jwt_identity()
+    # optional=True swallows only a MISSING token. A present-but-expired or
+    # malformed one still raises, and the app-wide JWT error handlers
+    # (app/__init__.py:196-202) would turn it into 401 « Session expirée. »
+    # before this function runs — locking a visitor whose hour-old session
+    # lapsed out of a form they are entitled to use while logged out.
+    # A token we cannot trust is the same as no token here.
+    try:
+        verify_jwt_in_request(optional=True)
+        user_id = get_jwt_identity()
+    except (JWTExtendedException, PyJWTError):
+        user_id = None
 
     data = json_object()
     fields = {name: text_field(data, name) for name in REQUIRED_FIELDS}

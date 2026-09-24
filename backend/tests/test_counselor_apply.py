@@ -4,6 +4,8 @@ The rule this file exists to pin: a pending conseiller is role=candidate. A
 pending account holding role=counselor would pass every /api/voyage/c/<token>
 guard before anyone had reviewed it.
 """
+from datetime import timedelta
+
 from flask_jwt_extended import create_access_token
 
 from app.extensions import db
@@ -105,3 +107,20 @@ def test_me_returns_the_demande(client, app):
 
     r = client.get("/api/counselor/me", headers=headers)
     assert r.get_json()["profile"]["structure"] == "Mission locale"
+
+
+def test_a_stale_token_does_not_block_an_anonymous_demande(client, app):
+    """optional=True swallows only a MISSING token. A visitor whose session
+    lapsed still carries a cookie, and the public form must still work."""
+    expired = create_access_token(
+        identity="ghost",
+        additional_claims={"role": "candidate"},
+        expires_delta=timedelta(seconds=-1),
+    )
+    r = client.post(
+        "/api/counselor/apply",
+        json=PAYLOAD,
+        headers={"Authorization": f"Bearer {expired}"},
+    )
+    assert r.status_code == 201
+    assert r.get_json()["user"]["email"] == PAYLOAD["email"]
