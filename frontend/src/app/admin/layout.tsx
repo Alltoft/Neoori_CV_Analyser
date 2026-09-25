@@ -1,9 +1,11 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
 import { Logo } from "@/components/brand/Logo"
@@ -21,11 +23,43 @@ const NAV = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { logout } = useAuth()
+  const { user, loading, logout } = useAuth()
 
   const handleLogout = async () => {
     await logout()
     router.push("/")
+  }
+
+  // The proxy checks that a cookie exists, not what it says. Without this a
+  // signed-in candidate typing /admin renders the entire admin shell and only
+  // meets 403s in the data — the pattern copied from voyage/c/[token]:91-92,
+  // which refuses before it fetches.
+  useEffect(() => {
+    if (!loading && !user) router.replace("/connexion?redirect=/admin")
+  }, [loading, user, router])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-secondary">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    )
+  }
+
+  if (!user || user.role !== "admin") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-secondary px-5">
+        <div className="max-w-md rounded-2xl bg-card p-6 text-center ring-1 ring-foreground/10">
+          <h1 className="font-display text-lg font-semibold text-navy">Accès réservé</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Cette page est réservée à l&apos;administration.
+          </p>
+          <Button render={<Link href="/espace" />} size="lg" className="mt-4">
+            Retour à mon espace
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (

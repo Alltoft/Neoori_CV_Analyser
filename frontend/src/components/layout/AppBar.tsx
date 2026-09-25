@@ -8,7 +8,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, LogOut, LayoutDashboard, Map as MapIcon, PlusCircle, Shield, UserRound } from "lucide-react"
+import { ChevronDown, LogOut, LayoutDashboard, Map as MapIcon, PlusCircle, Shield, UserCheck, UserRound } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
 
 /** Authed-app top bar (espace + analysis flow). */
@@ -54,6 +54,12 @@ export function AppBar() {
                   <MapIcon />
                   Mon voyage
                 </DropdownMenuItem>
+                {user.role === "counselor" && (
+                  <DropdownMenuItem render={<Link href="/conseiller" />}>
+                    <UserCheck />
+                    Espace conseiller
+                  </DropdownMenuItem>
+                )}
                 {user.role === "admin" && (
                   <DropdownMenuItem render={<Link href="/admin" />}>
                     <Shield />
