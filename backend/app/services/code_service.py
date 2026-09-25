@@ -37,9 +37,23 @@ def resolve(code_str: str) -> tuple[CounselorCode | None, str | None]:
     drift, and rows that predate this feature carry one with no redemption
     behind it. Their max_uses is NULL, so the check below never reaches them.
 
-    with_for_update locks the row for the rest of the transaction on MySQL, so
-    two simultaneous redemptions of a code's last use cannot both pass. SQLite
-    (tests) omits the clause; the check itself still runs.
+    with_for_update takes a row lock on MySQL; SQLite (tests) omits the clause
+    and the checks still run. Do NOT read that as serialising the exhaustion
+    count. The count below is a plain read, and MySQL's default REPEATABLE READ
+    fixes the transaction's snapshot at its FIRST read — before this lock — so a
+    transaction that waited on the lock can still count rows as of a moment
+    before the other one committed. On the analysis path the lock does not even
+    span the write: unlock_analysis() commits mid-route
+    (services/unlock_service.py:50) and releases it before the CodeRedemption
+    row exists.
+
+    What the ceiling therefore guarantees is SEQUENTIAL enforcement — a code
+    reused over time, which is the threat spec decision 6 describes. Two
+    deliberately overlapped requests from a holder of a valid code can still
+    slip one extra use past it. Closing that means committing the redemption
+    row while the lock is held, or a database-level constraint; both were
+    judged out of proportion to a bounded, non-revenue exposure. Do not restate
+    the stronger guarantee here without making it true first.
     """
     code = CounselorCode.query.filter_by(code=code_str).with_for_update().first()
     if code is None or not code.is_active or code.revoked_at is not None:
@@ -54,8 +68,13 @@ def resolve(code_str: str) -> tuple[CounselorCode | None, str | None]:
 def record(code: CounselorCode, *, user_id: str | None, target_type: str, target_id: str) -> None:
     """Log the redemption and bump the legacy counter.
 
-    Deliberately does not commit: the caller owns the transaction this belongs
-    to, and the unlock it accompanies must land or not land with it.
+    Deliberately does not commit: the caller owns the transaction.
+
+    Note what that does and does not buy. On the voyage path the unlock and this
+    row land together. On the analysis path they do not — unlock_analysis() has
+    already committed (services/unlock_service.py:50) by the time this is
+    called, so the unlock is durable whether or not the caller's commit
+    succeeds.
     """
     db.session.add(CodeRedemption(
         code_id=code.id,

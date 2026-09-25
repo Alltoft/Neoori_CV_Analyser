@@ -202,13 +202,12 @@ def create_code():
     typed had they known it. max_codes is refused, because there is no
     smaller version of "one more code".
     """
-    # Locked for the rest of this transaction on MySQL, so two concurrent
-    # POSTs from the same conseiller cannot both read the same
-    # count-so-far and both pass the max_codes check below — the same shape
-    # code_service.resolve() already closes on the code row
-    # (code_service.py:44). SQLite (tests) omits the clause silently; the
-    # check itself still runs, so the race is only actually closed in
-    # production.
+    # A row lock on the profile, mirroring code_service.resolve(). The same
+    # caveat applies: MySQL's REPEATABLE READ snapshot is fixed before the lock
+    # is taken, so the count below can be stale and two overlapped mints can
+    # both pass. This narrows the window rather than closing it — max_codes is
+    # enforced against sequential minting, not against a deliberate race.
+    # SQLite (tests) omits the clause silently; the check itself still runs.
     profile = (
         CounselorProfile.query
         .filter_by(user_id=get_jwt_identity())
