@@ -10,7 +10,8 @@ import type { User } from "@/types"
 interface AuthContextValue {
   user: User | null
   loading: boolean
-  login:    (email: string, password: string) => Promise<void>
+  /** Resolves with the signed-in user, so a caller can route by role. */
+  login:    (email: string, password: string) => Promise<User>
   register: (email: string, password: string, seed?: ProfileSeed) => Promise<void>
   logout:   () => Promise<void>
   refresh:  () => Promise<void>
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const data = await api.post<{ user: User }>("/auth/login", { email, password })
     setUser(data.user)
+    return data.user
   }
 
   const register = async (email: string, password: string, seed?: ProfileSeed) => {

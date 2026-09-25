@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useAuth } from "@/lib/auth"
+import { homeFor } from "@/lib/home"
 import { ApiError } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,8 +34,12 @@ function ConnexionForm() {
   const onSubmit = async ({ email, password }: Fields) => {
     setError(null)
     try {
-      await login(email, password)
-      router.push(params.get("redirect") ?? "/espace")
+      const signedIn = await login(email, password)
+      // A ?redirect= still wins — it is the page they were turned away from.
+      // Otherwise each role lands on its own home rather than the candidate
+      // espace: an admin in Administration, an approved conseiller in their
+      // espace conseiller.
+      router.push(params.get("redirect") ?? homeFor(signedIn.role))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Erreur de connexion.")
     }
