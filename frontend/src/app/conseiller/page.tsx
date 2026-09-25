@@ -60,7 +60,7 @@ export default function ConseillerPage() {
   // can re-run the same fetch, not just this mount's effect.
   const loadProfile = useCallback(() => {
     return counselor.me()
-      .then((r) => { setProfile(r.profile); setProfileFailed(false); setError(null) })
+      .then((r) => { setProfile(r.profile); setProfileFailed(false) })
       .catch((e) => {
         setError(e instanceof ApiError ? e.message : "Erreur de chargement.")
         setProfileFailed(true)
@@ -169,7 +169,10 @@ export default function ConseillerPage() {
             <AlertDescription>{error}</AlertDescription>
             {profileFailed && (
               <AlertAction>
-                <Button size="sm" variant="outline" onClick={() => loadProfile()}>
+                {/* `error` is shared with the dashboard and the code actions, so only
+                    an explicit retry knows the message on screen is its own to clear —
+                    loadProfile's own success branch must not wipe someone else's. */}
+                <Button size="sm" variant="outline" onClick={() => { setError(null); loadProfile() }}>
                   Réessayer
                 </Button>
               </AlertAction>
