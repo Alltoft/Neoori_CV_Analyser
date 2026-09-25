@@ -156,7 +156,7 @@ const PERSONAS = [
     icon: Users,
     title: "Conseillers",
     desc: "Vos bénéficiaires arrivent en entretien avec un rapport déjà structuré : leurs forces, leurs fragilités, vos préconisations. Vous travaillez ensemble, à partir d’une même base. Vous gagnez du temps. Eux, de la confiance. Avec votre code conseiller, ils accèdent aussi aux sessions du voyage — et vous relisez leur portrait avec eux avant qu’ils ne le reçoivent.",
-    cta: { href: "/#rapport", label: "Voir la vue conseiller" },
+    cta: { href: "/inscription-conseiller", label: "Demander un compte conseiller" },
   },
   {
     img: "/img/persona-organisation.jpg",

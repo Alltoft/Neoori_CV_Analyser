@@ -20,6 +20,7 @@ const COLS: { title: string; links: { href: string; label: string }[] }[] = [
       { href: "/#pour-qui", label: "Candidats" },
       { href: "/#pour-qui", label: "Conseillers" },
       { href: "/#pour-qui", label: "Organisations" },
+      { href: "/inscription-conseiller", label: "Devenir conseiller" },
     ],
   },
   {

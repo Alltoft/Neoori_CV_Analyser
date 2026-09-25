@@ -140,6 +140,13 @@ export default function InscriptionPage() {
           Se connecter
         </Link>
       </p>
+
+      <p className="mt-2 text-center text-sm text-muted-foreground">
+        Vous accompagnez des demandeurs d&apos;emploi ?{" "}
+        <Link href="/inscription-conseiller" className="link-underline font-medium text-orange-dark">
+          Demander un compte conseiller
+        </Link>
+      </p>
     </AuthLayout>
   )
 }
