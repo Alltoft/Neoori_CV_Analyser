@@ -16,7 +16,6 @@ counselor code and a Profil de base with prénom + tranche d'âge, and every
 session needs the one before it.
 """
 import copy
-import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, request
@@ -25,7 +24,6 @@ from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models.analysis import Analysis
-from ..models.counselor_code import CounselorCode
 from ..models.profile import Profile
 from ..models.voyage import (
     CONSENT_VERSION,
@@ -38,6 +36,7 @@ from ..models.voyage import (
     VoyageNote,
     session_lock,
 )
+from ..services import code_service
 from ..services.voyage import bank, scoring
 from ..utils.decorators import role_required
 from ..utils.tokens import generate_share_token
@@ -459,27 +458,23 @@ def unlock_voyage():
     # request.get_json(silent=True) or {} lets a JSON array or a bare string
     # survive as truthy, and the next .get() call then raises AttributeError
     # -> an unhandled 500 (the defect put_responses above was fixed for).
-    # Coerce any non-dict body to {} instead, so it falls through to the
-    # ordinary "code missing" 400 below.
     data = request.get_json(silent=True)
     data = data if isinstance(data, dict) else {}
 
-    # Same guard for the field itself: a non-string "code" (an int, a list, a
-    # dict) must not reach .strip() and raise AttributeError either.
-    raw_code = data.get("code")
-    raw_code = raw_code if isinstance(raw_code, str) else ""
-    # Accept "ABCD1234", "abcd 1234", "ABCD-1234"… — same normalisation as
-    # analyses.unlock_with_code, because it is the same code on the same card.
-    code_str = re.sub(r"[^A-Za-z0-9]", "", raw_code.strip()).upper()
+    # normalize() also absorbs a non-string "code" (an int, a list, a dict),
+    # which must not reach .strip() either.
+    code_str = code_service.normalize(data.get("code"))
     if not code_str:
         return jsonify({"error": "Code requis."}), 400
 
-    code = CounselorCode.query.filter_by(code=code_str).first()
-    if not code or not code.is_active:
-        return jsonify({"error": "Code invalide ou désactivé."}), 400
+    code, refusal = code_service.resolve(code_str)
+    if refusal:
+        return jsonify({"error": refusal}), 400
 
     voyage.counselor_code_id = code.id
-    code.uses_count += 1
+    code_service.record(
+        code, user_id=voyage.user_id, target_type="voyage", target_id=voyage.id
+    )
     db.session.commit()
     return jsonify({"voyage": voyage.to_dict()}), 200
 

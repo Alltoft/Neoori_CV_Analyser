@@ -7,7 +7,9 @@ from ..models.analysis import Analysis
 from ..models.user import User
 from ..models.prompt_version import PromptVersion
 from ..models.counselor_code import CounselorCode
+from ..models.counselor_profile import CounselorProfile
 from ..models.voyage import STATUS_S0, STATUS_TERMINE, Voyage
+from ..services import email_service
 from ..services import section_registry as registry
 from ..services import tiers
 from ..utils.decorators import admin_required
@@ -193,6 +195,138 @@ def deactivate_counselor_code(code_id):
     code.is_active = False
     db.session.commit()
     return jsonify({"code": code.to_dict()}), 200
+
+
+def _optional_limit(data: dict, key: str) -> tuple[int | None, str | None]:
+    """A nullable positive integer. Absent or null means illimité.
+
+    0 and negatives are refused rather than silently meaning "none": an admin
+    typing 0 means "no codes", which is a revocation, not a limit.
+    """
+    value = data.get(key)
+    if value is None:
+        return None, None
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None, f"{key} doit être un entier."
+    if value < 1:
+        return None, f"{key} doit être supérieur à zéro."
+    return value, None
+
+
+def _decide(profile, status, reason, reviewer_id):
+    """Write the decision and keep user.role a function of it.
+
+    approved <=> role 'counselor'. Nothing else may set that role for a
+    conseiller: the JWT claim is minted from it, and every counselor guard
+    reads the claim.
+
+    An admin's role is never touched. POST /api/counselor/apply already refuses
+    a demande from an admin account; this is the second lock on the same door,
+    because an unconditional write here would demote an admin out of their own
+    dashboard — irreversible through the UI on a single-admin install.
+    set_user_role guards the equivalent case at admin.py:155-160.
+    """
+    profile.status = status
+    profile.decision_reason = reason
+    profile.reviewed_at = datetime.utcnow()
+    profile.reviewed_by_id = reviewer_id
+    if profile.user.role != "admin":
+        profile.user.role = "counselor" if status == "approved" else "candidate"
+
+
+@admin_bp.get("/counselor-applications")
+@admin_required
+def list_counselor_applications():
+    query = CounselorProfile.query
+    status = request.args.get("status")
+    if status:
+        query = query.filter(CounselorProfile.status == status)
+    rows = query.order_by(CounselorProfile.created_at.desc()).all()
+    return jsonify({"applications": [p.to_dict(with_user=True) for p in rows]}), 200
+
+
+@admin_bp.post("/counselor-applications/<profile_id>/approve")
+@admin_required
+def approve_counselor_application(profile_id):
+    profile = CounselorProfile.query.get_or_404(profile_id)
+    if profile.status != "pending":
+        return jsonify({"error": "Cette demande a déjà été traitée."}), 409
+
+    data = json_object()
+    max_codes, error = _optional_limit(data, "max_codes")
+    if error:
+        return jsonify({"error": error}), 400
+    max_uses, error = _optional_limit(data, "max_uses_per_code")
+    if error:
+        return jsonify({"error": error}), 400
+
+    profile.max_codes = max_codes
+    profile.max_uses_per_code = max_uses
+    _decide(profile, "approved", None, get_jwt_identity())
+    db.session.commit()
+
+    email_service.send_counselor_approved(profile)
+    return jsonify({"application": profile.to_dict(with_user=True)}), 200
+
+
+@admin_bp.post("/counselor-applications/<profile_id>/reject")
+@admin_required
+def reject_counselor_application(profile_id):
+    profile = CounselorProfile.query.get_or_404(profile_id)
+    if profile.status != "pending":
+        return jsonify({"error": "Cette demande a déjà été traitée."}), 409
+
+    reason = text_field(json_object(), "reason")
+    if not reason:
+        return jsonify({"error": "Un motif est requis."}), 400
+
+    _decide(profile, "rejected", reason, get_jwt_identity())
+    db.session.commit()
+
+    email_service.send_counselor_rejected(profile)
+    return jsonify({"application": profile.to_dict(with_user=True)}), 200
+
+
+@admin_bp.post("/counselor-applications/<profile_id>/revoke")
+@admin_required
+def revoke_counselor_application(profile_id):
+    """Withdraw access from an approved conseiller.
+
+    'revoked', not 'rejected': one is a demande that failed review, the other a
+    conseiller who worked and whose access was withdrawn. Their codes stay
+    valid — revoking the person is not the same as burning codes bénéficiaires
+    already hold; deactivate those separately if that is what you mean.
+    """
+    profile = CounselorProfile.query.get_or_404(profile_id)
+    if profile.status != "approved":
+        return jsonify({"error": "Ce compte n'est pas actif."}), 409
+
+    reason = text_field(json_object(), "reason")
+    if not reason:
+        return jsonify({"error": "Un motif est requis."}), 400
+
+    _decide(profile, "revoked", reason, get_jwt_identity())
+    db.session.commit()
+    return jsonify({"application": profile.to_dict(with_user=True)}), 200
+
+
+@admin_bp.put("/counselor-applications/<profile_id>/limits")
+@admin_required
+def set_counselor_limits(profile_id):
+    profile = CounselorProfile.query.get_or_404(profile_id)
+    data = json_object()
+
+    max_codes, error = _optional_limit(data, "max_codes")
+    if error:
+        return jsonify({"error": error}), 400
+    max_uses, error = _optional_limit(data, "max_uses_per_code")
+    if error:
+        return jsonify({"error": error}), 400
+
+    profile.max_codes = max_codes
+    profile.max_uses_per_code = max_uses
+    db.session.commit()
+    return jsonify({"application": profile.to_dict(with_user=True)}), 200
 
 
 @admin_bp.get("/stats/timeseries")

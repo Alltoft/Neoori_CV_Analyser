@@ -461,9 +461,16 @@ def upgrade():
             op.add_column("counselor_codes", sa.Column(name, type_, nullable=True))
     if "owner_id" not in have:
         op.create_index("ix_counselor_codes_owner_id", "counselor_codes", ["owner_id"])
-        op.create_foreign_key(
-            "fk_counselor_codes_owner_id", "counselor_codes", "users", ["owner_id"], ["id"]
-        )
+        # batch_alter_table for the FK alone. SQLite has no ALTER-of-constraint, and
+        # replaying this chain against a scratch SQLite file is a rehearsal this repo
+        # supports today (a3b4c5d6e7f8 and e1f2a3b4c5d6 keep it working the same way).
+        # add_column and create_index need no batch — they already run on SQLite, and
+        # bare calls are what d6e7f8a9b0c1 and c5d6e7f8a9b0 use. On MySQL batch mode
+        # passes straight through to a normal ALTER.
+        with op.batch_alter_table("counselor_codes") as batch_op:
+            batch_op.create_foreign_key(
+                "fk_counselor_codes_owner_id", "users", ["owner_id"], ["id"]
+            )
 
     if "code_redemptions" not in tables:
         op.create_table(
@@ -501,7 +508,8 @@ def downgrade():
 
     have = _columns(bind, "counselor_codes")
     if "owner_id" in have:
-        op.drop_constraint("fk_counselor_codes_owner_id", "counselor_codes", type_="foreignkey")
+        with op.batch_alter_table("counselor_codes") as batch_op:
+            batch_op.drop_constraint("fk_counselor_codes_owner_id", type_="foreignkey")
         op.drop_index("ix_counselor_codes_owner_id", table_name="counselor_codes")
     for name, _ in reversed(CODE_COLUMNS):
         if name in have:
@@ -824,7 +832,9 @@ def test_analysis_unlock_refuses_an_expired_code(mock_start, client, app):
 
 def test_voyage_unlock_logs_the_person(client, app):
     user, headers = _candidate()
-    v = Voyage(user_id=user.id)
+    # consent_at is NOT NULL with no default (models/voyage.py:71) — omit it and
+    # the commit dies on IntegrityError before any assertion runs.
+    v = Voyage(user_id=user.id, consent_at=datetime.utcnow())
     db.session.add(v)
     db.session.commit()
     c = _code()
@@ -840,7 +850,9 @@ def test_voyage_unlock_logs_the_person(client, app):
 
 def test_voyage_unlock_refuses_an_exhausted_code(client, app):
     user, headers = _candidate()
-    v = Voyage(user_id=user.id)
+    # consent_at is NOT NULL with no default (models/voyage.py:71) — omit it and
+    # the commit dies on IntegrityError before any assertion runs.
+    v = Voyage(user_id=user.id, consent_at=datetime.utcnow())
     db.session.add(v)
     db.session.commit()
     c = _code(max_uses=1)
@@ -1180,6 +1192,16 @@ def test_a_second_demande_is_refused(client, app):
     assert r.status_code == 409
 
 
+def test_an_admin_cannot_file_a_demande(client, app):
+    """Deciding a demande rewrites user.role, so an admin holding one could be
+    demoted out of their own dashboard with no way back in."""
+    _user, headers = _authed(email="admin@test.com", role="admin")
+    payload = {k: v for k, v in PAYLOAD.items() if k not in ("email", "password")}
+    r = client.post("/api/counselor/apply", json=payload, headers=headers)
+    assert r.status_code == 409
+    assert CounselorProfile.query.count() == 0
+
+
 def test_me_returns_null_for_someone_who_never_applied(client, app):
     _user, headers = _authed()
     r = client.get("/api/counselor/me", headers=headers)
@@ -1264,6 +1286,15 @@ def apply():
         user = User.query.get(user_id)
         if user is None:
             return jsonify({"error": "Utilisateur introuvable."}), 404
+        # An admin must never hold a demande. Deciding one rewrites user.role
+        # (routes/admin.py::_decide), so approving or refusing an admin's own
+        # demande would demote them — and on the single-admin install this
+        # project runs, that locks everyone out of /admin with no UI recovery.
+        # admin.py:155-160 already refuses the same thing for the role editor.
+        if user.role == "admin":
+            return jsonify({
+                "error": "Un compte administrateur ne peut pas demander un compte conseiller."
+            }), 409
         created = False
     else:
         email = text_field(data, "email").lower()
@@ -1331,7 +1362,7 @@ After line 161 (`from .routes.voyage import voyage_bp`) add the import, and afte
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `cd backend && venv/bin/pytest tests/test_counselor_apply.py -v`
-Expected: 8 passed
+Expected: 9 passed
 
 - [ ] **Step 6: Commit**
 
@@ -1505,6 +1536,23 @@ def test_limits_can_be_adjusted_after_approval(client, admin_headers):
     assert profile.max_uses_per_code == 12
 
 
+def test_deciding_never_demotes_an_admin(client, admin_headers):
+    """Second lock on the door apply() already refuses at: a demande sitting on
+    an admin account must not cost that account its role. On a single-admin
+    install that is a lockout with no UI recovery."""
+    user, profile = _demande(email="second-admin@test.com")
+    user.role = "admin"
+    db.session.commit()
+
+    r = client.post(
+        f"/api/admin/counselor-applications/{profile.id}/reject",
+        json={"reason": "Test."}, headers=admin_headers,
+    )
+    assert r.status_code == 200
+    db.session.refresh(user)
+    assert user.role == "admin"
+
+
 def test_a_decided_demande_cannot_be_approved_twice(client, admin_headers):
     _user, profile = _demande(status="rejected")
     r = client.post(
@@ -1546,12 +1594,19 @@ def _decide(profile, status, reason, reviewer_id):
     approved <=> role 'counselor'. Nothing else may set that role for a
     conseiller: the JWT claim is minted from it, and every counselor guard
     reads the claim.
+
+    An admin's role is never touched. POST /api/counselor/apply already refuses
+    a demande from an admin account; this is the second lock on the same door,
+    because an unconditional write here would demote an admin out of their own
+    dashboard — irreversible through the UI on a single-admin install.
+    set_user_role guards the equivalent case at admin.py:155-160.
     """
     profile.status = status
     profile.decision_reason = reason
     profile.reviewed_at = datetime.utcnow()
     profile.reviewed_by_id = reviewer_id
-    profile.user.role = "counselor" if status == "approved" else "candidate"
+    if profile.user.role != "admin":
+        profile.user.role = "counselor" if status == "approved" else "candidate"
 
 
 @admin_bp.get("/counselor-applications")
@@ -1658,12 +1713,12 @@ from ..models.counselor_profile import CounselorProfile
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cd backend && venv/bin/pytest tests/test_counselor_review.py -v`
-Expected: 10 passed
+Expected: 11 passed
 
 - [ ] **Step 5: Run the guard tests too — approval is what they depend on**
 
 Run: `cd backend && venv/bin/pytest tests/test_counselor_guard.py tests/test_counselor_review.py -v`
-Expected: 15 passed
+Expected: 16 passed
 
 - [ ] **Step 6: Commit**
 
@@ -1863,9 +1918,33 @@ MAIL_FROM=neoori <bonjour@neoori.tech>
 Run: `cd backend && venv/bin/pytest tests/test_email_service.py -v`
 Expected: 5 passed
 
-- [ ] **Step 6: Wire the two mails into the decisions (Task 6's routes)**
+- [ ] **Step 6: Stop the test suite from sending real email, THEN wire the mails in**
 
-In `backend/app/routes/admin.py`, add the import:
+Task 6's review tests call `approve` and `reject` without patching anything. Once
+Step 6 wires a live transport into those routes, a developer whose environment
+carries a real `RESEND_API_KEY` would mail `conseiller@test.com` for real every
+time they run the suite. `conftest.py` already blanks `ANTHROPIC_API_KEY` for
+exactly this reason — do the same here, but through the config rather than the
+environment.
+
+In `backend/tests/conftest.py`, add two lines to the existing `app` fixture:
+
+```python
+@pytest.fixture
+def app():
+    application = create_app("testing")
+    # Same guarantee as _no_live_anthropic_key above, different mechanism:
+    # email_service.send() reads this off app.config, and Config binds it from
+    # os.environ when the module is imported — so blanking the environment in a
+    # fixture would be too late to matter. Blank the config instead.
+    application.config["RESEND_API_KEY"] = None
+    with application.app_context():
+```
+
+(the rest of the fixture is unchanged). Task 7's own email tests set
+`app.config["RESEND_API_KEY"] = "re_test"` themselves, so they are unaffected.
+
+Then, in `backend/app/routes/admin.py`, add the import:
 
 ```python
 from ..services import email_service
@@ -1923,13 +2002,18 @@ from unittest.mock import patch
 - [ ] **Step 8: Run both files**
 
 Run: `cd backend && venv/bin/pytest tests/test_email_service.py tests/test_counselor_review.py -v`
-Expected: 5 + 12 passed
+Expected: 5 + 13 passed
+
+Then confirm nothing else regressed from the conftest change:
+
+Run: `cd backend && venv/bin/pytest -q`
+Expected: all pass.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add backend/app/services/email_service.py backend/app/config.py backend/.env.example \
-        backend/app/routes/admin.py \
+        backend/app/routes/admin.py backend/tests/conftest.py \
         backend/tests/test_email_service.py backend/tests/test_counselor_review.py
 git commit -m "feat(conseiller): approval and rejection emails"
 ```
@@ -2322,8 +2406,11 @@ def test_codes_restants_is_null_when_illimite(client, app):
 def test_accompagnements_counts_validated_portraits(client, app):
     user, headers = _conseiller()
     candidate = _beneficiaire("Karim", "k@test.com")
-    db.session.add(Voyage(user_id=candidate.id, validated_by_id=user.id))
-    db.session.add(Voyage(user_id=candidate.id))       # not validated by anyone
+    # consent_at is NOT NULL with no default (models/voyage.py:71).
+    db.session.add(Voyage(
+        user_id=candidate.id, validated_by_id=user.id, consent_at=datetime.utcnow(),
+    ))
+    db.session.add(Voyage(user_id=candidate.id, consent_at=datetime.utcnow()))  # not validated
     db.session.commit()
 
     stats = client.get("/api/counselor/stats", headers=headers).get_json()
@@ -3394,16 +3481,180 @@ Finally update the page's subtitle (line 109-111) — the admin no longer create
         </p>
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [ ] **Step 2: Add the approved-accounts controls**
+
+Spec §2 requires « Modifier les limites » and « Révoquer » on an already-approved
+account. Task 6 shipped both routes and Task 10 the typed client; without this
+step nothing in the product can produce the `revoked` state Task 12 renders, and
+limits can never be changed after approval.
+
+Add `UserCheck` to the lucide import, and this state and these handlers beside
+the ones from Step 1:
+
+```tsx
+  const [approved, setApproved] = useState<CounselorApplication[]>([])
+
+  const loadApproved = useCallback(() => {
+    adminCounselor.list("approved")
+      .then(r => {
+        setApproved(r.applications)
+        // Seed each row's draft boxes from what that account currently has.
+        // Without this, pressing « Modifier les limites » without typing sends
+        // two blanks — which the API reads as illimité, silently removing the
+        // cap instead of leaving it alone.
+        setLimits(p => {
+          const next = { ...p }
+          for (const a of r.applications) {
+            if (next[a.id] === undefined) {
+              next[a.id] = {
+                codes: a.max_codes === null ? "" : String(a.max_codes),
+                uses: a.max_uses_per_code === null ? "" : String(a.max_uses_per_code),
+              }
+            }
+          }
+          return next
+        })
+      })
+      .catch(err => setErrorCounselors(err?.message ?? "Erreur de chargement"))
+  }, [])
+
+  useEffect(() => { loadApproved() }, [loadApproved])
+
+  const handleLimits = useCallback(async (id: string) => {
+    setDecidingId(id)
+    try {
+      await adminCounselor.limits(id, toInt(limits[id]?.codes), toInt(limits[id]?.uses))
+      loadApproved()
+    } catch (err) {
+      setErrorCounselors(err instanceof ApiError ? err.message : "Erreur lors de la mise à jour")
+    } finally {
+      setDecidingId(null)
+    }
+  }, [limits, loadApproved])
+
+  const handleRevoke = useCallback(async (id: string) => {
+    const reason = (reasons[id] ?? "").trim()
+    if (!reason) {
+      setErrorCounselors("Un motif est requis pour révoquer un accès conseiller.")
+      return
+    }
+    if (!window.confirm(
+      "Révoquer l’accès conseiller de ce compte ? Les codes déjà remis restent valables."
+    )) return
+    setDecidingId(id)
+    try {
+      await adminCounselor.revoke(id, reason)
+      loadApproved()
+    } catch (err) {
+      setErrorCounselors(err instanceof ApiError ? err.message : "Erreur lors de la révocation")
+    } finally {
+      setDecidingId(null)
+    }
+  }, [reasons, loadApproved])
+```
+
+In `handleApprove` from Step 1, add `loadApproved()` next to `loadApplications()`
+so a freshly approved account moves into this panel without a page reload.
+
+Then add this section immediately after the Demandes section:
+
+```tsx
+      <section className="mb-6 rounded-2xl bg-card ring-1 ring-foreground/10 shadow-soft">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="flex items-center gap-2">
+            <UserCheck className="size-4 text-orange" />
+            <h2 className="font-display text-base font-semibold text-navy">
+              Conseillers actifs
+            </h2>
+          </div>
+          <span className="eyebrow text-muted-foreground">
+            {approved.length} compte{approved.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        <div className="px-5 py-4">
+          {approved.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Aucun conseiller actif.
+            </p>
+          )}
+
+          <div className="space-y-4">
+            {approved.map(a => (
+              <article key={a.id} className="rounded-xl border border-border p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="font-display font-semibold text-navy">{a.structure}</h3>
+                  <span className="text-sm text-muted-foreground">{a.user.email}</span>
+                </div>
+
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Codes : {a.max_codes ?? "illimité"} · Utilisations par code :{" "}
+                  {a.max_uses_per_code ?? "illimité"}
+                </p>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`a-codes-${a.id}`}>Nombre de codes</Label>
+                    <Input
+                      id={`a-codes-${a.id}`} type="number" min={1} className="h-10" placeholder="Illimité"
+                      value={limits[a.id]?.codes ?? ""}
+                      onChange={e => setLimits(p => ({ ...p, [a.id]: { codes: e.target.value, uses: p[a.id]?.uses ?? "" } }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`a-uses-${a.id}`}>Utilisations par code</Label>
+                    <Input
+                      id={`a-uses-${a.id}`} type="number" min={1} className="h-10" placeholder="Illimité"
+                      value={limits[a.id]?.uses ?? ""}
+                      onChange={e => setLimits(p => ({ ...p, [a.id]: { codes: p[a.id]?.codes ?? "", uses: e.target.value } }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-1.5">
+                  <Label htmlFor={`a-reason-${a.id}`}>Motif (requis pour révoquer)</Label>
+                  <Textarea
+                    id={`a-reason-${a.id}`} rows={2}
+                    value={reasons[a.id] ?? ""}
+                    onChange={e => setReasons(p => ({ ...p, [a.id]: e.target.value }))}
+                  />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button variant="outline" size="lg" disabled={decidingId === a.id}
+                          onClick={() => handleLimits(a.id)}>
+                    Modifier les limites
+                  </Button>
+                  <Button
+                    variant="ghost" size="lg" disabled={decidingId === a.id}
+                    onClick={() => handleRevoke(a.id)}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Ban className="size-4" />Révoquer
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+```
+
+- [ ] **Step 3: Verify it compiles**
 
 Run: `cd frontend && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 3: Approve a demande end to end**
+- [ ] **Step 4: Approve, adjust and revoke, end to end**
 
-With both servers running: submit a demande, sign in as admin, open `/admin/conseillers`, set 25 / 1, approve. Sign in as the conseiller and confirm `/conseiller` shows the dashboard with « Codes restants 25 ».
+With both servers running: submit a demande, sign in as admin, open
+`/admin/conseillers`, set 25 / 1, approve. Sign in as the conseiller and confirm
+`/conseiller` shows the dashboard with « Codes restants 25 ». Back as admin,
+change the limits to 30 and confirm the conseiller's tile follows. Then revoke
+with a motif and confirm `/conseiller` shows « Votre accès conseiller a été
+retiré. » on the conseiller's next request — not an hour later.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/app/admin/conseillers/page.tsx
@@ -3524,7 +3775,8 @@ git commit -m "docs(legal): what a conseiller sees of a beneficiaire"
 - [ ] `cd frontend && npx tsc --noEmit` — clean
 - [ ] `cd frontend && npx next build` — builds
 - [ ] `cd backend && venv/bin/flask db upgrade` against a scratch database, then run it **a second time** — the migration is idempotent and the second run must be a no-op
-- [ ] End to end on a local stack: demande → admin approval → conseiller mints a code → candidate redeems it → the bénéficiaire appears on the conseiller dashboard
+- [ ] End to end on a local stack: demande → admin approval → conseiller mints a code → candidate redeems it → the bénéficiaire appears on the conseiller dashboard → admin revokes → the conseiller is refused on their next request
+- [ ] `cd backend && venv/bin/pytest -q` once more with `RESEND_API_KEY` set in the environment — the suite must still pass and must send no mail
 - [ ] `git status --short` shows none of the other session's eleven files staged by you
 
 ---
