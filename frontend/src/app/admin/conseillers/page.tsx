@@ -43,6 +43,11 @@ export default function ConseillersPage() {
   // one box.
   const [limits, setLimits] = useState<Record<string, { codes: string; uses: string }>>({})
   const [reasons, setReasons] = useState<Record<string, string>>({})
+  // Per-panel error state, matching errorCounselors/errorCodes below: an
+  // error from one of the four demande/compte actions must surface in the
+  // panel that produced it, not a screen away in Comptes conseillers.
+  const [errorDemandes, setErrorDemandes] = useState<string | null>(null)
+  const [errorApproved, setErrorApproved] = useState<string | null>(null)
 
   const loadApplications = useCallback(() => {
     setLoadingApps(true)
@@ -54,9 +59,14 @@ export default function ConseillersPage() {
 
   useEffect(() => { loadApplications() }, [loadApplications])
 
-  const toInt = (raw: string | undefined) => {
-    const n = Number.parseInt(raw ?? "", 10)
-    return Number.isFinite(n) && n > 0 ? n : null   // blank = illimité
+  // Blank means illimité. Anything else is validated rather than coerced:
+  // turning a typed 0 into null would read as "unlimited" to the API — the
+  // exact opposite of what an admin typing 0 intends, on a spend control.
+  const toLimit = (raw: string | undefined): number | null | "invalid" => {
+    const s = (raw ?? "").trim()
+    if (!s) return null
+    const n = Number(s)
+    return Number.isInteger(n) && n > 0 ? n : "invalid"
   }
 
   const [approved, setApproved] = useState<CounselorApplication[]>([])
@@ -87,14 +97,33 @@ export default function ConseillersPage() {
 
   useEffect(() => { loadApproved() }, [loadApproved])
 
+  // Drop a row's draft motif once its decision goes through. Without this,
+  // approving a demande whose refusal motif was half-typed carries that text
+  // into the same account's revocation box in the Conseillers actifs panel —
+  // and a later revoke would submit it as the revocation reason shown to the
+  // conseiller, for a reason nobody actually wrote.
+  const clearReason = (id: string) => {
+    setReasons(p => {
+      const { [id]: _drop, ...rest } = p
+      return rest
+    })
+  }
+
   const handleApprove = useCallback(async (id: string) => {
+    const codes = toLimit(limits[id]?.codes)
+    const uses = toLimit(limits[id]?.uses)
+    if (codes === "invalid" || uses === "invalid") {
+      setErrorDemandes("Une limite doit être un entier supérieur à zéro.")
+      return
+    }
     setDecidingId(id)
     try {
-      await adminCounselor.approve(id, toInt(limits[id]?.codes), toInt(limits[id]?.uses))
+      await adminCounselor.approve(id, codes, uses)
+      clearReason(id)
       loadApplications()
       loadApproved()
     } catch (err) {
-      setErrorCounselors(err instanceof ApiError ? err.message : "Erreur lors de l'approbation")
+      setErrorDemandes(err instanceof ApiError ? err.message : "Erreur lors de l'approbation")
     } finally {
       setDecidingId(null)
     }
@@ -103,27 +132,34 @@ export default function ConseillersPage() {
   const handleReject = useCallback(async (id: string) => {
     const reason = (reasons[id] ?? "").trim()
     if (!reason) {
-      setErrorCounselors("Un motif est requis pour refuser une demande.")
+      setErrorDemandes("Un motif est requis pour refuser une demande.")
       return
     }
     setDecidingId(id)
     try {
       await adminCounselor.reject(id, reason)
+      clearReason(id)
       loadApplications()
     } catch (err) {
-      setErrorCounselors(err instanceof ApiError ? err.message : "Erreur lors du refus")
+      setErrorDemandes(err instanceof ApiError ? err.message : "Erreur lors du refus")
     } finally {
       setDecidingId(null)
     }
   }, [reasons, loadApplications])
 
   const handleLimits = useCallback(async (id: string) => {
+    const codes = toLimit(limits[id]?.codes)
+    const uses = toLimit(limits[id]?.uses)
+    if (codes === "invalid" || uses === "invalid") {
+      setErrorApproved("Une limite doit être un entier supérieur à zéro.")
+      return
+    }
     setDecidingId(id)
     try {
-      await adminCounselor.limits(id, toInt(limits[id]?.codes), toInt(limits[id]?.uses))
+      await adminCounselor.limits(id, codes, uses)
       loadApproved()
     } catch (err) {
-      setErrorCounselors(err instanceof ApiError ? err.message : "Erreur lors de la mise à jour")
+      setErrorApproved(err instanceof ApiError ? err.message : "Erreur lors de la mise à jour")
     } finally {
       setDecidingId(null)
     }
@@ -132,7 +168,7 @@ export default function ConseillersPage() {
   const handleRevoke = useCallback(async (id: string) => {
     const reason = (reasons[id] ?? "").trim()
     if (!reason) {
-      setErrorCounselors("Un motif est requis pour révoquer un accès conseiller.")
+      setErrorApproved("Un motif est requis pour révoquer un accès conseiller.")
       return
     }
     if (!window.confirm(
@@ -141,9 +177,10 @@ export default function ConseillersPage() {
     setDecidingId(id)
     try {
       await adminCounselor.revoke(id, reason)
+      clearReason(id)
       loadApproved()
     } catch (err) {
-      setErrorCounselors(err instanceof ApiError ? err.message : "Erreur lors de la révocation")
+      setErrorApproved(err instanceof ApiError ? err.message : "Erreur lors de la révocation")
     } finally {
       setDecidingId(null)
     }
@@ -264,6 +301,15 @@ export default function ConseillersPage() {
         </div>
 
         <div className="px-5 py-4">
+          {errorDemandes && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {errorDemandes}
+            </div>
+          )}
+
           {loadingApps && <Skeleton className="h-24" />}
 
           {!loadingApps && applications.length === 0 && (
@@ -353,6 +399,15 @@ export default function ConseillersPage() {
         </div>
 
         <div className="px-5 py-4">
+          {errorApproved && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {errorApproved}
+            </div>
+          )}
+
           {approved.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">
               Aucun conseiller actif.
