@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
@@ -39,9 +39,20 @@ const schema = z
 type Fields = z.infer<typeof schema>
 
 export default function InscriptionConseillerPage() {
-  const { refresh } = useAuth()
+  const { user, loading, refresh } = useAuth()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
+
+  // Someone who already has a demande is sent to their status page instead of
+  // this form. A pending conseiller keeps role="candidate" until approval, so
+  // the AppBar's « Espace conseiller » entry does not show for them — this link
+  // is their only way back, and letting them re-submit would only earn a 409.
+  useEffect(() => {
+    if (loading || !user) return
+    counselor.me()
+      .then((r) => { if (r.profile) router.replace("/conseiller") })
+      .catch(() => { /* No demande, or unreachable: leave them on the form. */ })
+  }, [loading, user, router])
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
     resolver: zodResolver(schema),
