@@ -37,3 +37,6 @@ yarn-debug.log*
 # Never commit these; the documented deploy ritual is `git add .`.
 neoori_cahier_papier.pdf
 neoori_scoring_restitution-1.pdf
+
+# Claude Code local settings and worktrees (the worktrees dir holds full checkouts)
+.claude/
