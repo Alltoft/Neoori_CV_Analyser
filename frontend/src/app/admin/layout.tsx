@@ -46,7 +46,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  if (!user || user.role !== "admin") {
+  // Signed out: the redirect above is already navigating this person away.
+  // Render nothing rather than the admin-refusal copy below — that copy
+  // ("réservée à l'administration" + "Retour à mon espace") is wrong for
+  // someone who was never signed in, and would otherwise flash for one
+  // frame while `user`/`loading` update together (lib/auth.tsx:35-46).
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-secondary">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    )
+  }
+
+  if (user.role !== "admin") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-secondary px-5">
         <div className="max-w-md rounded-2xl bg-card p-6 text-center ring-1 ring-foreground/10">
