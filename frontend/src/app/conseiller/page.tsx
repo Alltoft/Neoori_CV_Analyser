@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { AppBar } from "@/components/layout/AppBar"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,6 +38,10 @@ export default function ConseillerPage() {
 
   const [profile, setProfile] = useState<CounselorProfile | null>(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
+  // `profile === null` means two different things — "the server says you have no
+  // demande" and "we never got an answer". Only the first should offer to start
+  // one, so the failure case is tracked separately.
+  const [profileFailed, setProfileFailed] = useState(false)
   const [stats, setStats] = useState<CounselorStats | null>(null)
   const [codes, setCodes] = useState<CounselorCodeRow[]>([])
   const [people, setPeople] = useState<Beneficiaire[]>([])
@@ -52,13 +56,22 @@ export default function ConseillerPage() {
     if (!authLoading && !user) router.replace("/connexion?redirect=/conseiller")
   }, [authLoading, user, router])
 
+  // Extracted so the "Réessayer" button (rendered with the error alert below)
+  // can re-run the same fetch, not just this mount's effect.
+  const loadProfile = useCallback(() => {
+    return counselor.me()
+      .then((r) => { setProfile(r.profile); setProfileFailed(false); setError(null) })
+      .catch((e) => {
+        setError(e instanceof ApiError ? e.message : "Erreur de chargement.")
+        setProfileFailed(true)
+      })
+      .finally(() => setLoadingProfile(false))
+  }, [])
+
   useEffect(() => {
     if (authLoading || !user) return
-    counselor.me()
-      .then((r) => setProfile(r.profile))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Erreur de chargement."))
-      .finally(() => setLoadingProfile(false))
-  }, [authLoading, user])
+    loadProfile()
+  }, [authLoading, user, loadProfile])
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -154,11 +167,19 @@ export default function ConseillerPage() {
         {error && (
           <Alert variant="destructive" className="mt-5">
             <AlertDescription>{error}</AlertDescription>
+            {profileFailed && (
+              <AlertAction>
+                <Button size="sm" variant="outline" onClick={() => loadProfile()}>
+                  Réessayer
+                </Button>
+              </AlertAction>
+            )}
           </Alert>
         )}
 
-        {/* No demande at all */}
-        {!profile && (
+        {/* No demande at all — only once the server has actually said so; a
+            failed fetch must not look identical to never having applied. */}
+        {!profile && !profileFailed && (
           <div className="mt-6 rounded-2xl bg-card p-6 ring-1 ring-foreground/10">
             <p className="text-sm text-muted-foreground">
               Aucune demande de compte conseiller n&apos;est associée à ce compte.
