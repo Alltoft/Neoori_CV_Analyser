@@ -1,16 +1,28 @@
 import { api } from "./api"
 import type {
   Beneficiaire, CounselorApplication, CounselorCodeRow,
-  CounselorProfile, CounselorStats, User,
+  CounselorProfile, CounselorStats, DomaineActivite, TypeStructure, User,
 } from "@/types"
 
 export interface ApplyPayload {
+  // Votre structure
   structure: string
+  type_structure: TypeStructure
+  /** Required only when type_structure is "autre". */
+  type_structure_autre?: string
+  /** 14 digits; optional only for an indépendant, checked if given anyway. */
+  siret?: string
+  adresse_rue: string
+  adresse_code_postal: string
+  adresse_ville: string
+  domaines: DomaineActivite[]
+  // Vous
+  nom_complet: string
   fonction: string
   telephone: string
-  email_pro?: string
-  message?: string
+  // Validation — two separate ticks
   consent: boolean
+  consent_donnees: boolean
   /** Omitted when an already-signed-in candidate applies from their espace. */
   email?: string
   password?: string

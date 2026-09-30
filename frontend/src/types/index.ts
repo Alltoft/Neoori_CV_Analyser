@@ -188,12 +188,33 @@ export const SECTION_TITLES: Record<string, string> = {
  *  'rejected' never passed review; 'revoked' was approved and withdrawn. */
 export type CounselorStatus = "pending" | "approved" | "rejected" | "revoked"
 
+/** The structure types the demande form offers. Slugs, so a label can be
+ *  reworded without a migration — the French wording lives beside the select. */
+export type TypeStructure =
+  | "cap_emploi" | "mission_locale" | "france_travail" | "association"
+  | "esat_ea" | "formation_cfa" | "etablissement_scolaire" | "collectivite"
+  | "medico_social" | "entreprise_rh" | "organisation_pro" | "independant" | "autre"
+
+export type DomaineActivite =
+  | "insertion_emploi" | "handicap" | "orientation_bilan" | "formation"
+  | "recrutement_entreprises" | "accompagnement_social" | "education" | "autre"
+
 export interface CounselorProfile {
   id: string
   user_id: string
   structure: string
   fonction: string
   telephone: string
+  /** Added with the 2026-09-30 form. Null on demandes filed before it. */
+  nom_complet: string | null
+  type_structure: TypeStructure | null
+  type_structure_autre: string | null
+  siret: string | null
+  adresse_rue: string | null
+  adresse_code_postal: string | null
+  adresse_ville: string | null
+  domaines: DomaineActivite[]
+  /** Retired: no longer asked for, kept for rows that answered them. */
   email_pro: string | null
   message: string | null
   status: CounselorStatus

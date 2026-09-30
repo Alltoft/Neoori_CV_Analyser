@@ -13,14 +13,25 @@ from app.models.counselor_profile import CounselorProfile
 from app.models.user import User
 
 PAYLOAD = {
+    # Connexion — one email since the PM's 2026-09-30 form merged the
+    # professional address into the account address.
     "email": "conseiller@capemploi.fr",
     "password": "motdepasse1",
+    # Votre structure
     "structure": "Cap Emploi 31",
+    "type_structure": "cap_emploi",
+    "siret": "12345678901234",
+    "adresse_rue": "12 rue des Lois",
+    "adresse_code_postal": "31000",
+    "adresse_ville": "Toulouse",
+    "domaines": ["insertion_emploi", "handicap"],
+    # Vous
+    "nom_complet": "Claire Martin",
     "fonction": "Conseillère en insertion",
     "telephone": "0561000000",
-    "email_pro": "c.martin@capemploi.fr",
-    "message": "J'accompagne une quinzaine de personnes par mois.",
+    # Validation — two ticks now
     "consent": True,
+    "consent_donnees": True,
 }
 
 
@@ -46,16 +57,91 @@ def test_apply_creates_a_pending_demande_and_a_candidate(client, app):
     assert profile.max_codes is None
 
 
-def test_apply_requires_structure_fonction_and_telephone(client, app):
-    for missing in ("structure", "fonction", "telephone"):
+def test_apply_requires_every_marked_field(client, app):
+    for missing in (
+        "structure", "type_structure", "adresse_rue", "adresse_code_postal",
+        "adresse_ville", "nom_complet", "fonction", "telephone",
+    ):
         payload = {**PAYLOAD, missing: ""}
         r = client.post("/api/counselor/apply", json=payload)
         assert r.status_code == 400, missing
 
 
-def test_apply_requires_consent(client, app):
-    r = client.post("/api/counselor/apply", json={**PAYLOAD, "consent": False})
+def test_apply_requires_both_ticks(client, app):
+    """Two separate consents since the 2026-09-30 form: the CGV, and the
+    processing of the applicant's own professional data."""
+    for tick in ("consent", "consent_donnees"):
+        r = client.post("/api/counselor/apply", json={**PAYLOAD, tick: False})
+        assert r.status_code == 400, tick
+
+
+def test_apply_refuses_an_unknown_structure_type(client, app):
+    r = client.post("/api/counselor/apply", json={**PAYLOAD, "type_structure": "banque"})
     assert r.status_code == 400
+
+
+def test_autre_requires_the_free_text(client, app):
+    r = client.post("/api/counselor/apply", json={**PAYLOAD, "type_structure": "autre"})
+    assert r.status_code == 400
+
+    r = client.post("/api/counselor/apply", json={
+        **PAYLOAD, "type_structure": "autre", "type_structure_autre": "Fondation",
+    })
+    assert r.status_code == 201
+
+
+def test_siret_must_be_fourteen_digits(client, app):
+    for bad in ("123", "1234567890123456", "abcdefghijklmn"):
+        r = client.post("/api/counselor/apply", json={**PAYLOAD, "siret": bad})
+        assert r.status_code == 400, bad
+
+
+def test_siret_accepts_spaced_input_and_stores_digits(client, app):
+    r = client.post("/api/counselor/apply", json={**PAYLOAD, "siret": "123 456 789 01234"})
+    assert r.status_code == 201
+    assert CounselorProfile.query.one().siret == "12345678901234"
+
+
+def test_siret_is_required_except_for_an_independant(client, app):
+    r = client.post("/api/counselor/apply", json={**PAYLOAD, "siret": ""})
+    assert r.status_code == 400
+
+    r = client.post("/api/counselor/apply", json={
+        **PAYLOAD, "siret": "", "type_structure": "independant",
+    })
+    assert r.status_code == 201
+    assert CounselorProfile.query.one().siret is None
+
+
+def test_an_independant_who_types_a_siret_is_still_checked(client, app):
+    r = client.post("/api/counselor/apply", json={
+        **PAYLOAD, "type_structure": "independant", "siret": "42",
+    })
+    assert r.status_code == 400
+
+
+def test_at_least_one_domaine_is_required(client, app):
+    for bad in ([], ["pilotage"], "insertion_emploi", None):
+        r = client.post("/api/counselor/apply", json={**PAYLOAD, "domaines": bad})
+        assert r.status_code == 400, bad
+
+
+def test_unknown_domaines_are_dropped_rather_than_refused(client, app):
+    r = client.post("/api/counselor/apply", json={
+        **PAYLOAD, "domaines": ["handicap", "pilotage"],
+    })
+    assert r.status_code == 201
+    assert CounselorProfile.query.one().domaines == ["handicap"]
+
+
+def test_the_new_fields_are_stored_and_returned(client, app):
+    r = client.post("/api/counselor/apply", json=PAYLOAD)
+    assert r.status_code == 201
+    body = r.get_json()["profile"]
+    assert body["nom_complet"] == "Claire Martin"
+    assert body["type_structure"] == "cap_emploi"
+    assert body["adresse_ville"] == "Toulouse"
+    assert body["domaines"] == ["insertion_emploi", "handicap"]
 
 
 def test_apply_refuses_a_taken_email(client, app):

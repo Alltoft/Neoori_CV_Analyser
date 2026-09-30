@@ -4,6 +4,7 @@ Not to be confused with routes/counselor.py, mounted at /api/c — that one
 serves an analysis share link to whoever holds the token, with no account at
 all. This blueprint is the account.
 """
+import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify
@@ -22,7 +23,12 @@ from jwt import PyJWTError
 from ..extensions import bcrypt, db
 from ..models.code_redemption import CodeRedemption
 from ..models.counselor_code import CounselorCode
-from ..models.counselor_profile import CounselorProfile
+from ..models.counselor_profile import (
+    DOMAINES,
+    TYPE_SIRET_OPTIONAL,
+    TYPES_STRUCTURE,
+    CounselorProfile,
+)
 from ..models.profile import Profile
 from ..models.user import User
 from ..models.voyage import Voyage
@@ -32,7 +38,73 @@ from ..utils.request_body import json_object, raw_text_field, text_field
 
 counselor_space_bp = Blueprint("counselor_space", __name__)
 
-REQUIRED_FIELDS = ("structure", "fonction", "telephone")
+REQUIRED_FIELDS = (
+    "structure",
+    "type_structure",
+    "adresse_rue",
+    "adresse_code_postal",
+    "adresse_ville",
+    "nom_complet",
+    "fonction",
+    "telephone",
+)
+
+_SIRET_DIGITS = re.compile(r"\D")
+
+
+def _siret_or_error(raw: str, type_structure: str) -> tuple[str | None, str | None]:
+    """A 14-digit SIRET, or the French refusal.
+
+    Format only, as the PM asked — digits and length. No Luhn check: a handful
+    of genuine SIRETs (La Poste's, famously) fail the checksum, and refusing a
+    real structure its account is worse than accepting a typo an admin will see
+    on the demande anyway.
+
+    Optional for an indépendant, who may not have registered one yet — but if
+    they type one, it is checked like everyone else's.
+    """
+    digits = _SIRET_DIGITS.sub("", raw)
+    if not digits:
+        if type_structure == TYPE_SIRET_OPTIONAL:
+            return None, None
+        return None, "Le SIRET est requis."
+    if len(digits) != 14:
+        return None, "Le SIRET doit contenir 14 chiffres."
+    return digits, None
+
+
+def _validate_demande(data: dict) -> tuple[dict | None, str | None]:
+    """The demande's own fields, or the first French refusal.
+
+    Account fields (email, password) are checked by the caller, because they
+    only apply when there is no session yet.
+    """
+    fields = {name: text_field(data, name) for name in REQUIRED_FIELDS}
+    if any(not value for value in fields.values()):
+        return None, "Tous les champs marqués sont requis."
+
+    if fields["type_structure"] not in TYPES_STRUCTURE:
+        return None, "Type de structure invalide."
+
+    autre = text_field(data, "type_structure_autre")
+    if fields["type_structure"] == "autre" and not autre:
+        return None, "Précisez le type de structure."
+
+    siret, error = _siret_or_error(text_field(data, "siret"), fields["type_structure"])
+    if error:
+        return None, error
+
+    raw_domaines = data.get("domaines")
+    domaines = [d for d in raw_domaines if d in DOMAINES] if isinstance(raw_domaines, list) else []
+    if not domaines:
+        return None, "Choisissez au moins un domaine d'activité."
+
+    return {
+        **fields,
+        "type_structure_autre": autre or None,
+        "siret": siret,
+        "domaines": domaines,
+    }, None
 
 
 @counselor_space_bp.post("/apply")
@@ -62,12 +134,16 @@ def apply():
         user_id = None
 
     data = json_object()
-    fields = {name: text_field(data, name) for name in REQUIRED_FIELDS}
-    missing = [name for name, value in fields.items() if not value]
-    if missing:
-        return jsonify({"error": "Structure, fonction et téléphone sont requis."}), 400
+    fields, error = _validate_demande(data)
+    if error:
+        return jsonify({"error": error}), 400
+    # Two separate ticks since the PM's 2026-09-30 form: the terms, and the
+    # consent to process the person's own professional data. Keyed on presence
+    # of True so a missing box is a refusal rather than a silent pass.
     if data.get("consent") is not True:
-        return jsonify({"error": "Le consentement est requis."}), 400
+        return jsonify({"error": "Vous devez accepter les CGV."}), 400
+    if data.get("consent_donnees") is not True:
+        return jsonify({"error": "Le consentement au traitement des données est requis."}), 400
 
     if user_id:
         user = User.query.get(user_id)
@@ -103,12 +179,10 @@ def apply():
     if CounselorProfile.query.filter_by(user_id=user.id).first():
         return jsonify({"error": "Une demande existe déjà pour ce compte."}), 409
 
-    profile = CounselorProfile(
-        user_id=user.id,
-        email_pro=text_field(data, "email_pro") or None,
-        message=text_field(data, "message") or None,
-        **fields,
-    )
+    # email_pro and message are no longer asked for: the PM merged the
+    # professional email into the account email, and removed « Précisions ».
+    # Both columns survive for the rows that answered them.
+    profile = CounselorProfile(user_id=user.id, **fields)
     db.session.add(profile)
     db.session.commit()
 

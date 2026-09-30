@@ -11,6 +11,41 @@ from ..extensions import db
 #            on screen, different line in any report.
 STATUSES = ("pending", "approved", "rejected", "revoked")
 
+# The structure types the demande form offers, in the PM's order. Stored as a
+# slug so the label can be reworded without a migration; the French labels live
+# in the frontend beside the select.
+TYPES_STRUCTURE = (
+    "cap_emploi",             # Cap Emploi / OPS
+    "mission_locale",
+    "france_travail",
+    "association",
+    "esat_ea",                # ESAT / Entreprise adaptée
+    "formation_cfa",          # Organisme de formation / CFA
+    "etablissement_scolaire", # lycée, université, CIO
+    "collectivite",           # mairie, département, région, CCAS, MDPH
+    "medico_social",
+    "entreprise_rh",          # entreprise / cabinet RH, recrutement, intérim
+    "organisation_pro",       # organisation professionnelle / OPCO / syndicat
+    "independant",            # indépendant / auto-entrepreneur / consultant
+    "autre",
+)
+
+# The one type whose SIRET is optional: a consultant may not have registered
+# one yet. Declared here rather than inline so the route and any later caller
+# read the same rule.
+TYPE_SIRET_OPTIONAL = "independant"
+
+DOMAINES = (
+    "insertion_emploi",
+    "handicap",
+    "orientation_bilan",
+    "formation",
+    "recrutement_entreprises",
+    "accompagnement_social",
+    "education",
+    "autre",
+)
+
 
 class CounselorProfile(db.Model):
     """One demande per account. Nothing counselor-shaped lives on `users`:
@@ -26,6 +61,23 @@ class CounselorProfile(db.Model):
     structure = db.Column(db.String(255), nullable=False)
     fonction = db.Column(db.String(255), nullable=False)
     telephone = db.Column(db.String(32), nullable=False)
+
+    # Added with the PM's 2026-09-30 form. All nullable because the demandes
+    # already in production carry none of them; the route requires them of new
+    # submissions instead, so the schema stays kind to rows that predate it.
+    nom_complet = db.Column(db.String(255), nullable=True)
+    type_structure = db.Column(db.String(64), nullable=True)
+    type_structure_autre = db.Column(db.String(255), nullable=True)
+    siret = db.Column(db.String(14), nullable=True)
+    adresse_rue = db.Column(db.String(255), nullable=True)
+    adresse_code_postal = db.Column(db.String(16), nullable=True)
+    adresse_ville = db.Column(db.String(128), nullable=True)
+    domaines = db.Column(db.JSON, nullable=True)
+
+    # Retired, not dropped — the same discipline as profiles.rayon. Nothing
+    # asks for either any more (the PM merged email_pro into the account email
+    # and removed « Précisions »), but rows written while they were asked keep
+    # their answers and the admin panel still prints them.
     email_pro = db.Column(db.String(255), nullable=True)
     message = db.Column(db.Text, nullable=True)
 
@@ -62,6 +114,14 @@ class CounselorProfile(db.Model):
             "structure": self.structure,
             "fonction": self.fonction,
             "telephone": self.telephone,
+            "nom_complet": self.nom_complet,
+            "type_structure": self.type_structure,
+            "type_structure_autre": self.type_structure_autre,
+            "siret": self.siret,
+            "adresse_rue": self.adresse_rue,
+            "adresse_code_postal": self.adresse_code_postal,
+            "adresse_ville": self.adresse_ville,
+            "domaines": self.domaines or [],
             "email_pro": self.email_pro,
             "message": self.message,
             "status": self.status,

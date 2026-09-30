@@ -11,7 +11,7 @@ import { api, ApiError } from "@/lib/api"
 import { adminCounselor } from "@/lib/counselor"
 import { fmtDate, fmtInt } from "@/lib/format"
 import type { User } from "@/types"
-import type { CounselorApplication } from "@/types"
+import type { CounselorApplication, DomaineActivite, TypeStructure } from "@/types"
 import { Textarea } from "@/components/ui/textarea"
 import { Ban, Check, ClipboardList, Copy, KeyRound, Plus, TicketCheck, UserCheck, Users } from "lucide-react"
 
@@ -22,6 +22,60 @@ interface CounselorCode {
   is_active: boolean
   uses_count: number
   created_at: string
+}
+
+// French labels for the demande's structure-type field, typed as a Record so
+// TypeScript flags any TypeStructure member left uncovered.
+const TYPE_STRUCTURE_LABELS: Record<TypeStructure, string> = {
+  cap_emploi: "Cap Emploi / OPS",
+  mission_locale: "Mission locale",
+  france_travail: "France Travail",
+  association: "Association",
+  esat_ea: "ESAT / Entreprise adaptée",
+  formation_cfa: "Organisme de formation / CFA",
+  etablissement_scolaire: "Établissement scolaire ou universitaire",
+  collectivite: "Collectivité / service public",
+  medico_social: "Structure médico-sociale ou de santé",
+  entreprise_rh: "Entreprise / cabinet RH, recrutement, intérim",
+  organisation_pro: "Organisation professionnelle / OPCO / syndicat",
+  independant: "Indépendant / auto-entrepreneur / consultant",
+  autre: "Autre",
+}
+
+// French labels for the demande's domaines d’activité, same Record discipline.
+const DOMAINE_LABELS: Record<DomaineActivite, string> = {
+  insertion_emploi: "Insertion / emploi",
+  handicap: "Handicap",
+  orientation_bilan: "Orientation / bilan de compétences",
+  formation: "Formation",
+  recrutement_entreprises: "Recrutement / relations entreprises",
+  accompagnement_social: "Accompagnement social / médico-social",
+  education: "Éducation",
+  autre: "Autre",
+}
+
+// type_structure is nullable (demandes filed before this field existed), and
+// for "autre" the useful label is the free-text answer, not the bare word
+// "Autre".
+function typeStructureLabel(
+  type: TypeStructure | null,
+  autre: string | null
+): string | null {
+  if (!type) return null
+  const label = TYPE_STRUCTURE_LABELS[type] ?? type
+  return type === "autre" && autre ? `${label} — ${autre}` : label
+}
+
+// rue / code postal / ville are each independently nullable; join whichever
+// parts are present instead of requiring all three.
+function adresseLine(
+  rue: string | null,
+  codePostal: string | null,
+  ville: string | null
+): string | null {
+  const cpVille = [codePostal, ville].filter(Boolean).join(" ")
+  const parts = [rue, cpVille].filter(Boolean)
+  return parts.length > 0 ? parts.join(", ") : null
 }
 
 export default function ConseillersPage() {
@@ -322,7 +376,12 @@ export default function ConseillersPage() {
             {applications.map(a => (
               <article key={a.id} className="rounded-xl border border-border p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="font-display font-semibold text-navy">{a.structure}</h3>
+                  <div>
+                    <h3 className="font-display font-semibold text-navy">{a.structure}</h3>
+                    <p className="text-sm font-medium text-navy">
+                      {a.nom_complet ?? "Non renseigné"}
+                    </p>
+                  </div>
                   <span className="font-mono text-xs text-muted-foreground">{fmtDate(a.created_at)}</span>
                 </div>
 
@@ -330,7 +389,37 @@ export default function ConseillersPage() {
                   <div><dt className="eyebrow text-muted-foreground">Fonction</dt><dd className="text-navy">{a.fonction}</dd></div>
                   <div><dt className="eyebrow text-muted-foreground">Téléphone</dt><dd className="text-navy">{a.telephone}</dd></div>
                   <div><dt className="eyebrow text-muted-foreground">Email de connexion</dt><dd className="text-navy">{a.user.email}</dd></div>
-                  <div><dt className="eyebrow text-muted-foreground">Email professionnel</dt><dd className="text-navy">{a.email_pro ?? "—"}</dd></div>
+                  {a.email_pro && (
+                    <div><dt className="eyebrow text-muted-foreground">Email professionnel</dt><dd className="text-navy">{a.email_pro}</dd></div>
+                  )}
+                  <div>
+                    <dt className="eyebrow text-muted-foreground">Type de structure</dt>
+                    <dd className="text-navy">
+                      {typeStructureLabel(a.type_structure, a.type_structure_autre) ?? "Non renseigné"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="eyebrow text-muted-foreground">SIRET</dt>
+                    <dd className="font-mono text-navy">{a.siret ?? "Non renseigné"}</dd>
+                  </div>
+                  {adresseLine(a.adresse_rue, a.adresse_code_postal, a.adresse_ville) && (
+                    <div className="sm:col-span-2">
+                      <dt className="eyebrow text-muted-foreground">Adresse</dt>
+                      <dd className="text-navy">
+                        {adresseLine(a.adresse_rue, a.adresse_code_postal, a.adresse_ville)}
+                      </dd>
+                    </div>
+                  )}
+                  {a.domaines.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <dt className="eyebrow text-muted-foreground">Domaines d’activité</dt>
+                      <dd className="mt-1 flex flex-wrap gap-1.5">
+                        {a.domaines.map(d => (
+                          <Badge key={d} variant="secondary">{DOMAINE_LABELS[d] ?? d}</Badge>
+                        ))}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
 
                 {a.message && (
@@ -418,7 +507,14 @@ export default function ConseillersPage() {
             {approved.map(a => (
               <article key={a.id} className="rounded-xl border border-border p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="font-display font-semibold text-navy">{a.structure}</h3>
+                  <div>
+                    <h3 className="font-display font-semibold text-navy">{a.structure}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {[a.nom_complet, typeStructureLabel(a.type_structure, a.type_structure_autre)]
+                        .filter(Boolean)
+                        .join(" · ") || "Non renseigné"}
+                    </p>
+                  </div>
                   <span className="text-sm text-muted-foreground">{a.user.email}</span>
                 </div>
 
