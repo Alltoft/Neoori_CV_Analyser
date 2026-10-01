@@ -19,6 +19,9 @@ type LinkState =
   | { kind: "checking" }
   | { kind: "ready"; email: string }
   | { kind: "dead"; message: string }
+  /** The check itself failed (429, a 5xx while the backend restarts, the
+   *  network): nothing is known about the link, so it is not called dead. */
+  | { kind: "unchecked"; message: string }
 
 /** The link plus the password chosen at signup: that pair, not the link
  *  alone, opens the account (spec decision 8 — pre-account hijacking). */
@@ -30,11 +33,12 @@ function VerifierEmail() {
   const [state, setState] = useState<LinkState>(() =>
     token ? { kind: "checking" } : { kind: "dead", message: INVALID },
   )
+  const [attempt, setAttempt] = useState(0)
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [resendEmail, setResendEmail] = useState("")
-  const [resent, setResent] = useState(false)
+  const [resent, setResent] = useState<string | null>(null)
   const [resendError, setResendError] = useState<string | null>(null)
   const [resending, setResending] = useState(false)
 
@@ -45,9 +49,27 @@ function VerifierEmail() {
     // the person to /connexion.
     api.post<{ email: string }>("/auth/verify-email/check", { token }, { skipRedirect: true })
       .then((r) => { if (live) setState({ kind: "ready", email: r.email }) })
-      .catch((e) => { if (live) setState({ kind: "dead", message: e instanceof ApiError ? e.message : INVALID }) })
+      .catch((e) => {
+        if (!live) return
+        // Only the server's own verdict on the link (400 link_expired /
+        // link_invalid) makes it dead. Anything else says nothing about it.
+        const code = e instanceof ApiError ? e.body?.code : undefined
+        if (e instanceof ApiError && e.status === 400 && typeof code === "string" && code.startsWith("link_")) {
+          setState({ kind: "dead", message: e.message })
+        } else {
+          setState({
+            kind: "unchecked",
+            message: e instanceof ApiError ? e.message : "Vérification du lien impossible pour le moment.",
+          })
+        }
+      })
     return () => { live = false }
-  }, [token])
+  }, [token, attempt])
+
+  const recheck = () => {
+    setState({ kind: "checking" })
+    setAttempt((n) => n + 1)
+  }
 
   const confirm = async (e: FormEvent) => {
     e.preventDefault()
@@ -61,14 +83,14 @@ function VerifierEmail() {
       )
       await refresh()
       // `next` is the landing path the server signed into the link, followed
-      // exactly as given.
-      router.push(res.next ?? homeFor(res.user.role))
+      // exactly as given. replace, not push: Back must not reopen the spent
+      // link. The button stays disabled until this page unmounts.
+      router.replace(res.next ?? homeFor(res.user.role))
     } catch (err) {
       const code = err instanceof ApiError ? err.body?.code : undefined
       if (code === "wrong_password") setError("Mot de passe incorrect.")
       else if (code === "link_expired" || code === "link_invalid") setState({ kind: "dead", message: (err as ApiError).message })
       else setError(err instanceof ApiError ? err.message : "Erreur inattendue.")
-    } finally {
       setSubmitting(false)
     }
   }
@@ -78,8 +100,11 @@ function VerifierEmail() {
     setResendError(null)
     setResending(true)
     try {
-      await api.post("/auth/resend-verification", { email: resendEmail }, { skipRedirect: true })
-      setResent(true)
+      const res = await api.post<{ message?: string }>(
+        "/auth/resend-verification", { email: resendEmail }, { skipRedirect: true },
+      )
+      // The server's sentence, worded to hold whether or not a mail left.
+      setResent(res?.message ?? "Demande prise en compte.")
     } catch (err) {
       // The server answers the same sentence whatever the address, so a
       // failure here is the network or the rate limit: say so rather than
@@ -94,6 +119,18 @@ function VerifierEmail() {
     return <p className="text-sm text-muted-foreground">Vérification du lien…</p>
   }
 
+  if (state.kind === "unchecked") {
+    return (
+      <>
+        <h1 className="font-display text-2xl font-bold text-navy">Confirmez votre adresse</h1>
+        <Alert variant="destructive" className="mt-6"><AlertDescription>{state.message}</AlertDescription></Alert>
+        <Button type="button" size="lg" className="mt-6 h-11 w-full" onClick={recheck}>
+          Réessayer
+        </Button>
+      </>
+    )
+  }
+
   if (state.kind === "dead") {
     return (
       <>
@@ -101,9 +138,7 @@ function VerifierEmail() {
         <Alert variant="destructive" className="mt-6"><AlertDescription>{state.message}</AlertDescription></Alert>
         {resent ? (
           <Alert className="mt-6">
-            <AlertDescription className="text-sm text-foreground">
-              Si cette adresse attend une confirmation, un nouveau lien vient d’être envoyé.
-            </AlertDescription>
+            <AlertDescription className="text-sm text-foreground">{resent}</AlertDescription>
           </Alert>
         ) : (
           <form onSubmit={resend} className="mt-6 space-y-4">

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
-import { useAuth } from "@/lib/auth"
+import { useAuth, useRequireSession } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { AppBar } from "@/components/layout/AppBar"
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { SectionCard } from "@/components/ui/section-card"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -79,6 +80,7 @@ export default function NouvelleAnalysePage() {
 function NouvelleAnalyseForm() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
+  const ready = useRequireSession()
   const searchParams = useSearchParams()
   const [draftId, setDraftId] = useState<string | null>(searchParams.get("draft"))
   const [draftState, setDraftState] = useState<"idle" | "saving" | "saved" | "error" | "auth">("idle")
@@ -237,6 +239,25 @@ function NouvelleAnalyseForm() {
           </>
         )}
         {state === "error" && <span className="text-[10px] text-destructive">Fichier PDF uniquement.</span>}
+      </div>
+    )
+  }
+
+  // No form until the session is known to be live (useRequireSession): a
+  // pasted CV and target typed into an expired one were lost at submit. A
+  // draft that loads meanwhile is reset() into the form before it mounts,
+  // and the fields pick it up when they register.
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background">
+        <AppBar />
+        <div className="bg-orange h-1.5 w-full" role="presentation" aria-hidden />
+        <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8">
+          <Skeleton className="h-8 w-56" />
+          <div className="mt-8 space-y-4">
+            {[0, 1].map((i) => <Skeleton key={i} className="h-48 rounded-2xl" />)}
+          </div>
+        </div>
       </div>
     )
   }

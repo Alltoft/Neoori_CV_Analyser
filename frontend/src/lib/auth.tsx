@@ -4,6 +4,7 @@ import {
   createContext, useContext, useEffect, useState, useCallback,
   type ReactNode,
 } from "react"
+import { useRouter } from "next/navigation"
 import { api, ApiError } from "./api"
 import type { User } from "@/types"
 
@@ -82,4 +83,25 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider")
   return ctx
+}
+
+/** For a page whose form would be lost at submit without a live session.
+ *
+ *  proxy.ts only checks that the access cookie is present, and the cookie
+ *  outlives the 1 h token inside it: a visitor whose session lapsed got the
+ *  form, typed their answers, and lost them when submit 401'd. Once auth has
+ *  loaded with no user, this sends them to /connexion and back to this exact
+ *  page — pathname and query as the browser holds them, never decoded.
+ *
+ *  Returns true once the page may render its form. Until then render a
+ *  placeholder, so there is nothing to type into. */
+export function useRequireSession(): boolean {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+  useEffect(() => {
+    if (loading || user) return
+    const here = window.location.pathname + window.location.search
+    router.replace(`/connexion?redirect=${encodeURIComponent(here)}`)
+  }, [loading, user, router])
+  return !loading && user !== null
 }

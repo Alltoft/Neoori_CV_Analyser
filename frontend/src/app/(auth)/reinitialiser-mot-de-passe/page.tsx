@@ -38,6 +38,9 @@ function Reinitialiser() {
   const token = params.get("token") ?? ""
   const [dead, setDead] = useState<string | null>(token ? null : INVALID)
   const [error, setError] = useState<string | null>(null)
+  // Set once the password is saved: the button stays disabled while the
+  // navigation runs, after isSubmitting has already gone false.
+  const [leaving, setLeaving] = useState(false)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
     resolver: zodResolver(schema),
   })
@@ -47,7 +50,9 @@ function Reinitialiser() {
     try {
       const res = await api.post<{ user: User }>("/auth/reset-password", { token, password }, { skipRedirect: true })
       await refresh()
-      router.push(homeFor(res.user.role))
+      setLeaving(true)
+      // replace, not push: Back must not reopen the spent link.
+      router.replace(homeFor(res.user.role))
     } catch (e) {
       const code = e instanceof ApiError ? e.body?.code : undefined
       if (code === "link_expired" || code === "link_invalid") setDead((e as ApiError).message)
@@ -82,8 +87,8 @@ function Reinitialiser() {
             <Input id="confirm" type="password" autoComplete="new-password" className="h-10" placeholder="••••••••" {...register("confirm")} />
             {errors.confirm && <p className="text-xs text-destructive">{errors.confirm.message}</p>}
           </div>
-          <Button type="submit" size="lg" className="h-11 w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Enregistrement…" : "Enregistrer et me connecter"}
+          <Button type="submit" size="lg" className="h-11 w-full" disabled={isSubmitting || leaving}>
+            {isSubmitting || leaving ? "Enregistrement…" : "Enregistrer et me connecter"}
           </Button>
         </form>
       )}

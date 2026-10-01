@@ -12,8 +12,10 @@ import { AppBar } from "@/components/layout/AppBar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { SectionCard } from "@/components/ui/section-card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError } from "@/lib/api"
+import { useRequireSession } from "@/lib/auth"
 import type { Analysis } from "@/types"
 
 /**
@@ -70,6 +72,7 @@ type Fields = z.infer<typeof schema>
 
 export default function DepartPage() {
   const router = useRouter()
+  const ready = useRequireSession()
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -90,6 +93,23 @@ export default function DepartPage() {
       setSubmitError(e instanceof ApiError ? e.message : "Erreur inattendue.")
       setSubmitting(false)
     }
+  }
+
+  // Five free-text answers are the most there is to lose: no form until the
+  // session is known to be live (useRequireSession).
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-secondary">
+        <AppBar />
+        <div className="bg-teal h-1.5 w-full" role="presentation" aria-hidden />
+        <div className="mx-auto max-w-2xl px-4 py-8">
+          <Skeleton className="h-9 w-64" />
+          <div className="mt-6 space-y-5">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

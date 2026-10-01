@@ -46,9 +46,15 @@ export function VerificationPending({
     setSending(true)
     setNotice(null)
     try {
-      await api.post("/auth/resend-verification", { email, next: next ?? undefined }, { skipRedirect: true })
+      const res = await api.post<{ message?: string }>(
+        "/auth/resend-verification", { email, next: next ?? undefined }, { skipRedirect: true },
+      )
       setFailed(false)
-      setNotice("Un nouveau lien vient d’être envoyé. Pensez à regarder dans les courriers indésirables.")
+      // The server's own sentence rather than a claim of ours: its 200 is the
+      // same whether or not a mail left (the one-a-minute cooldown, a refused
+      // send, an address with nothing to confirm), so how sure to sound is
+      // the server's call, not this screen's.
+      setNotice(`${res?.message ?? "Demande prise en compte."} Pensez à regarder dans les courriers indésirables.`)
       setWait(COOLDOWN_S)
     } catch (e) {
       setNotice(e instanceof ApiError ? e.message : "Erreur lors de l’envoi.")
