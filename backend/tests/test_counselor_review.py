@@ -1,5 +1,6 @@
 """Approval is the only thing that grants the counselor role, and revocation
 is the only thing that takes it back."""
+from datetime import datetime
 from unittest.mock import patch
 
 from flask_jwt_extended import create_refresh_token
@@ -7,10 +8,12 @@ from flask_jwt_extended import create_refresh_token
 from app.extensions import db
 from app.models.counselor_profile import CounselorProfile
 from app.models.user import User
+from app.utils.auth_links import password_fingerprint
 
 
 def _demande(email="conseiller@test.com", status="pending"):
-    u = User(email=email, password_hash="x", role="candidate")
+    # Verified: a demande reaches the queue only once its address is proven.
+    u = User(email=email, password_hash="x", role="candidate", email_verified_at=datetime.utcnow())
     db.session.add(u)
     db.session.commit()
     p = CounselorProfile(
@@ -67,7 +70,10 @@ def test_refresh_mints_the_counselor_claim_after_approval(client, admin_headers)
         json={}, headers=admin_headers,
     )
     refresh_headers = {
-        "Authorization": f"Bearer {create_refresh_token(identity=str(user.id))}"
+        "Authorization": "Bearer " + create_refresh_token(
+            identity=str(user.id),
+            additional_claims={"pwv": password_fingerprint(user.password_hash)},
+        )
     }
     r = client.post("/api/auth/refresh", headers=refresh_headers)
     assert r.status_code == 200
