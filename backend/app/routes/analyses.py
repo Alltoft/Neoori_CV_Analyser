@@ -55,8 +55,11 @@ def _normalize_chemin(value) -> str:
 
 
 @analyses_bp.post("/")
+@jwt_required()
 def create_analysis():
-    user_id = _optional_user_id()
+    # An account with a proven address is required (email verification spec,
+    # decision 13): the anonymous path made throwaway accounts unnecessary.
+    user_id = get_jwt_identity()
     data = json_object()
     inputs = dict_field(data, "inputs")
     # normalize() maps the legacy 'A'/'B' codes onto parcours ids and falls

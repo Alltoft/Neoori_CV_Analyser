@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required
 from ..services.pdf_service import extract_text_from_pdf
 
 upload_bp = Blueprint("upload", __name__)
@@ -24,6 +25,7 @@ def _extract_pdf_from_request() -> tuple[str | None, tuple | None]:
 
 
 @upload_bp.post("/cv")
+@jwt_required()
 def upload_cv():
     text, err = _extract_pdf_from_request()
     if err:
@@ -32,6 +34,7 @@ def upload_cv():
 
 
 @upload_bp.post("/projet")
+@jwt_required()
 def upload_projet():
     text, err = _extract_pdf_from_request()
     if err:

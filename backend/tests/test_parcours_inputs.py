@@ -213,7 +213,7 @@ def test_normalize_chemin_defaults_to_the_offer():
     assert _normalize_chemin("nonsense") == "A"
 
 
-def test_create_persists_the_chemin_so_the_framing_note_can_fire(app, client):
+def test_create_persists_the_chemin_so_the_framing_note_can_fire(app, client, candidate_headers):
     """The whole point of the wiring.
 
     `_chemin` was read by _format_user_message_p1 and set by nobody, so the
@@ -227,7 +227,7 @@ def test_create_persists_the_chemin_so_the_framing_note_can_fire(app, client):
         res = client.post("/api/analyses/", json={"inputs": {
             "_path": "1", "_chemin": "B",
             "cv_text": "c" * 300, "cible_visee": "Chauffeur livreur PL",
-        }})
+        }}, headers=candidate_headers)
     assert res.status_code == 201, res.data
 
     stored = json.loads(res.data)["analysis"]["inputs"]
@@ -235,7 +235,7 @@ def test_create_persists_the_chemin_so_the_framing_note_can_fire(app, client):
     assert "note de cadrage" in _format_user_message(stored)
 
 
-def test_create_leaves_parcours_2_and_3_without_a_chemin(app, client):
+def test_create_leaves_parcours_2_and_3_without_a_chemin(app, client, candidate_headers):
     """Only parcours 1 has chemins; the key elsewhere would be noise in the
     stored inputs and in every prompt built from them."""
     from unittest.mock import patch
@@ -248,6 +248,6 @@ def test_create_leaves_parcours_2_and_3_without_a_chemin(app, client):
             "refus": "le travail de nuit",
             "contraintes": "pas de permis",
             "bon_travail": "une équipe, dehors",
-        }})
+        }}, headers=candidate_headers)
     assert res.status_code == 201, res.data
     assert "_chemin" not in json.loads(res.data)["analysis"]["inputs"]

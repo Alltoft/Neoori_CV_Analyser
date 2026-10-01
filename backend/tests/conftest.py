@@ -98,3 +98,12 @@ def make_user(app):
         return user
 
     return _make
+
+
+@pytest.fixture
+def candidate_headers(make_user):
+    """A verified candidate's bearer header — what every gated route needs now
+    that analyses and uploads require an account."""
+    user = make_user(email="candidat@test.fr")
+    token = create_access_token(identity=str(user.id), additional_claims={"role": "candidate"})
+    return {"Authorization": f"Bearer {token}"}

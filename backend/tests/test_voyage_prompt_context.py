@@ -405,14 +405,6 @@ def test_the_parcours_block_reaches_the_analysis(_start, client, app):
 
 
 @patch("app.routes.analyses.start_analysis")
-def test_an_anonymous_analysis_carries_no_voyage(_start, client, app):
-    """No user id, no lookup — and no crash on the way past."""
-    res = client.post("/api/analyses/", json={"inputs": dict(P1_FULL)})
-    assert res.status_code == 201, res.data
-    assert "_voyage" not in res.get_json()["analysis"]["inputs"]
-
-
-@patch("app.routes.analyses.start_analysis")
 def test_another_users_voyage_is_never_folded_in(_start, client, app):
     """for_prompt is scoped to the caller. A shared machine, two accounts."""
     owner = _user("proprietaire@test.fr")
@@ -500,32 +492,16 @@ def test_a_posted_voyage_id_never_lands_on_the_column(_start, client, app):
 
 
 @patch("app.routes.analyses.start_analysis")
-def test_a_bogus_voyage_id_never_500s(_start, client, app):
-    """create_analysis has no @jwt_required -- this has to survive from an
-    anonymous caller too. A client-supplied _voyage_id naming no row must
-    never reach Analysis(voyage_id=...): an unknown FK value there is an
-    uncaught IntegrityError, a 500 on a route anyone can hit."""
+def test_a_bogus_voyage_id_never_500s(_start, client, app, candidate_headers):
+    """A client-supplied _voyage_id naming no row must never reach
+    Analysis(voyage_id=...): an unknown FK value there is an uncaught
+    IntegrityError, a 500 on a route any signed-in account can hit."""
     res = client.post("/api/analyses/", json={
         "inputs": {**P1_FULL, "_voyage_id": "not-a-real-voyage-id"}
-    })
+    }, headers=candidate_headers)
     assert res.status_code == 201, res.data
 
     payload = res.get_json()["analysis"]
-    assert "_voyage_id" not in payload["inputs"]
-    assert payload["voyage_id"] is None
-
-
-@patch("app.routes.analyses.start_analysis")
-def test_an_anonymous_posted_voyage_is_also_stripped(_start, client, app):
-    """The injection hole is not gated on being logged in. Both keys must be
-    stripped on the anonymous path exactly as on the authenticated one."""
-    res = client.post("/api/analyses/", json={
-        "inputs": {**P1_FULL, "_voyage": ["intrus"], "_voyage_id": "x"}
-    })
-    assert res.status_code == 201, res.data
-
-    payload = res.get_json()["analysis"]
-    assert "_voyage" not in payload["inputs"]
     assert "_voyage_id" not in payload["inputs"]
     assert payload["voyage_id"] is None
 

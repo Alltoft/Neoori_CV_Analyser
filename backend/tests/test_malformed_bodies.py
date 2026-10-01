@@ -86,8 +86,8 @@ def test_login_survives_malformed_body(client, body):
 
 
 @pytest.mark.parametrize("body", MALFORMED_BODIES)
-def test_create_analysis_survives_malformed_body(client, body):
-    res = client.post("/api/analyses/", json=body)
+def test_create_analysis_survives_malformed_body(client, auth, body):
+    res = client.post("/api/analyses/", json=body, headers=auth)
     assert res.status_code != 500
     assert res.status_code == 400
     assert "errors" in res.get_json()

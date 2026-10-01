@@ -221,7 +221,7 @@ ROUTES = [
         name="create_analysis",
         method="post",
         path=lambda rig: "/api/analyses/",
-        headers=lambda rig: {},
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {
             "inputs": {"_path": "1", "cv_text": "x" * 250, "cible_visee": "y" * 60},
             "tier": "free",
