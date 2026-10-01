@@ -4,6 +4,8 @@ export interface User {
   role: "candidate" | "counselor" | "admin"
   plan: "free" | "paid"
   credits_remaining: number
+  /** False until the address is proven; no session exists before that. */
+  email_verified: boolean
   created_at: string
 }
 

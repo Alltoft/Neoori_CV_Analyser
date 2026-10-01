@@ -12,7 +12,9 @@ interface AuthContextValue {
   loading: boolean
   /** Resolves with the signed-in user, so a caller can route by role. */
   login:    (email: string, password: string) => Promise<User>
-  register: (email: string, password: string, seed?: ProfileSeed) => Promise<void>
+  /** Creates the account and mails the confirmation link. No session: the
+   *  person signs in from the link, with their password. */
+  register: (email: string, password: string, seed?: ProfileSeed, next?: string | null) => Promise<{ mail_sent: boolean }>
   logout:   () => Promise<void>
   refresh:  () => Promise<void>
 }
@@ -47,14 +49,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { refresh() }, [refresh])
 
   const login = async (email: string, password: string) => {
-    const data = await api.post<{ user: User }>("/auth/login", { email, password })
+    // skipRedirect: a 401 here is « Identifiants incorrects. » and a 403 is an
+    // unconfirmed address — both for the page to show. Without it api.ts
+    // reloaded /connexion on a wrong password and the message was lost.
+    const data = await api.post<{ user: User }>("/auth/login", { email, password }, { skipRedirect: true })
     setUser(data.user)
     return data.user
   }
 
-  const register = async (email: string, password: string, seed?: ProfileSeed) => {
-    const data = await api.post<{ user: User }>("/auth/register", { email, password, ...seed })
-    setUser(data.user)
+  const register = async (email: string, password: string, seed?: ProfileSeed, next?: string | null) => {
+    const data = await api.post<{ user: User; mail_sent: boolean }>(
+      "/auth/register",
+      { email, password, ...seed, next: next ?? undefined },
+      { skipRedirect: true },
+    )
+    return { mail_sent: data.mail_sent }
   }
 
   const logout = async () => {

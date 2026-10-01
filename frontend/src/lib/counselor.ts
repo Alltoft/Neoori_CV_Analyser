@@ -32,7 +32,7 @@ export interface ApplyPayload {
  *  token-addressed share link for an analysis and has no account behind it. */
 export const counselor = {
   apply: (payload: ApplyPayload) =>
-    api.post<{ user: User; profile: CounselorProfile }>("/counselor/apply", payload),
+    api.post<{ user: User; profile: CounselorProfile; mail_sent?: boolean }>("/counselor/apply", payload),
 
   /** Readable while pending, rejected or revoked — it is the state switch. */
   me: () =>
