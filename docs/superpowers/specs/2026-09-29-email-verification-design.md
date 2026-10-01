@@ -275,10 +275,9 @@ being skipped silently.
    receiving is MX on the apex, Resend uses the `send` subdomain.
 3. **DMARC** → TXT `_dmarc` = `v=DMARC1; p=none; rua=mailto:bonjour@neoori.tech`.
 4. **VPS `.env`** → `RESEND_API_KEY`, `MAIL_FROM=neoori <bonjour@neoori.tech>`,
-   `APP_URL=https://neoori.tech`. The laptop SSH key is refused since
-   2026-09-12 — use the Hostinger hPanel browser terminal or a dispatch
-   workflow (`.github/workflows/seed.yml` is the pattern), then restart the
-   backend container.
+   `APP_URL=https://neoori.tech`, over `ssh neoori` (the key works; it only
+   needs the keychain loaded — `ssh-add --apple-load-keychain`), then recreate
+   the backend container so it re-reads `.env`.
 5. **Test** a real send to `nneoori+test@proton.me`, and score one on
    mail-tester.com.
 6. **Only then** `git push` (deploy). The migration runs at container start
