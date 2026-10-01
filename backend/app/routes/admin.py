@@ -166,6 +166,19 @@ def set_user_role(user_id):
     return jsonify({"user": user.to_dict()}), 200
 
 
+@admin_bp.post("/users/<user_id>/verify-email")
+@admin_required
+def verify_user_email(user_id):
+    """Mark an address verified by hand: a test account with no inbox, or a
+    real person whose link landed in spam (email verification spec, decision
+    15). Idempotent; there is no undo, by design."""
+    user = User.query.get_or_404(user_id)
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.utcnow()
+        db.session.commit()
+    return jsonify({"user": user.to_dict()}), 200
+
+
 @admin_bp.get("/counselor-codes")
 @admin_required
 def list_counselor_codes():
@@ -237,7 +250,14 @@ def _decide(profile, status, reason, reviewer_id):
 @admin_bp.get("/counselor-applications")
 @admin_required
 def list_counselor_applications():
-    query = CounselorProfile.query
+    # A demande from an address nobody has proven is not admin work yet
+    # (email verification spec, decision 16): it shows once its link is
+    # opened. Two FKs point at users, so the join names its column.
+    query = (
+        CounselorProfile.query
+        .join(User, CounselorProfile.user_id == User.id)
+        .filter(User.email_verified_at.isnot(None))
+    )
     status = request.args.get("status")
     if status:
         query = query.filter(CounselorProfile.status == status)
@@ -251,6 +271,10 @@ def approve_counselor_application(profile_id):
     profile = CounselorProfile.query.get_or_404(profile_id)
     if profile.status != "pending":
         return jsonify({"error": "Cette demande a déjà été traitée."}), 409
+    # Defence in depth beside the queue filter: the id can be posted without
+    # the list.
+    if profile.user.email_verified_at is None:
+        return jsonify({"error": "L'adresse email de ce compte n'est pas encore vérifiée."}), 409
 
     data = json_object()
     max_codes, error = _optional_limit(data, "max_codes")
