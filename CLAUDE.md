@@ -305,6 +305,34 @@ portrait (`portrait_status`, `/voyage/portrait`). Same French word, different
 object. Deleting an out-of-scope line because "the portrait is built now" would
 be deleting the wrong one.
 
+## Email verification
+
+No session for an unproven address. `routes/auth._issue_session()` is the only
+place cookies are minted, and it refuses `email_verified_at IS NULL`; signup and
+the no-account conseiller demande mail a link instead. Verifying takes the link
+**and** the password chosen at signup — the link alone would let someone who
+signed up with your address and their password share your account. « Mot de
+passe oublié » runs on the same signed links (`utils/auth_links.py`,
+itsdangerous, no table); a reset ends every older session through the `pwv`
+claim on refresh tokens.
+
+- Mail: Resend, From `MAIL_FROM`, links from `APP_URL`. With no key in dev the
+  link is printed in the backend log.
+- One account mail a minute per address (`users.auth_mail_sent_at`), plus
+  per-IP nginx `limit_req` on the auth endpoints.
+- The auth rate limits key on the client address, and IPv6 clients reach nginx
+  through docker-proxy as one shared address: never publish an AAAA record for
+  `neoori.tech`. See `DOCKER.md` (« Do not publish an AAAA record (rate
+  limits) »).
+- The deploy re-renders and reloads nginx (`deploy.yml`): `up -d` alone never
+  applied a template change.
+- Analyses and CV uploads require an account; `/analyse/*` sends a signed-out
+  visitor to `/inscription`.
+- `/admin/utilisateurs` « Marquer comme vérifié » is the way in for a test
+  account or a link lost to spam.
+
+Spec: `docs/superpowers/specs/2026-09-29-email-verification-design.md`
+
 ## Out of scope
 - Portrait module
 - CV-per-job adaptation
