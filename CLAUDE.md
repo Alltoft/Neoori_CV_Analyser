@@ -308,13 +308,15 @@ be deleting the wrong one.
 ## Email verification
 
 No session for an unproven address. `routes/auth._issue_session()` is the only
-place cookies are minted, and it refuses `email_verified_at IS NULL`; signup and
-the no-account conseiller demande mail a link instead. Verifying takes the link
-**and** the password chosen at signup — the link alone would let someone who
-signed up with your address and their password share your account. « Mot de
-passe oublié » runs on the same signed links (`utils/auth_links.py`,
-itsdangerous, no table); a reset ends every older session through the `pwv`
-claim on refresh tokens.
+place a session (the refresh + access cookie pair) is opened, and it refuses
+`email_verified_at IS NULL`; `/auth/refresh` re-mints only the access cookie,
+after its own verified + `pwv` checks. Signup and the no-account conseiller
+demande mail a link instead. Verifying takes the link **and** the password
+chosen at signup — the link alone would let someone who signed up with your
+address and their password share your account. « Mot de passe oublié » runs on
+the same signed links (`utils/auth_links.py`, itsdangerous, no table); a reset
+ends every older session at its next refresh, through the `pwv` claim on
+refresh tokens (an access token already issued lives up to 1 h).
 
 - Mail: Resend, From `MAIL_FROM`, links from `APP_URL`. With no key in dev the
   link is printed in the backend log.

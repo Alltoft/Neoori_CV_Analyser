@@ -95,7 +95,19 @@ jobs:
             # unchanged nginx service running — so a template change never
             # applied. Re-render and reload in place; nginx -t guards the
             # reload, so a bad config keeps the old one serving and fails the
-            # job (set -e) instead of taking the site down.
-            docker compose -f docker-compose.prod.yml exec -T nginx sh -c \
-              '/docker-entrypoint.d/20-envsubst-on-templates.sh >/dev/null && nginx -t && nginx -s reload'
+            # job (set -e) instead of taking the site down. The render's own
+            # output stays in the job log: it is where a "not writable" shows.
+            # When `pull` brought a new nginx image, `up -d` has just
+            # recreated the container and its master may not have written
+            # its pid file yet, so the reload (never the test) is retried for
+            # up to ~20 s before the job fails.
+            docker compose -f docker-compose.prod.yml exec -T nginx sh -c '
+              /docker-entrypoint.d/20-envsubst-on-templates.sh || exit 1
+              nginx -t || exit 1
+              for try in 1 2 3 4 5 6 7 8 9 10; do
+                nginx -s reload && exit 0
+                echo "nginx reload: attempt $try failed, retrying in 2 s"
+                sleep 2
+              done
+              exit 1'
             docker image prune -f

@@ -177,11 +177,12 @@ def list_analyses():
 def get_analysis(analysis_id):
     """Poll status / fetch a result.
 
-    Deliberately not @jwt_required: the anonymous flow (no account yet) has to
-    poll its own analysis, and the phase-1 rebuild is what makes accounts
-    mandatory. But an analysis that *has* an owner is readable only by that
-    owner — previously any caller could read any analysis, inputs included:
-    CV text, name, location, and the health context parcours 3 collects.
+    Not @jwt_required, although creating an analysis now needs an account
+    (email verification spec, decision 13): analyses created anonymously
+    before that have no owner and stay readable by whoever holds their id.
+    An analysis that *has* an owner is readable only by that owner —
+    previously any caller could read any analysis, inputs included: CV text,
+    name, location, and the health context parcours 3 collects.
     """
     analysis = Analysis.query.get_or_404(analysis_id)
     if not _may_access(analysis):
@@ -210,9 +211,10 @@ def unlock_with_code(analysis_id):
     if not ok:
         return jsonify({"error": reason}), 409
 
-    # analysis.user_id, not the JWT: this route has no auth decorator and the
-    # anonymous flow is supported. An unowned analysis logs a NULL person and
-    # still counts against the code.
+    # analysis.user_id, not the JWT: this route has no auth decorator, and an
+    # analysis created anonymously before accounts were required has no
+    # owner. Such an analysis logs a NULL person and still counts against the
+    # code.
     code_service.record(
         code, user_id=analysis.user_id, target_type="analysis", target_id=analysis.id
     )
@@ -269,11 +271,11 @@ def _merge_profile(inputs: dict, user_id: str | None) -> None:
     OETH flag becomes a plain boolean — neither the raw condition answers nor
     the status itself is ever stored on the analysis.
 
-    The voyage fold runs whether or not a profile exists, and whether or not
-    there is a user_id at all: _merge_voyage is the only place that strips a
-    client-supplied _voyage/_voyage_id (see its docstring), and that has to
-    happen for every request this route accepts, anonymous ones included —
-    create_analysis has no @jwt_required.
+    The voyage fold runs whether or not a profile exists: _merge_voyage is
+    the only place that strips a client-supplied _voyage/_voyage_id (see its
+    docstring), and that has to happen for every request create_analysis
+    accepts. That route is @jwt_required now, so user_id is always set there;
+    the falsy branch is kept so the strip never depends on it.
     """
     if user_id:
         profile = Profile.query.filter_by(user_id=user_id).first()
@@ -308,10 +310,10 @@ def _merge_voyage(inputs: dict, user_id: str | None) -> None:
     prompt_context() enforces), and a posted _voyage_id either stamps another
     user's voyage onto this row's traceability column or, if it names no
     row, raises an uncaught IntegrityError on the Analysis(voyage_id=...)
-    commit below — a 500 on a route anyone can call, logged in or not.
+    commit below — a 500 any signed-in account could trigger.
     Popping unconditionally, before any lookup, closes both — for every
     caller, which is why this runs even when user_id is falsy rather than
-    from inside the `if user_id:` block above.
+    from inside _merge_profile's `if user_id:` block.
 
     Reduced here rather than at prompt-build time, exactly like bloc 5: the
     stored lines are what the model saw, so unlocking this analysis months
@@ -344,10 +346,11 @@ def _merge_voyage(inputs: dict, user_id: str | None) -> None:
 def _may_access(analysis: Analysis) -> bool:
     """Owner-only once an analysis has an owner.
 
-    An ownerless (anonymous) analysis stays reachable by anyone holding its
-    id — the UUID4 *is* the capability there, and there is no account to check
-    against. Phase 1 makes accounts mandatory, at which point the ownerless
-    branch is dead code and this collapses to a plain ownership test.
+    An ownerless analysis — created anonymously, before accounts were
+    required — stays reachable by anyone holding its id: the UUID4 *is* the
+    capability there, and there is no account to check against. No new one
+    can be created (create_analysis is @jwt_required), so this branch serves
+    only those older rows.
     """
     if analysis.user_id is None:
         return True
