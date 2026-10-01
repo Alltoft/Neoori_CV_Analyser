@@ -61,3 +61,11 @@ def test_the_rejection_mail_carries_the_reason(app):
     # tag must not survive, or an injected reason could break out of the <p>.
     assert "&lt;b&gt;x&lt;/b&gt; &amp; &quot;y&quot;" in html
     assert "<b>" not in html
+
+
+def test_the_approval_link_follows_app_url(app):
+    app.config["RESEND_API_KEY"] = "re_test"
+    app.config["APP_URL"] = "http://localhost:8080"
+    with patch("app.services.email_service.resend.Emails.send") as mock_send:
+        email_service.send_counselor_approved(_profile())
+    assert "http://localhost:8080/conseiller" in mock_send.call_args[0][0]["html"]

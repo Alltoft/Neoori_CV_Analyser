@@ -29,6 +29,9 @@ class Config:
     # Resend refuses a From on an unverified domain, so neoori.tech must carry
     # the DNS records before the first mail goes out.
     MAIL_FROM = os.environ.get("MAIL_FROM", "neoori <bonjour@neoori.tech>")
+    # Public origin every account mail links to (verification, reset,
+    # conseiller). The dev compose file points it at http://localhost:8080.
+    APP_URL = os.environ.get("APP_URL", "https://neoori.tech").rstrip("/")
     FRONTEND_ORIGINS = [
         o.strip()
         for o in os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:3001").split(",")

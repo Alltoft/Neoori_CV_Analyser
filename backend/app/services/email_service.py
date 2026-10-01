@@ -11,23 +11,33 @@ import resend
 from flask import current_app
 
 from ..models.counselor_profile import CounselorProfile
+from ..models.profile import Profile
+from ..utils import auth_links
 
-APP_URL = "https://neoori.tech"
+FOOTER = "neoori — pour nous écrire, répondez à ce message."
 
 
-def send(to: str, subject: str, html: str) -> bool:
+def _app_url() -> str:
+    return current_app.config["APP_URL"]
+
+
+def send(to: str, subject: str, html: str, text: str | None = None) -> bool:
     key = current_app.config.get("RESEND_API_KEY")
     if not key:
         current_app.logger.warning("RESEND_API_KEY missing — mail to %s not sent.", to)
         return False
     try:
         resend.api_key = key
-        resend.Emails.send({
+        params = {
             "from": current_app.config["MAIL_FROM"],
             "to": [to],
             "subject": subject,
             "html": html,
-        })
+        }
+        # A plain-text part: HTML-only mail scores worse with spam filters.
+        if text is not None:
+            params["text"] = text
+        resend.Emails.send(params)
         return True
     except Exception:
         current_app.logger.exception("Mail to %s failed.", to)
@@ -42,7 +52,7 @@ def _layout(title: str, body: str) -> str:
         f'<h1 style="font-size:20px;margin:0 0 16px">{title}</h1>'
         f'{body}'
         '<p style="font-size:13px;color:rgba(29,26,23,0.55);margin-top:28px">'
-        'neoori — ce message est automatique, il ne se répond pas.</p>'
+        f'{FOOTER}</p>'
         '</div>'
     )
 
@@ -69,7 +79,7 @@ def send_counselor_approved(profile: CounselorProfile) -> bool:
             "<p>Vous pouvez maintenant créer des codes pour les personnes que vous "
             "accompagnez, et suivre leur utilisation depuis votre espace.</p>"
             f'<ul style="font-size:14px">{limits}</ul>'
-            f'<p><a href="{APP_URL}/conseiller" '
+            f'<p><a href="{_app_url()}/conseiller" '
             'style="color:#c96442">Ouvrir mon espace conseiller</a></p>'
         )
         return send(profile.user.email, "Votre compte conseiller est activé", _layout(
@@ -113,4 +123,88 @@ def send_counselor_rejected(profile: CounselorProfile) -> bool:
         current_app.logger.exception(
             "Could not build/send the rejection mail for profile %s.", profile_id
         )
+        return False
+
+
+def _button(href: str, label: str) -> str:
+    return (
+        f'<p style="margin:24px 0"><a href="{href}" style="background:#c96442;'
+        'color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;'
+        f'display:inline-block">{label}</a></p>'
+    )
+
+
+def _link_mail(paragraphs: list[str], label: str, link: str, small: str) -> tuple[str, str]:
+    """The HTML body and the plain-text body of an account mail, built from one
+    copy so a wording edit cannot reach one form and miss the other. Paragraphs
+    are plain text: escaped here for the HTML form only."""
+    def esc(s: str) -> str:
+        return html_escape.escape(s, quote=False)
+
+    body = (
+        "".join(f"<p>{esc(p)}</p>" for p in paragraphs)
+        + _button(link, label)
+        + f'<p style="font-size:13px">{esc(small)}</p>'
+    )
+    text = "\n\n".join(paragraphs) + f"\n\n{link}\n\n{small}\n\n{FOOTER}\n"
+    return body, text
+
+
+def _prenom(user) -> str:
+    profile = Profile.query.filter_by(user_id=user.id).first()
+    return (profile.prenom or "").strip() if profile else ""
+
+
+def _deliver_link(user, subject: str, html: str, text: str, link: str) -> bool:
+    """send(), except on a laptop with no key: the link goes to the log, so the
+    local flow can be walked end to end. Debug only — never in production,
+    where a token in a log line is a session for whoever reads the log."""
+    if not current_app.config.get("RESEND_API_KEY") and current_app.debug:
+        current_app.logger.warning("DEV — no RESEND_API_KEY, link for %s: %s", user.email, link)
+        return True
+    return send(user.email, subject, html, text)
+
+
+def send_verification(user, next_path=None) -> bool:
+    """« Confirmez votre adresse ». Fail-soft like every mail here."""
+    try:
+        link = f"{_app_url()}/verifier-email?token={auth_links.make_verify_token(user, next_path)}"
+        prenom = _prenom(user)
+        body, text = _link_mail(
+            [
+                f"Bonjour {prenom}," if prenom else "Bonjour,",
+                "Pour activer votre compte neoori, confirmez votre adresse : ouvrez le "
+                "lien ci-dessous puis saisissez votre mot de passe. Il est valable 48 heures.",
+            ],
+            "Confirmer mon adresse", link,
+            "Si vous n'avez pas créé de compte, ignorez ce message.",
+        )
+        return _deliver_link(
+            user, "Confirmez votre adresse email",
+            _layout("Confirmez votre adresse", body), text, link,
+        )
+    except Exception:
+        current_app.logger.exception("Could not build/send the verification mail.")
+        return False
+
+
+def send_password_reset(user) -> bool:
+    """« Réinitialiser votre mot de passe ». Fail-soft."""
+    try:
+        link = f"{_app_url()}/reinitialiser-mot-de-passe?token={auth_links.make_reset_token(user)}"
+        body, text = _link_mail(
+            [
+                "Une demande de réinitialisation a été faite pour votre compte. Le lien "
+                "est valable 1 heure et ne sert qu'une fois.",
+            ],
+            "Choisir un nouveau mot de passe", link,
+            "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : "
+            "votre mot de passe reste inchangé.",
+        )
+        return _deliver_link(
+            user, "Réinitialiser votre mot de passe",
+            _layout("Nouveau mot de passe", body), text, link,
+        )
+    except Exception:
+        current_app.logger.exception("Could not build/send the reset mail.")
         return False
