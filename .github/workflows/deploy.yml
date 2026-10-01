@@ -91,4 +91,11 @@ jobs:
             echo "$GHCR_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
+            # Templates render only at container start, and `up -d` leaves an
+            # unchanged nginx service running — so a template change never
+            # applied. Re-render and reload in place; nginx -t guards the
+            # reload, so a bad config keeps the old one serving and fails the
+            # job (set -e) instead of taking the site down.
+            docker compose -f docker-compose.prod.yml exec -T nginx sh -c \
+              '/docker-entrypoint.d/20-envsubst-on-templates.sh >/dev/null && nginx -t && nginx -s reload'
             docker image prune -f

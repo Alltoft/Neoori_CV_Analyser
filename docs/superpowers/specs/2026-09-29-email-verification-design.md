@@ -353,7 +353,7 @@ Backend, pytest, TDD. `conftest.py` already blanks `RESEND_API_KEY`.
 Frontend: `tsc`, lint, `next build`. Then end to end on the local stack
 (`docker compose up -d` → http://localhost:8080) using the link from the backend
 log: signup → pending → link → `/analyse/nouveau`; login unverified; forgot →
-reset → old session refused at refresh; admin button; 429 on the sixth rapid
+reset → old session refused at refresh; admin button; 429 on the fifth rapid
 signup.
 
 ---

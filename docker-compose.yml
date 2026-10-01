@@ -36,6 +36,7 @@ services:
       FLASK_ENV: development
       DATABASE_URL: mysql+pymysql://neoori:neoori_dev@db:3306/neoori?charset=utf8mb4
       FRONTEND_URL: http://localhost:8080,http://localhost:3001
+      APP_URL: http://localhost:8080
     volumes:
       - ./backend:/app
     ports:
