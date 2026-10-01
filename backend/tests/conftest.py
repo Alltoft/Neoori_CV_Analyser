@@ -76,3 +76,25 @@ def admin_headers(app):
         additional_claims={"role": "admin"},
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def make_user(app):
+    """A User with a real bcrypt hash, so /login, /verify-email and
+    /reset-password can check its password. Verified unless told otherwise."""
+    from datetime import datetime
+
+    from app.extensions import bcrypt
+
+    def _make(email="marie@test.fr", password="motdepasse1", verified=True, role="candidate"):
+        user = User(
+            email=email,
+            password_hash=bcrypt.generate_password_hash(password).decode("utf-8"),
+            role=role,
+            email_verified_at=datetime.utcnow() if verified else None,
+        )
+        _db.session.add(user)
+        _db.session.commit()
+        return user
+
+    return _make

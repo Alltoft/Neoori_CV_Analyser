@@ -21,6 +21,12 @@ class User(db.Model):
     )
     credits_remaining = db.Column(db.Integer, nullable=False, default=1)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # NULL until the address is proven by its link, a reset link or an admin
+    # (email verification spec, decision 2). No session is issued before that.
+    email_verified_at = db.Column(db.DateTime, nullable=True)
+    # When the last account mail (verification or reset) left. One clock for
+    # both, so neither endpoint can be pointed at an inbox to flood it.
+    auth_mail_sent_at = db.Column(db.DateTime, nullable=True)
 
     analyses = db.relationship("Analysis", foreign_keys="Analysis.user_id", backref="user", lazy="dynamic")
     counselor_notes = db.relationship("CounselorNote", backref="counselor", lazy="dynamic")
@@ -32,5 +38,6 @@ class User(db.Model):
             "role": self.role,
             "plan": self.plan,
             "credits_remaining": self.credits_remaining,
+            "email_verified": self.email_verified_at is not None,
             "created_at": self.created_at.isoformat(),
         }

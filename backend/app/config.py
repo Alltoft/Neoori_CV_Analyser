@@ -55,6 +55,9 @@ class TestingConfig(Config):
     JWT_TOKEN_LOCATION = ["headers"]   # no cookies in tests
     JWT_HEADER_NAME = "Authorization"
     JWT_HEADER_TYPE = "Bearer"
+    # Real bcrypt hashes in tests (login and verify-email check them), at the
+    # cheapest cost: the default 12 rounds would add seconds per test.
+    BCRYPT_LOG_ROUNDS = 4
 
 
 config = {

@@ -8,6 +8,8 @@ DEFAULT CREDENTIALS
 -------------------
 admin@neoori.dev   admin1234   role=admin
 """
+from datetime import datetime
+
 from app import create_app
 from app.extensions import db, bcrypt
 from app.models.user import User
@@ -33,5 +35,7 @@ with app.app_context():
             )
             db.session.add(user)
             print(f"[create] {spec['email']}  →  {spec['password']}")
+        # A seeded dev account has no inbox to click a link in.
+        user.email_verified_at = user.email_verified_at or datetime.utcnow()
     db.session.commit()
     print("Done.")
