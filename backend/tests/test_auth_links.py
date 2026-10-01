@@ -12,8 +12,14 @@ def _user(**overrides):
     return User(**fields)
 
 
-def _flip_last(token: str) -> str:
-    return token[:-1] + ("A" if token[-1] != "A" else "B")
+def _tamper_payload(token: str) -> str:
+    """Flip a character in the payload (before the first "."), ensuring real
+    signature bits change. Deterministic: 'A'→'B', anything else→'A'."""
+    dot_idx = token.index(".")
+    mid = dot_idx // 2
+    ch = token[mid]
+    new_ch = "B" if ch != "B" else "A"
+    return token[:mid] + new_ch + token[mid+1:]
 
 
 def test_a_verification_link_round_trips(app):
@@ -49,7 +55,7 @@ def test_a_verification_link_is_not_a_reset_link_and_back(app):
 
 def test_a_tampered_link_is_invalid(app):
     token = auth_links.make_verify_token(_user())
-    assert auth_links.load_verify_token(_flip_last(token)).error == "link_invalid"
+    assert auth_links.load_verify_token(_tamper_payload(token)).error == "link_invalid"
 
 
 @pytest.mark.parametrize("junk", [None, 42, "", "not-a-token", "a.b.c", "\ud800"])
