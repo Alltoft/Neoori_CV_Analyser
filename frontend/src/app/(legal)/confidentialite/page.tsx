@@ -74,6 +74,7 @@ export default function ConfidentialitePage() {
         <li>Hostinger (hébergement de l&apos;application et de la base de données, Union européenne)</li>
         <li>Anthropic (génération IA, États-Unis — clauses contractuelles types)</li>
         <li>Stripe (paiement)</li>
+        <li>Resend (envoi des emails transactionnels, États-Unis — clauses contractuelles types)</li>
       </ul>
       <p>
         Le lien de partage conseiller (« /c/… ») donne accès à une synthèse de votre analyse à

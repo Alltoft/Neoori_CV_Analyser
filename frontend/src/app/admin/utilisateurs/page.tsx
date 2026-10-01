@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -36,6 +37,10 @@ export default function UtilisateursPage() {
   const [query, setQuery] = useState("")
   const [savingId, setSavingId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<Record<string, string>>({})
+  const [verifyingId, setVerifyingId] = useState<string | null>(null)
+  // Kept apart from rowError: that one renders under the role select, and a
+  // failed verification belongs next to its own button.
+  const [verifyError, setVerifyError] = useState<Record<string, string>>({})
 
   const changeRole = async (id: string, role: string) => {
     setSavingId(id)
@@ -52,6 +57,24 @@ export default function UtilisateursPage() {
       }))
     } finally {
       setSavingId(null)
+    }
+  }
+
+  // For a test account with no inbox, or a real person whose link landed in
+  // spam (spec decision 15). There is no undo.
+  const markVerified = async (id: string) => {
+    setVerifyingId(id)
+    setVerifyError((current) => ({ ...current, [id]: "" }))
+    try {
+      const res = await api.post<{ user: User }>(`/admin/users/${id}/verify-email`)
+      setUsers((list) => list.map((u) => (u.id === res.user.id ? res.user : u)))
+    } catch (err) {
+      setVerifyError((current) => ({
+        ...current,
+        [id]: err instanceof ApiError ? err.message : "Échec de la vérification.",
+      }))
+    } finally {
+      setVerifyingId(null)
     }
   }
 
@@ -123,6 +146,7 @@ export default function UtilisateursPage() {
             <TableHeader>
               <TableRow className="bg-secondary hover:bg-secondary">
                 <TableHead className="eyebrow text-navy-500">E-mail</TableHead>
+                <TableHead className="eyebrow text-navy-500">Vérifié</TableHead>
                 <TableHead className="eyebrow text-navy-500">Rôle</TableHead>
                 <TableHead className="eyebrow text-navy-500">Plan</TableHead>
                 <TableHead className="eyebrow text-right text-navy-500">
@@ -135,7 +159,7 @@ export default function UtilisateursPage() {
               {loading ? (
                 Array.from({ length: 8 }, (_, i) => (
                   <TableRow key={i} className="hover:bg-transparent">
-                    <TableCell colSpan={5} className="py-3">
+                    <TableCell colSpan={6} className="py-3">
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
                   </TableRow>
@@ -143,7 +167,7 @@ export default function UtilisateursPage() {
               ) : filtered.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="py-12 text-center text-sm text-muted-foreground"
                   >
                     {query.trim()
@@ -156,6 +180,33 @@ export default function UtilisateursPage() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium text-navy">
                       {u.email}
+                    </TableCell>
+                    <TableCell>
+                      {u.email_verified ? (
+                        <Badge variant="success">
+                          <span aria-hidden="true">✓</span>
+                          <span className="sr-only">Vérifié</span>
+                        </Badge>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="warning">Non vérifié</Badge>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={verifyingId === u.id}
+                              onClick={() => void markVerified(u.id)}
+                            >
+                              Marquer comme vérifié
+                            </Button>
+                          </div>
+                          {verifyError[u.id] ? (
+                            <p role="alert" className="mt-1 text-[11px] text-destructive">
+                              {verifyError[u.id]}
+                            </p>
+                          ) : null}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Select
