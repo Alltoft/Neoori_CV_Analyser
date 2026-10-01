@@ -66,6 +66,11 @@ services:
       - ./nginx/templates-${NGINX_MODE:-http}:/etc/nginx/templates:ro
       - certs:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro
+    # The auth rate limits key on the client address. An IPv6 connection reaches
+    # nginx through docker-proxy as the bridge gateway (172.18.0.1), so every
+    # IPv6 visitor would share one bucket. Never publish an AAAA record for
+    # neoori.tech until the compose network has IPv6 enabled (enable_ipv6 + a
+    # subnet) and the templates listen on [::]:80 / [::]:443. See DOCKER.md.
     ports:
       - "80:80"
       - "443:443"

@@ -121,6 +121,20 @@ second cron job reloads nginx nightly (installed 23/08):
 
 A reload is graceful — in-flight requests finish on the old workers.
 
+### Do not publish an AAAA record (rate limits)
+
+The per-IP limits on the auth endpoints (`limit_req` in the nginx templates)
+key on the client address. Docker publishes 80/443 on `[::]` too, but the
+compose network is IPv4-only, so docker-proxy relays an IPv6 connection to
+nginx from the bridge gateway: every IPv6 visitor would appear as one client
+and share a single bucket (5/min for signup, resend, forgot and conseiller
+demande; 10/min for login, verify and reset), which locks everyone out at
+once. Verified 2026-10-01 on the VPS: a forced IPv6 request was logged by
+nginx as client `172.18.0.1`. `neoori.tech` has no AAAA record today, so all
+traffic arrives over IPv4 and the limits see real clients. Keep it that way
+until the compose network has IPv6 enabled (`enable_ipv6` + a subnet) and the
+templates `listen [::]:80` / `[::]:443`.
+
 ## Data migration (TiDB Cloud → VPS MySQL, at cutover)
 
 ```bash

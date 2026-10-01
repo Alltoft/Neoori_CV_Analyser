@@ -7,6 +7,8 @@
 # Each map turns every other URI into an empty key, which limit_req does not
 # count, so the rest of /api/ is untouched. envsubst leaves $uri and
 # $binary_remote_addr alone: it only replaces names set in the environment.
+# The key is wrong for IPv6 clients (docker-proxy hides them): never publish
+# an AAAA record, see DOCKER.md, "Do not publish an AAAA record".
 map $uri $auth_mail_key {
     ~^/api/(auth/(register|resend-verification|forgot-password)|counselor/apply)/?$  $binary_remote_addr;
     default "";
