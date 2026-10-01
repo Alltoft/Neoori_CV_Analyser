@@ -12,6 +12,7 @@ from flask_jwt_extended import (
 from datetime import datetime
 
 from ..extensions import db, bcrypt
+from ..models.counselor_profile import CounselorProfile
 from ..models.profile import ACCEPTED_AGE_BRACKETS, CONSENT_VERSION, Profile
 from ..models.user import User
 from ..services import auth_mail
@@ -145,6 +146,100 @@ def me():
     return jsonify({"user": user.to_dict()}), 200
 
 
+LINK_ERRORS = {
+    "link_expired": "Ce lien a expiré. Demandez-en un nouveau.",
+    "link_invalid": "Ce lien n'est pas valide. Demandez-en un nouveau.",
+}
+# One sentence whatever the account's state: these two must not tell a
+# stranger whether an address has an account (spec decision 11).
+RESEND_MESSAGE = "Si cette adresse attend une confirmation, un nouveau lien vient d'être envoyé."
+FORGOT_MESSAGE = "Si un compte existe pour cette adresse, un email vient d'être envoyé."
+
+
+@auth_bp.post("/verify-email/check")
+def verify_email_check():
+    """Is this link alive, and for which address? Lets the page say « expiré »
+    before anyone types a password, and fill the email for password managers."""
+    user, _payload, code = _user_from_verify_token(text_field(json_object(), "token"))
+    if code:
+        return _link_error(code)
+    return jsonify({"email": user.email}), 200
+
+
+@auth_bp.post("/verify-email")
+def verify_email():
+    """Link + password → verified and signed in (spec decision 8).
+
+    The password is what closes pre-account hijacking: someone who signed up
+    with your address and their password cannot have you verify an account
+    they can also log into. Without it the victim uses « mot de passe
+    oublié », which sets their own password and ends the other sessions.
+    A second use is simply a login.
+    """
+    data = json_object()
+    user, payload, code = _user_from_verify_token(text_field(data, "token"))
+    if code:
+        return _link_error(code)
+
+    password = raw_text_field(data, "password")
+    if not password or not bcrypt.check_password_hash(user.password_hash, password):
+        return jsonify({"error": "Mot de passe incorrect.", "code": "wrong_password"}), 401
+
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.utcnow()
+        db.session.commit()
+
+    response = jsonify({"user": user.to_dict(), "next": _landing(user, payload)})
+    _issue_session(response, user)
+    return response, 200
+
+
+@auth_bp.post("/resend-verification")
+def resend_verification():
+    data = json_object()
+    user = _user_by_email(data.get("email"))
+    if user is not None and user.email_verified_at is None:
+        auth_mail.verification_if_due(user, text_field(data, "next") or None)
+    return jsonify({"message": RESEND_MESSAGE}), 200
+
+
+@auth_bp.post("/forgot-password")
+def forgot_password():
+    user = _user_by_email(json_object().get("email"))
+    if user is not None:
+        auth_mail.reset_if_due(user)
+    return jsonify({"message": FORGOT_MESSAGE}), 200
+
+
+@auth_bp.post("/reset-password")
+def reset_password():
+    data = json_object()
+    result = auth_links.load_reset_token(text_field(data, "token"))
+    if result.error:
+        return _link_error(result.error)
+    user = _user_by_id(result.payload.get("uid"))
+    # pwv dies with the password it was minted under: a used link is dead.
+    if user is None or result.payload.get("pwv") != auth_links.password_fingerprint(user.password_hash):
+        return _link_error("link_invalid")
+
+    # Checked before anything is written, so a refused password leaves the
+    # link usable for the next attempt.
+    password = raw_text_field(data, "password")
+    if len(password) < 8:
+        return jsonify({"error": "Le mot de passe doit contenir au moins 8 caractères."}), 400
+
+    user.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
+    # Opening the link proved the inbox, exactly as the verification link
+    # does (spec decision 12).
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.utcnow()
+    db.session.commit()
+
+    response = jsonify({"user": user.to_dict()})
+    _issue_session(response, user)
+    return response, 200
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _issue_session(response, user: User):
@@ -163,3 +258,48 @@ def _issue_session(response, user: User):
     )
     set_access_cookies(response, access_token)
     set_refresh_cookies(response, refresh_token)
+
+
+def _link_error(code: str):
+    return jsonify({"error": LINK_ERRORS[code], "code": code}), 400
+
+
+def _user_by_email(raw) -> User | None:
+    """The account for an address typed into a form. One normalisation, the
+    one register stores under (strip, then lower): resend and forgot must find
+    the same account for « Marie@Test.FR » and « marie@test.fr »."""
+    email = raw.strip().lower() if isinstance(raw, str) else ""
+    return User.query.filter_by(email=email).first() if email else None
+
+
+def _user_by_id(uid) -> User | None:
+    """The account a signed link names. The id comes out of a payload, so a
+    non-string is refused here rather than handed to the database."""
+    return db.session.get(User, uid) if isinstance(uid, str) else None
+
+
+def _user_from_verify_token(token: str):
+    """(user, payload, None) for a live verification link, else (None, None, code)."""
+    result = auth_links.load_verify_token(token)
+    if result.error:
+        return None, None, result.error
+    user = _user_by_id(result.payload.get("uid"))
+    # The address is in the signed payload: a link mailed to an address the
+    # account no longer holds proves nothing about the current one.
+    if user is None or user.email != result.payload.get("email"):
+        return None, None, "link_invalid"
+    return user, result.payload, None
+
+
+def _landing(user: User, payload: dict) -> str | None:
+    """Where the verified person goes. A conseiller who asked for a fresh link
+    from /connexion carries no next; their screen is the demande, not the
+    candidate espace (spec decision 23).
+
+    `next` is returned exactly as it was signed: safe_next admits strings such
+    as « /%2F%2Fevil.com » that are harmless only when used verbatim."""
+    if payload.get("next"):
+        return payload["next"]
+    if CounselorProfile.query.filter_by(user_id=user.id).first():
+        return "/conseiller"
+    return None
