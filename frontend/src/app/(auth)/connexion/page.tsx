@@ -9,11 +9,13 @@ import { z } from "zod"
 import { useAuth } from "@/lib/auth"
 import { homeFor } from "@/lib/home"
 import { ApiError } from "@/lib/api"
+import { safeRedirect } from "@/lib/safe-redirect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthLayout } from "@/components/layout/AuthLayout"
+import { VerificationPending } from "@/components/auth/VerificationPending"
 
 const schema = z.object({
   email: z.string().email("Email invalide."),
@@ -26,6 +28,12 @@ function ConnexionForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [error, setError] = useState<string | null>(null)
+  // Checked as given by safeRedirect: only a path on this site is followed or
+  // passed on, anything else falls back to the role's home.
+  const redirect = safeRedirect(params.get("redirect"))
+  // Right password, unconfirmed address: the server says so only to someone
+  // who knows the password (spec decision 9). Holds the address to resend to.
+  const [unverified, setUnverified] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
     resolver: zodResolver(schema),
@@ -39,10 +47,32 @@ function ConnexionForm() {
       // Otherwise each role lands on its own home rather than the candidate
       // espace: an admin in Administration, an approved conseiller in their
       // espace conseiller.
-      router.push(params.get("redirect") ?? homeFor(signedIn.role))
+      router.push(redirect ?? homeFor(signedIn.role))
     } catch (e) {
+      if (e instanceof ApiError && e.body?.code === "email_unverified") {
+        setUnverified(email)
+        return
+      }
       setError(e instanceof ApiError ? e.message : "Erreur de connexion.")
     }
+  }
+
+  const inscriptionHref = redirect ? `/inscription?redirect=${encodeURIComponent(redirect)}` : "/inscription"
+
+  if (unverified) {
+    return (
+      <AuthLayout>
+        {/* Keyed by address, so a later unconfirmed login starts a fresh countdown. */}
+        <VerificationPending
+          key={unverified}
+          variant="login"
+          email={unverified}
+          next={redirect}
+          onRestart={() => setUnverified(null)}
+          restartLabel="Retour à la connexion"
+        />
+      </AuthLayout>
+    )
   }
 
   return (
@@ -64,7 +94,12 @@ function ConnexionForm() {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="password">Mot de passe</Label>
+          <div className="flex items-baseline justify-between">
+            <Label htmlFor="password">Mot de passe</Label>
+            <Link href="/mot-de-passe-oublie" className="text-xs text-muted-foreground underline underline-offset-2">
+              Mot de passe oublié ?
+            </Link>
+          </div>
           <Input id="password" type="password" autoComplete="current-password" className="h-10" placeholder="••••••••" {...register("password")} />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
@@ -76,7 +111,7 @@ function ConnexionForm() {
 
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Pas encore de compte ?{" "}
-        <Link href="/inscription" className="link-underline font-medium text-orange-dark">
+        <Link href={inscriptionHref} className="link-underline font-medium text-orange-dark">
           Créer un compte
         </Link>
       </p>

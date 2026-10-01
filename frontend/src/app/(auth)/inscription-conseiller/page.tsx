@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthLayout } from "@/components/layout/AuthLayout"
+import { VerificationPending } from "@/components/auth/VerificationPending"
 import type { DomaineActivite, TypeStructure } from "@/types"
 
 // Option lists for this form only. Slugs mirror `TypeStructure` /
@@ -114,6 +115,9 @@ export default function InscriptionConseillerPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  // Set when the demande created a new account: it opens once its address is
+  // confirmed, so the person is sent to their inbox, not to /conseiller.
+  const [pending, setPending] = useState<{ email: string; mailSent: boolean } | null>(null)
 
   // Someone who already has a demande is sent to their status page instead of
   // this form. A pending conseiller keeps role="candidate" until approval, so
@@ -126,7 +130,7 @@ export default function InscriptionConseillerPage() {
       .catch(() => { /* No demande, or unreachable: leave them on the form. */ })
   }, [loading, user, router])
 
-  const { register, control, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } =
+  const { register, control, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } =
     useForm<Fields>({
       resolver: zodResolver(schema),
       defaultValues: {
@@ -204,7 +208,7 @@ export default function InscriptionConseillerPage() {
   const onSubmit = async (values: Fields) => {
     setError(null)
     try {
-      await counselor.apply({
+      const res = await counselor.apply({
         structure: values.structure,
         type_structure: values.type_structure as TypeStructure,
         type_structure_autre: values.type_structure === "autre" ? values.type_structure_autre : undefined,
@@ -221,15 +225,55 @@ export default function InscriptionConseillerPage() {
         email: values.email,
         password: values.password,
       })
-      // apply() sets the cookies; refresh() puts the user in context before the
-      // /conseiller page reads it. The confirmation panel below is shown for a
-      // moment first so the 48h-delay message cannot be missed.
+      // The server's answer decides, not the client's idea of who is signed in:
+      // mail_sent comes back only when this call created the account, and a
+      // lapsed session would make `!user` disagree with it. That account has no
+      // session and opens once its address is confirmed; the link lands on
+      // /conseiller.
+      if (res.mail_sent !== undefined) {
+        setPending({ email: values.email, mailSent: res.mail_sent })
+        return
+      }
+      // A signed-in candidate keeps their session; refresh() puts the demande's
+      // user in context before the /conseiller page reads it. The panel below
+      // shows for a moment first so the 48h-delay message cannot be missed.
       await refresh()
       setSubmitted(true)
       setTimeout(() => router.push("/conseiller"), 3000)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Erreur lors de l'envoi de la demande.")
     }
+  }
+
+  // Back to a blank form: the first address was the wrong one, and keeping the
+  // rest of the answers would keep the password in memory for nothing.
+  const restart = () => {
+    reset()
+    setRueQuery("")
+    setSuggestions([])
+    setSuggestionsOpen(false)
+    setShowPassword(false)
+    setError(null)
+    setPending(null)
+  }
+
+  if (pending) {
+    return (
+      <AuthLayout>
+        {/* Keyed by address: the countdown and the failure flag start from the
+            props once, so a second demande must never inherit the first's. */}
+        <VerificationPending
+          key={pending.email}
+          email={pending.email}
+          next="/conseiller"
+          mailSent={pending.mailSent}
+          onRestart={restart}
+        />
+        <p className="mt-6 text-sm text-muted-foreground">
+          Votre demande est enregistrée. Elle sera examinée dès votre adresse confirmée, sous 48 h ouvrées.
+        </p>
+      </AuthLayout>
+    )
   }
 
   if (submitted) {

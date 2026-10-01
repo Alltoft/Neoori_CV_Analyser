@@ -1,19 +1,21 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useAuth } from "@/lib/auth"
 import { ApiError } from "@/lib/api"
+import { safeRedirect } from "@/lib/safe-redirect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthLayout } from "@/components/layout/AuthLayout"
+import { VerificationPending } from "@/components/auth/VerificationPending"
 import { TRANCHES_AGE } from "@/lib/profile-options"
 
 // Prénom and tranche d'âge are asked here because session_lock has demanded
@@ -37,24 +39,52 @@ const schema = z
   })
 type Fields = z.infer<typeof schema>
 
-export default function InscriptionPage() {
+function InscriptionForm() {
   const { register: registerUser } = useAuth()
-  const router = useRouter()
+  const params = useSearchParams()
+  // Where they were heading (the proxy sends /analyse/* here). It travels in
+  // the confirmation link, so the email round-trip lands them back on it.
+  // Checked as given by safeRedirect; an unusable value is simply no redirect.
+  const next = safeRedirect(params.get("redirect"))
   const [error, setError] = useState<string | null>(null)
+  const [taken, setTaken] = useState(false)
+  const [pending, setPending] = useState<{ email: string; mailSent: boolean } | null>(null)
 
-  const { register, control, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({
+  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<Fields>({
     resolver: zodResolver(schema),
     defaultValues: { consent: false, prenom: "", tranche_age: "" },
   })
 
   const onSubmit = async ({ email, password, prenom, tranche_age, consent }: Fields) => {
     setError(null)
+    setTaken(false)
     try {
-      await registerUser(email, password, { prenom, tranche_age, consent })
-      router.push("/espace")
+      const { mail_sent } = await registerUser(email, password, { prenom, tranche_age, consent }, next)
+      setPending({ email, mailSent: mail_sent })
     } catch (e) {
+      // 409: the address already has an account, confirmed or not. Signing in
+      // or resetting the password is the way back — never a second account.
+      setTaken(e instanceof ApiError && e.status === 409)
       setError(e instanceof ApiError ? e.message : "Erreur lors de la création du compte.")
     }
+  }
+
+  const connexionHref = next ? `/connexion?redirect=${encodeURIComponent(next)}` : "/connexion"
+
+  if (pending) {
+    return (
+      <AuthLayout>
+        {/* Keyed by address: the countdown and the failure flag start from the
+            props once, so a second signup must never inherit the first's. */}
+        <VerificationPending
+          key={pending.email}
+          email={pending.email}
+          next={next}
+          mailSent={pending.mailSent}
+          onRestart={() => { reset(); setPending(null) }}
+        />
+      </AuthLayout>
+    )
   }
 
   return (
@@ -65,7 +95,16 @@ export default function InscriptionPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4">
         {error && (
           <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>
+              {error}
+              {taken && (
+                <span className="mt-1.5 block">
+                  <Link href={connexionHref} className="underline underline-offset-2">Se connecter</Link>
+                  {" · "}
+                  <Link href="/mot-de-passe-oublie" className="underline underline-offset-2">Mot de passe oublié ?</Link>
+                </span>
+              )}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -136,7 +175,7 @@ export default function InscriptionPage() {
 
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Déjà un compte ?{" "}
-        <Link href="/connexion" className="link-underline font-medium text-orange-dark">
+        <Link href={connexionHref} className="link-underline font-medium text-orange-dark">
           Se connecter
         </Link>
       </p>
@@ -148,5 +187,13 @@ export default function InscriptionPage() {
         </Link>
       </p>
     </AuthLayout>
+  )
+}
+
+export default function InscriptionPage() {
+  return (
+    <Suspense>
+      <InscriptionForm />
+    </Suspense>
   )
 }
