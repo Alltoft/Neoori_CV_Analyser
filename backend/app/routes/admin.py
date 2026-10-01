@@ -230,8 +230,8 @@ def _decide(profile, status, reason, reviewer_id):
     """Write the decision and keep user.role a function of it.
 
     approved <=> role 'counselor'. Nothing else may set that role for a
-    conseiller: the JWT claim is minted from it, and every counselor guard
-    reads the claim.
+    conseiller: every counselor guard reads it from this row on each request
+    (utils/decorators._current_role), so the decision bites on the next one.
 
     An admin's role is never touched. POST /api/counselor/apply already refuses
     a demande from an admin account; this is the second lock on the same door,

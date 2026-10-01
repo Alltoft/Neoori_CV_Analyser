@@ -3,7 +3,7 @@ is the only thing that takes it back."""
 from datetime import datetime
 from unittest.mock import patch
 
-from flask_jwt_extended import create_refresh_token
+from flask_jwt_extended import create_access_token, create_refresh_token
 
 from app.extensions import db
 from app.models.counselor_profile import CounselorProfile
@@ -62,8 +62,8 @@ def test_approve_grants_the_role_and_stores_the_limits(client, admin_headers):
 
 
 def test_refresh_mints_the_counselor_claim_after_approval(client, admin_headers):
-    """The claim every counselor guard reads is minted from the row, so an
-    approval reaches the browser on the next refresh — not in an hour."""
+    """The guards no longer read the claim, but /auth/refresh still answers
+    with the user from the row, so the context it feeds shows the new role."""
     user, profile = _demande()
     client.post(
         f"/api/admin/counselor-applications/{profile.id}/approve",
@@ -78,6 +78,27 @@ def test_refresh_mints_the_counselor_claim_after_approval(client, admin_headers)
     r = client.post("/api/auth/refresh", headers=refresh_headers)
     assert r.status_code == 200
     assert r.get_json()["user"]["role"] == "counselor"
+
+
+def test_the_espace_opens_on_the_token_the_demande_was_signed_in_with(client, admin_headers):
+    """The bug that sent new conseillers to log out and back in: their access
+    token was minted while they were still a candidate, and the guards refused
+    it for the rest of its hour. Approval must open the espace on the very next
+    request, whatever claim the browser still carries."""
+    user, profile = _demande()
+    stale = {"Authorization": "Bearer " + create_access_token(
+        identity=str(user.id), additional_claims={"role": "candidate"},
+    )}
+    assert client.get("/api/counselor/stats", headers=stale).status_code == 403
+
+    client.post(
+        f"/api/admin/counselor-applications/{profile.id}/approve",
+        json={}, headers=admin_headers,
+    )
+
+    assert client.get("/api/counselor/stats", headers=stale).status_code == 200
+    assert client.get("/api/counselor/codes", headers=stale).status_code == 200
+    assert client.get("/api/counselor/beneficiaires", headers=stale).status_code == 200
 
 
 def test_approve_with_no_limits_means_illimite(client, admin_headers):

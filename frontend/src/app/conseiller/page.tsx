@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatCard } from "@/components/ui/stat-card"
-import { api, ApiError } from "@/lib/api"
+import { ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { counselor } from "@/lib/counselor"
 import { fmtDate, fmtInt } from "@/lib/format"
@@ -86,26 +86,20 @@ export default function ConseillerPage() {
     }
   }, [])
 
-  // Approval flips user.role in the DB, but the access token in the browser
-  // still says "candidate" until it expires (1 h) — and every /api/counselor
-  // route below /me reads the claim. POST /auth/refresh re-mints it from the
-  // row (backend auth.py:93-99); useAuth().refresh is GET /auth/me and does
-  // NOT, so both are needed: one for the cookie, one for the context.
+  // No token refresh needed after approval: the /api/counselor guards read the
+  // role from the users row on every request (backend utils/decorators.py),
+  // not from the access token minted while this account was still a candidate.
+  // The auth context can still be older than the approval (a tab left open),
+  // and the AppBar menu is cut to it — GET /auth/me reads the row too.
   useEffect(() => {
     if (profile?.status !== "approved") return
-    const run = async () => {
-      if (user && user.role !== "counselor") {
-        try {
-          await api.post("/auth/refresh")
-          await refreshAuth()
-        } catch {
-          // Refresh cookie gone: the 403 below tells them to sign in again.
-        }
-      }
-      await loadDashboard()
-    }
+    const run = async () => { await loadDashboard() }
     run()
-  }, [profile?.status, user, refreshAuth, loadDashboard])
+  }, [profile?.status, loadDashboard])
+
+  useEffect(() => {
+    if (profile?.status === "approved" && user?.role === "candidate") refreshAuth()
+  }, [profile?.status, user?.role, refreshAuth])
 
   const handleCreate = async () => {
     if (!label.trim()) return
