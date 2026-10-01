@@ -239,3 +239,11 @@ def test_reapplying_with_an_unverified_accounts_email_is_refused(client, app):
     assert client.post("/api/counselor/apply", json=PAYLOAD).status_code == 201
     again = client.post("/api/counselor/apply", json={**PAYLOAD, "password": "autrechose9"})
     assert again.status_code == 409
+
+
+def test_apply_refuses_a_password_bcrypt_cannot_take(client, app):
+    # 80 bytes: past bcrypt's 72, which used to be a 500 at the hash.
+    r = client.post("/api/counselor/apply", json={**PAYLOAD, "password": "é" * 40})
+    assert r.status_code == 400
+    assert r.get_json()["error"].startswith("Le mot de passe est trop long")
+    assert User.query.filter_by(email=PAYLOAD["email"]).first() is None

@@ -8,6 +8,7 @@ refused by the other. Rotating SECRET_KEY kills every link in flight — the
 person asks for a new one.
 """
 import hashlib
+import re
 from dataclasses import dataclass
 
 from flask import current_app
@@ -18,6 +19,10 @@ RESET_SALT = "password-reset"
 VERIFY_MAX_AGE = 48 * 3600   # seconds
 RESET_MAX_AGE = 3600
 NEXT_MAX_LENGTH = 512
+# Dot segments as a URL parser reads them, percent-encoded forms included:
+# "/..//evil.com" and "/%2e%2e//evil.com" both resolve to the path
+# "//evil.com", which a router then takes for another host.
+_DOT_SEGMENTS = frozenset({".", "..", "%2e", ".%2e", "%2e.", "%2e%2e"})
 
 
 @dataclass(frozen=True)
@@ -35,7 +40,11 @@ def password_fingerprint(password_hash: str) -> str:
 
 def safe_next(value) -> str | None:
     """A local path (query string allowed), or None. Anything else would make
-    the link an open redirect signed by neoori."""
+    the link an open redirect signed by neoori.
+
+    Judged as given, never decoded or normalised: refusing what could resolve
+    elsewhere is safer than rewriting it into something that cannot. Same
+    rules as the frontend's safeRedirect (lib/safe-redirect.ts)."""
     if not isinstance(value, str):
         return None
     if (
@@ -43,10 +52,21 @@ def safe_next(value) -> str | None:
         or value.startswith("//")
         or value.startswith("/\\")
         or len(value) > NEXT_MAX_LENGTH
-        or any(ch in value for ch in "\r\n\t")
+        # Every C0 control and DEL: a browser drops tab and newline before
+        # parsing, so "/<TAB>/evil.com" would start like a path and resolve
+        # as "//evil.com".
+        or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+        or _has_dot_segment(value)
     ):
         return None
     return value
+
+
+def _has_dot_segment(value: str) -> bool:
+    """A "." or ".." segment in the path part, before any ? or #. A backslash
+    separates segments too: browsers read it as a slash."""
+    path = re.split(r"[?#]", value, maxsplit=1)[0]
+    return any(seg.lower() in _DOT_SEGMENTS for seg in re.split(r"[/\\]", path))
 
 
 def _serializer(salt: str) -> URLSafeTimedSerializer:

@@ -71,7 +71,9 @@ def test_link_and_password_verify_and_sign_in(client, make_user):
 # safe_next lets these through because they are harmless used verbatim as a
 # redirect target. Decoding, normalising or rebuilding them on the way back
 # out would be what turns them into open redirects.
-@pytest.mark.parametrize("stored", ["/..//evil.com", "/%2F%2Fevil.com", "/analyse?x=a%20b&y=%2F"])
+@pytest.mark.parametrize("stored", [
+    "/%2F%2Fevil.com", "/analyse?x=a%20b&y=%2F", "/analyse?next=/..//evil.com",
+])
 def test_the_destination_comes_back_exactly_as_stored(client, make_user, stored):
     token = auth_links.make_verify_token(make_user(verified=False), stored)
     assert _verify(client, token).get_json()["next"] == stored
@@ -83,6 +85,16 @@ def test_the_wrong_password_changes_nothing(client, make_user):
     assert res.status_code == 401
     assert res.get_json()["code"] == "wrong_password"
     assert "access_token_cookie" not in _cookies(res)
+    assert _fresh(user).email_verified_at is None
+
+
+@pytest.mark.parametrize("password", ["é" * 40, "\ud800abc"])
+def test_a_password_bcrypt_cannot_take_is_a_wrong_password(client, make_user, password):
+    # 80 bytes, or a lone surrogate: bcrypt raised on both, a 500.
+    user = make_user(verified=False)
+    res = _verify(client, auth_links.make_verify_token(user), password)
+    assert res.status_code == 401
+    assert res.get_json()["code"] == "wrong_password"
     assert _fresh(user).email_verified_at is None
 
 
@@ -239,6 +251,15 @@ def test_a_reset_link_works_once(client, make_user):
 def test_a_short_password_does_not_spend_the_link(client, make_user):
     token = auth_links.make_reset_token(make_user())
     assert _reset(client, token, "court").status_code == 400
+    assert _reset(client, token).status_code == 200
+
+
+@pytest.mark.parametrize("password", ["é" * 40, "\ud800abcdefgh"])
+def test_a_password_bcrypt_cannot_take_does_not_spend_the_link(client, make_user, password):
+    token = auth_links.make_reset_token(make_user())
+    res = _reset(client, token, password)
+    assert res.status_code == 400
+    assert res.get_json()["error"].startswith("Le mot de passe")
     assert _reset(client, token).status_code == 200
 
 

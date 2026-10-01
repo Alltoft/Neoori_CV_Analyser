@@ -37,9 +37,36 @@ def test_next_refuses_anything_but_a_local_path(bad):
     assert auth_links.safe_next(bad) is None
 
 
+# Dot segments resolve before a router sees the path: each of these becomes
+# "//evil.com", another host. Percent-encoded dots count, as they do for the
+# URL parser, and so does a backslash as a separator.
+@pytest.mark.parametrize("bad", [
+    "/..//evil.com", "/.//evil.com", "/a/..//evil.com", "/./x", "/a/../b", "/..",
+    "/%2e%2e//evil.com", "/%2E.//evil.com", "/.%2e//evil.com", "/%2e//evil.com",
+    "/a\\..\\/evil.com", "/a/..?x=1", "/a/.#top",
+])
+def test_next_refuses_a_dot_segment(bad):
+    assert auth_links.safe_next(bad) is None
+
+
+@pytest.mark.parametrize("ch", [chr(c) for c in (*range(0x20), 0x7F)])
+def test_next_refuses_every_control_character(ch):
+    assert auth_links.safe_next(f"/analyse{ch}nouveau") is None
+
+
 def test_next_keeps_a_local_path_and_its_query():
     # Review Focus 4: the query string of a gated page must survive the trip.
     assert auth_links.safe_next("/analyse/nouveau?parcours=2") == "/analyse/nouveau?parcours=2"
+
+
+@pytest.mark.parametrize("ok", [
+    "/analyse/nouveau?redirect=%2F%2Fevil.com",   # verbatim, never decoded
+    "/analyse?next=/..//x",                        # dots after ? are query
+    "/espace#/../x",                               # ... and after # fragment
+    "/v1.2/rapport", "/a/.well-known", "/a/...", "/a..b/c.",
+])
+def test_next_keeps_dots_that_are_not_a_segment(ok):
+    assert auth_links.safe_next(ok) == ok
 
 
 def test_an_unsafe_next_is_dropped_from_the_link(app):

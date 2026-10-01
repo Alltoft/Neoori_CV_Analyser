@@ -31,6 +31,7 @@ from ..models.voyage import Voyage
 from ..services import auth_mail, code_service
 from ..utils.decorators import approved_counselor_required
 from ..utils.request_body import json_object, raw_text_field, text_field
+from .auth import password_problem
 
 counselor_space_bp = Blueprint("counselor_space", __name__)
 
@@ -160,8 +161,11 @@ def apply():
         password = raw_text_field(data, "password")
         if not email or not password:
             return jsonify({"error": "Email et mot de passe requis."}), 400
-        if len(password) < 8:
-            return jsonify({"error": "Le mot de passe doit contenir au moins 8 caractères."}), 400
+        # register's rule, so a password bcrypt cannot take is a 400 here too
+        # rather than a 500 at the hash below.
+        problem = password_problem(password)
+        if problem:
+            return jsonify({"error": problem}), 400
         if User.query.filter_by(email=email).first():
             return jsonify({"error": "Un compte existe déjà avec cet email."}), 409
         user = User(

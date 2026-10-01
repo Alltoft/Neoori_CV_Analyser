@@ -27,6 +27,13 @@ auth_bp = Blueprint("auth", __name__)
 # placement exists to remove.
 SEED_FIELDS = ("prenom", "tranche_age")
 
+# bcrypt reads at most 72 bytes, and bcrypt 5 raises past that instead of
+# truncating; a lone surrogate cannot be encoded at all. Both were a 500, and
+# at login a 500 only when the account existed. Not solved with
+# BCRYPT_HANDLE_LONG_PASSWORDS: it pre-hashes, which would stop every stored
+# hash from matching.
+PASSWORD_MAX_BYTES = 72
+
 
 @auth_bp.post("/register")
 def register():
@@ -36,8 +43,9 @@ def register():
 
     if not email or not password:
         return jsonify({"error": "Email et mot de passe requis."}), 400
-    if len(password) < 8:
-        return jsonify({"error": "Le mot de passe doit contenir au moins 8 caractères."}), 400
+    problem = password_problem(password)
+    if problem:
+        return jsonify({"error": problem}), 400
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Un compte existe déjà avec cet email."}), 409
 
@@ -83,7 +91,9 @@ def login():
     password = raw_text_field(data, "password")
 
     user = User.query.filter_by(email=email).first()
-    if not user or not bcrypt.check_password_hash(user.password_hash, password):
+    # password_matches never raises: a password bcrypt cannot take is a wrong
+    # password, answered exactly as an unknown address is (spec decision 9).
+    if not user or not password_matches(user, password):
         return jsonify({"error": "Identifiants incorrects."}), 401
 
     # 403, not 401: api.ts sends every 401 back to /connexion, which would
@@ -182,7 +192,7 @@ def verify_email():
         return _link_error(code)
 
     password = raw_text_field(data, "password")
-    if not password or not bcrypt.check_password_hash(user.password_hash, password):
+    if not password or not password_matches(user, password):
         return jsonify({"error": "Mot de passe incorrect.", "code": "wrong_password"}), 401
 
     if user.email_verified_at is None:
@@ -225,8 +235,9 @@ def reset_password():
     # Checked before anything is written, so a refused password leaves the
     # link usable for the next attempt.
     password = raw_text_field(data, "password")
-    if len(password) < 8:
-        return jsonify({"error": "Le mot de passe doit contenir au moins 8 caractères."}), 400
+    problem = password_problem(password)
+    if problem:
+        return jsonify({"error": problem}), 400
 
     user.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
     # Opening the link proved the inbox, exactly as the verification link
@@ -243,9 +254,11 @@ def reset_password():
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _issue_session(response, user: User):
-    """The only place a session is minted. It refuses an unverified account, so
-    a route added later cannot hand one out by forgetting a check (spec
-    decision 2)."""
+    """The only place a session (the refresh + access pair) is opened. It
+    refuses an unverified account, so a route added later cannot hand one out
+    by forgetting a check (spec decision 2). /refresh re-mints the access
+    cookie alone, for a session opened here, after its own verified + pwv
+    checks."""
     if user.email_verified_at is None:
         raise ValueError("refusing to open a session for an unverified account")
     access_token = create_access_token(
@@ -258,6 +271,39 @@ def _issue_session(response, user: User):
     )
     set_access_cookies(response, access_token)
     set_refresh_cookies(response, refresh_token)
+
+
+def password_problem(password: str) -> str | None:
+    """Why a new password cannot be stored, as the French sentence to show,
+    or None. For every route that sets one: register, reset-password and the
+    conseiller demande (counselor_space.apply)."""
+    if len(password) < 8:
+        return "Le mot de passe doit contenir au moins 8 caractères."
+    size = _password_bytes(password)
+    if size is None:
+        return "Le mot de passe contient un caractère non pris en charge."
+    if size > PASSWORD_MAX_BYTES:
+        return "Le mot de passe est trop long : 72 caractères maximum, un peu moins avec des accents."
+    return None
+
+
+def password_matches(user: User, password: str) -> bool:
+    """bcrypt's check, minus its exceptions. A password bcrypt cannot take is
+    simply not this account's password, so login and verify-email answer it
+    as they answer any wrong one."""
+    size = _password_bytes(password)
+    if size is None or size > PASSWORD_MAX_BYTES:
+        return False
+    return bcrypt.check_password_hash(user.password_hash, password)
+
+
+def _password_bytes(password: str) -> int | None:
+    """UTF-8 length, or None for a string that cannot be encoded (a lone
+    surrogate, which JSON can carry)."""
+    try:
+        return len(password.encode("utf-8"))
+    except UnicodeEncodeError:
+        return None
 
 
 def _link_error(code: str):

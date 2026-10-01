@@ -110,3 +110,33 @@ def test_refresh_after_a_password_change_is_refused(client, make_user):
 
 def test_refresh_of_an_unverified_account_is_refused(client, make_user):
     assert _refresh(client, _refresh_token(make_user(verified=False))).status_code == 401
+
+
+# ── passwords bcrypt cannot take ─────────────────────────────────────────────
+# bcrypt 5 raises past 72 UTF-8 bytes, and a lone surrogate cannot be encoded.
+# Both used to be a 500 — at login, only for an address with an account.
+
+TOO_LONG = "é" * 40             # 40 characters, 80 bytes
+
+
+@pytest.mark.parametrize("password", [TOO_LONG, "\ud800abcdefgh"])
+def test_register_refuses_a_password_bcrypt_cannot_take(client, password):
+    res = _register(client, password=password)
+    assert res.status_code == 400
+    assert res.get_json()["error"].startswith("Le mot de passe")
+    assert User.query.filter_by(email="nouveau@test.fr").first() is None
+
+
+def test_seventy_two_bytes_still_register_and_log_in(client, make_user):
+    assert _register(client, password="é" * 36).status_code == 201   # 72 bytes
+    make_user(email="long@test.fr", password="a" * 72)
+    assert _login(client, "long@test.fr", "a" * 72).status_code == 200
+
+
+@pytest.mark.parametrize("password", [TOO_LONG, "a" * 73, "\ud800abc"])
+def test_login_answers_such_a_password_the_same_for_any_address(client, make_user, password):
+    make_user(email="existe@test.fr")
+    known = _login(client, "existe@test.fr", password)
+    unknown = _login(client, "inconnu@test.fr", password)
+    assert known.status_code == unknown.status_code == 401
+    assert known.get_json() == unknown.get_json() == {"error": "Identifiants incorrects."}
