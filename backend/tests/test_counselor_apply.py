@@ -210,3 +210,32 @@ def test_a_stale_token_does_not_block_an_anonymous_demande(client, app):
     )
     assert r.status_code == 201
     assert r.get_json()["user"]["email"] == PAYLOAD["email"]
+
+
+def test_a_new_account_demande_opens_no_session(client, app):
+    app.debug = False   # FLASK_DEBUG in a developer's shell must not flip mail_sent
+    r = client.post("/api/counselor/apply", json=PAYLOAD)
+    assert r.status_code == 201
+    assert "access_token_cookie" not in " ".join(r.headers.getlist("Set-Cookie"))
+    assert r.get_json()["mail_sent"] is False      # no key in tests
+    assert r.get_json()["user"]["email_verified"] is False
+
+
+def test_the_demande_link_lands_on_the_conseiller_screen(client, app):
+    import re
+    from unittest.mock import patch
+
+    from app.utils import auth_links
+
+    app.config["RESEND_API_KEY"] = "re_test"
+    with patch("app.services.email_service.resend.Emails.send", return_value={"id": "1"}) as mock_send:
+        r = client.post("/api/counselor/apply", json=PAYLOAD)
+    assert r.get_json()["mail_sent"] is True
+    token = re.search(r"token=([A-Za-z0-9_.\-]+)", mock_send.call_args[0][0]["text"]).group(1)
+    assert auth_links.load_verify_token(token).payload["next"] == "/conseiller"
+
+
+def test_reapplying_with_an_unverified_accounts_email_is_refused(client, app):
+    assert client.post("/api/counselor/apply", json=PAYLOAD).status_code == 201
+    again = client.post("/api/counselor/apply", json={**PAYLOAD, "password": "autrechose9"})
+    assert again.status_code == 409

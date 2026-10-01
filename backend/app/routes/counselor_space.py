@@ -9,12 +9,8 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify
 from flask_jwt_extended import (
-    create_access_token,
-    create_refresh_token,
     get_jwt_identity,
     jwt_required,
-    set_access_cookies,
-    set_refresh_cookies,
     verify_jwt_in_request,
 )
 from flask_jwt_extended.exceptions import JWTExtendedException
@@ -32,7 +28,7 @@ from ..models.counselor_profile import (
 from ..models.profile import Profile
 from ..models.user import User
 from ..models.voyage import Voyage
-from ..services import code_service
+from ..services import auth_mail, code_service
 from ..utils.decorators import approved_counselor_required
 from ..utils.request_body import json_object, raw_text_field, text_field
 
@@ -186,14 +182,14 @@ def apply():
     db.session.add(profile)
     db.session.commit()
 
-    response = jsonify({"user": user.to_dict(), "profile": profile.to_dict()})
+    body = {"user": user.to_dict(), "profile": profile.to_dict()}
     if created:
-        access_token = create_access_token(
-            identity=user.id, additional_claims={"role": user.role}
-        )
-        set_access_cookies(response, access_token)
-        set_refresh_cookies(response, create_refresh_token(identity=user.id))
-    return response, 201
+        # A new account opens only once its address is proven (email
+        # verification spec, decision 2): no session here, a link instead,
+        # landing on the « demande en attente » screen. The demande waits for
+        # the same proof before the admin queue shows it (decision 16).
+        body["mail_sent"] = auth_mail.verification_if_due(user, "/conseiller")
+    return jsonify(body), 201
 
 
 @counselor_space_bp.get("/me")
