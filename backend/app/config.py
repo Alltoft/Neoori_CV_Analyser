@@ -5,6 +5,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _addresses(raw: str) -> list[str]:
+    """A comma-separated env value as clean, lowercased email addresses."""
+    return [a.strip().lower() for a in raw.split(",") if a.strip()]
+
+
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-in-prod")
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
@@ -32,6 +37,10 @@ class Config:
     # Public origin every account mail links to (verification, reset,
     # conseiller). The dev compose file points it at http://localhost:8080.
     APP_URL = os.environ.get("APP_URL", "https://neoori.tech").rstrip("/")
+    # Who the « Nouvelle demande de compte conseiller » mail goes to, comma-
+    # separated. Production names a real inbox: the shared admin login
+    # (admin@neoori.dev) has no mailbox. Unset, every verified admin gets it.
+    ADMIN_NOTIFY_EMAILS = _addresses(os.environ.get("ADMIN_NOTIFY_EMAIL", ""))
     FRONTEND_ORIGINS = [
         o.strip()
         for o in os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:3001").split(",")

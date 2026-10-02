@@ -311,3 +311,10 @@ Found while writing the implementation plan
    the run an unlock starts, which is what `unlock_method` marks.
 4. **`send_new_demande(admin)` takes the admin's `User`**, so the admin mail
    greets by prénom like the others.
+5. **After the build, developer ruling: `ADMIN_NOTIFY_EMAIL` names the
+   recipients** (supersedes decision 3 where it is set). Production's only
+   admin, the shared login `admin@neoori.dev`, has no mailbox (neoori.dev has
+   no MX record), so « every verified admin » would bounce every demande mail.
+   The VPS `.env` names a real inbox; unset, every verified admin still gets
+   it. `send_new_demande` takes plain values `(to, prenom)` so a named address
+   needs no account.

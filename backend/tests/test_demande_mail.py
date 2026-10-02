@@ -8,6 +8,7 @@ from flask_jwt_extended import create_access_token
 
 from app.extensions import db
 from app.models.counselor_profile import CounselorProfile
+from app.models.profile import Profile
 from app.models.user import User
 from app.services import demande_mail
 from app.utils import auth_links
@@ -52,7 +53,7 @@ def _signed_in(user) -> dict:
 
 
 def _told(mock_new_demande) -> list[str]:
-    return [c.args[0].email for c in mock_new_demande.call_args_list]
+    return [c.args[0] for c in mock_new_demande.call_args_list]
 
 
 def _apply_without_account(client) -> User:
@@ -212,3 +213,44 @@ def test_a_failed_admin_lookup_does_not_block_the_verification(client, make_user
     # The verification itself survived the failed admin lookup.
     db.session.expire_all()
     assert db.session.get(User, applicant.id).email_verified_at is not None
+
+
+# ── ADMIN_NOTIFY_EMAIL: production names the inbox ───────────────────────────
+
+def test_the_setting_names_the_only_recipients(app, make_user):
+    """The shared admin login has no mailbox (neoori.dev has no MX record), so
+    production names a real inbox; a verified admin outside the list hears
+    nothing."""
+    app.config["ADMIN_NOTIFY_EMAILS"] = ["ouakouriimran@gmail.com"]
+    _admin(make_user)
+    applicant = _pending(make_user)
+    with patch(NEW_DEMANDE) as told:
+        demande_mail.notify_if_visible(applicant)
+    assert _told(told) == ["ouakouriimran@gmail.com"]
+
+
+def test_a_named_address_with_an_account_is_greeted_by_its_prenom(app, make_user):
+    app.config["ADMIN_NOTIFY_EMAILS"] = ["boss@neoori.tech"]
+    boss = make_user(email="boss@neoori.tech", role="admin")
+    db.session.add(Profile(user_id=boss.id, prenom="Imran"))
+    db.session.commit()
+    applicant = _pending(make_user)
+    with patch(NEW_DEMANDE) as told:
+        demande_mail.notify_if_visible(applicant)
+    assert told.call_args_list[0].args == ("boss@neoori.tech", "Imran")
+
+
+def test_the_setting_does_not_skip_the_queue_rules(app, make_user):
+    app.config["ADMIN_NOTIFY_EMAILS"] = ["ouakouriimran@gmail.com"]
+    with patch(NEW_DEMANDE) as told:
+        demande_mail.notify_if_visible(make_user(email="marie@test.fr"))   # no demande
+    told.assert_not_called()
+
+
+def test_the_setting_reads_a_comma_separated_list():
+    from app.config import _addresses
+
+    assert _addresses(" Ouakouriimran@Gmail.com , ,pm@neoori.tech ") == [
+        "ouakouriimran@gmail.com", "pm@neoori.tech",
+    ]
+    assert _addresses("") == []

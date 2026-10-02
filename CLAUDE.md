@@ -355,7 +355,7 @@ approval and rejection mails, which predate it and are HTML-only.
 | Réinitialiser votre mot de passe | the account | « mot de passe oublié » — `services/auth_mail.py` |
 | Votre mot de passe a été modifié | the account | `auth.reset_password`, after its commit |
 | Votre analyse est prête / n'a pas abouti | the analysis owner, verified only | `anthropic_service._notify_outcome`, at every final status `_run_analysis` writes |
-| Nouvelle demande de compte conseiller | every verified admin | `services/demande_mail.notify_if_visible` |
+| Nouvelle demande de compte conseiller | the addresses in `ADMIN_NOTIFY_EMAIL`; every verified admin when it is unset | `services/demande_mail.notify_if_visible` |
 | Compte activé / demande non retenue / accès retiré | the conseiller | `admin` approve / reject / revoke |
 
 - **The analysis mail goes out on every run `_run_analysis` finishes, watched
@@ -370,7 +370,11 @@ approval and rejection mails, which predate it and are HTML-only.
 - **The admin mail fires when a demande enters the queue**: a signed-in
   applicant applies, or an applicant's address is proven for the first time,
   by its verification link or by a reset link. Admin « Marquer comme vérifié »
-  does not send it.
+  does not send it. Production sets `ADMIN_NOTIFY_EMAIL` in
+  `/srv/neoori/.env` (comma-separated; today `ouakouriimran@gmail.com`): the
+  shared admin login, `admin@neoori.dev`, has no mailbox — neoori.dev has no
+  MX record — so every copy sent there would bounce. A new recipient is an
+  `.env` edit plus a redeploy, not a new admin account.
 - Resend's free plan is 100 mails a day, shared by every mail above.
 
 Spec: `docs/superpowers/specs/2026-10-02-transactional-mails-design.md`

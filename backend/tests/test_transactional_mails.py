@@ -162,14 +162,11 @@ def test_the_failure_mail_after_an_unlock_asks_for_a_reply(app):
     assert "<a " not in mail["html"]      # no button: the espace offers nothing here
 
 
-def test_the_demande_mail_greets_the_admin_and_links_to_the_queue(app, make_user):
+def test_the_demande_mail_greets_the_admin_and_links_to_the_queue(app):
     app.config["RESEND_API_KEY"] = "re_test"
     app.config["APP_URL"] = "https://neoori.tech"
-    admin = make_user(email="admin@neoori.tech", role="admin")
-    db.session.add(Profile(user_id=admin.id, prenom="Paul"))
-    db.session.commit()
     with patch(SEND, return_value={"id": "1"}) as mock_send:
-        assert email_service.send_new_demande(admin) is True
+        assert email_service.send_new_demande("admin@neoori.tech", "Paul") is True
     mail = _sent(mock_send)
     assert mail["to"] == ["admin@neoori.tech"]
     assert mail["subject"] == "Nouvelle demande de compte conseiller"

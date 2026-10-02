@@ -297,19 +297,20 @@ def send_analysis_failed(to: str, prenom: str, *, unlocked: bool, analysis_id: s
         return False
 
 
-def send_new_demande(admin) -> bool:
-    """« Nouvelle demande de compte conseiller », to one admin. Nothing about
-    the applicant: name, structure and phone stay behind the dashboard login."""
+def send_new_demande(to: str, prenom: str) -> bool:
+    """« Nouvelle demande de compte conseiller », to one address. Plain values:
+    demande_mail picks the recipients. Nothing about the applicant: name,
+    structure and phone stay behind the dashboard login."""
     try:
         body, text = _mail(
             [
-                _greeting(prenom_of(admin)),
+                _greeting(prenom),
                 "Une demande de compte conseiller attend votre décision.",
             ],
             button=("Voir les demandes", f"{_app_url()}/admin/conseillers"),
         )
         return send(
-            admin.email, "Nouvelle demande de compte conseiller",
+            to, "Nouvelle demande de compte conseiller",
             _layout("Nouvelle demande", body), text,
         )
     except Exception:

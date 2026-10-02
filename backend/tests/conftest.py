@@ -49,6 +49,9 @@ def app():
     # os.environ when the module is imported — so blanking the environment in a
     # fixture would be too late to matter. Blank the config instead.
     application.config["RESEND_API_KEY"] = None
+    # Same reason for the demande-mail recipients: a developer's .env naming
+    # ADMIN_NOTIFY_EMAIL must not decide who the tests mail.
+    application.config["ADMIN_NOTIFY_EMAILS"] = []
     with application.app_context():
         _db.create_all()
         yield application
