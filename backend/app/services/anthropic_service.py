@@ -5,11 +5,13 @@ import threading
 import time
 from datetime import datetime
 import anthropic
+from flask import current_app
 from json_repair import repair_json
 
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.prompt_version import PromptVersion
+from . import email_service
 from . import section_registry as registry
 from . import tiers
 
@@ -470,7 +472,8 @@ class ProgressReporter:
 
 
 def _run_analysis(analysis_id: str, app) -> None:
-    """Run a single analysis to completion. Writes status + output to DB.
+    """Run a single analysis to completion. Writes status + output to DB, then
+    mails the owner (_notify_outcome) after each final commit.
 
     Designed to run inside a background daemon thread spawned by the
     `POST /analyses/` route. Internally still uses the Anthropic streaming
@@ -490,6 +493,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             analysis.status = "error"
             analysis.raw_output = f"Aucun prompt actif pour le chemin {path}."
             db.session.commit()
+            _notify_outcome(analysis_id)
             return
 
         # Chemin B is free + Sonnet for all users (decision 4.6 / 4.7).
@@ -569,6 +573,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             analysis.status = "timeout" if ("timeout" in msg or "timed out" in msg) else "error"
             analysis.raw_output = str(error_exc)[:2000]
             db.session.commit()
+            _notify_outcome(analysis_id)
             return
 
         analysis.status = "success"
@@ -579,6 +584,40 @@ def _run_analysis(analysis_id: str, app) -> None:
         analysis.tokens_out = tokens_out
         analysis.completed_at = datetime.utcnow()
         db.session.commit()
+        _notify_outcome(analysis_id)
+
+
+def _notify_outcome(analysis_id: str) -> None:
+    """Mail the owner how the run ended. Called after each final commit.
+
+    Every finished run is mailed, watched or not (transactional mails spec,
+    decision 2), and the mail carries no report text (decision 7). Reads what
+    it needs, then releases the connection before the HTTP call to Resend —
+    the discipline the stream above keeps. Never raises and never writes: the
+    status is already committed, and a mail failure must not reach it.
+    """
+    try:
+        analysis = db.session.get(Analysis, analysis_id)
+        user = analysis.user if analysis is not None else None
+        # No mail to an address nobody proved (decision 8); an ownerless row
+        # predates accounts.
+        if user is None or user.email_verified_at is None:
+            return
+        to, prenom = user.email, email_service.prenom_of(user)
+        status = analysis.status
+        # unlock_service writes unlock_method before it requeues the row, so
+        # it marks the second run — bought or by code alike.
+        unlocked = analysis.unlock_method is not None
+        db.session.remove()
+
+        if status == "success":
+            email_service.send_analysis_ready(to, prenom, unlocked=unlocked)
+        elif status in ("error", "timeout"):
+            email_service.send_analysis_failed(
+                to, prenom, unlocked=unlocked, analysis_id=analysis_id
+            )
+    except Exception:
+        current_app.logger.exception("Could not mail the outcome of analysis %s.", analysis_id)
 
 
 def start_analysis(analysis_id: str, app) -> None:
