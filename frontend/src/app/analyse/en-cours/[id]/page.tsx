@@ -71,10 +71,10 @@ export default function EnCoursPage() {
 
     const poll = async () => {
       if (!alive) return
-      if (Date.now() - startRef.current > POLL_MAX_MS) {
-        setStalled(true)
-        return
-      }
+      // Read before the fetch, acted on after it: a tab resumed from sleep
+      // past the deadline still asks the server first, so a run that finished
+      // meanwhile opens its report instead of « C’est plus long que prévu ».
+      const overdue = Date.now() - startRef.current > POLL_MAX_MS
       try {
         const res = await api.get<{ analysis: Analysis }>(`/analyses/${id}`)
         if (!alive) return
@@ -96,12 +96,21 @@ export default function EnCoursPage() {
           setError("L'analyse a expiré. Veuillez réessayer.")
           return
         }
-        // queued | running → keep polling
+        // queued | running → keep polling, until this page has watched long enough
+        if (overdue) {
+          setStalled(true)
+          return
+        }
         const pct = typeof reported === "number" ? reported : fallbackPct()
         targetRef.current = Math.max(targetRef.current, pct)
         schedule(POLL_INTERVAL_MS, poll)
       } catch {
         if (!alive) return
+        // Still unreachable past the deadline: stop watching, as above.
+        if (overdue) {
+          setStalled(true)
+          return
+        }
         // Transient network/proxy blip — back off and retry rather than fail loud
         schedule(POLL_BACKOFF_MS, poll)
       }
