@@ -195,8 +195,20 @@ def test_a_failed_admin_lookup_does_not_block_the_verification(client, make_user
     # them out over a mail they never asked for.
     _admin(make_user)
     applicant = _apply_without_account(client)
+
+    def poison_session(*args, **kwargs):
+        # Inject a constraint violation to poison the session, like a dropped
+        # connection would. The flush fails; the session is left pending
+        # rollback. Without db.session.rollback() in notify_if_visible's
+        # except, the route's next query (_landing) raises PendingRollbackError.
+        db.session.add(User(email=None, password_hash="x"))
+        db.session.flush()
+
     with patch("app.services.demande_mail.CounselorProfile") as broken:
-        broken.query.filter_by.side_effect = RuntimeError("Lost connection")
+        broken.query.filter_by.side_effect = poison_session
         r = _verify(client, applicant)
     assert r.status_code == 200
     assert "access_token_cookie" in " ".join(r.headers.getlist("Set-Cookie"))
+    # The verification itself survived the failed admin lookup.
+    db.session.expire_all()
+    assert db.session.get(User, applicant.id).email_verified_at is not None

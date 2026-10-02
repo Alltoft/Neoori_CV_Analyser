@@ -16,6 +16,7 @@ clicked is already looking at the queue.
 """
 from flask import current_app
 
+from ..extensions import db
 from ..models.counselor_profile import CounselorProfile
 from ..models.user import User
 from . import email_service
@@ -37,6 +38,9 @@ def notify_if_visible(user) -> None:
         ).all()
     except Exception:
         current_app.logger.exception("Could not look up the demande or the admins to tell.")
+        # Every caller has already committed; a failed lookup may have left the
+        # session pending rollback, so the request's next query must not 500.
+        db.session.rollback()
         return
     if not admins:
         current_app.logger.warning("A conseiller demande is waiting, and no verified admin to tell.")
