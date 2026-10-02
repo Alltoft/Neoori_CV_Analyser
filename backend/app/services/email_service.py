@@ -238,7 +238,8 @@ def send_password_reset(user) -> bool:
 
 # ── Lot 2 (transactional mails spec, 2026-10-02) ─────────────────────────────
 # Each one leaves after the commit that decided it and says that something
-# happened and where to read it, behind a login — never the content itself.
+# happened — never the content itself. Which of them link where, and which
+# carry no link, is listed in CLAUDE.md (« Mails transactionnels »).
 
 
 def send_analysis_ready(to: str, prenom: str, *, unlocked: bool) -> bool:

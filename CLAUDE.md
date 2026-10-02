@@ -360,11 +360,11 @@ approval and rejection mails, which predate it and are HTML-only.
 
 - **The analysis mail goes out on every run `_run_analysis` finishes, watched
   or not.** That is what lets the waiting page say « vous pouvez fermer cette
-  page », and why its 10-minute give-up reads « C'est plus long que prévu »,
+  page », and why its 10-minute give-up reads « C’est plus long que prévu »,
   not an error. A run orphaned by a restart is not one of them:
   `reap_stale_running` marks it `error` at startup and sends nothing.
 - **The run an unlock starts (`unlock_method` set) has its own wording.** When
-  it fails, the code is still a dead end — a second unlock is a 409 — so the
+  it fails, the unlock is still a dead end — a second unlock is a 409 — so the
   mail asks the candidate to reply, with the analysis id. Relaunching it is
   manual.
 - **The admin mail fires when a demande enters the queue**: a signed-in
