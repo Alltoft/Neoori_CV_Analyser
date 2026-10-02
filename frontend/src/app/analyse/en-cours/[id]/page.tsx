@@ -27,7 +27,7 @@ const FALLBACK_CEILING = 95
 
 const POLL_INTERVAL_MS = 2000
 const POLL_BACKOFF_MS  = 4000   // on network blip
-const POLL_MAX_MS      = 10 * 60 * 1000   // give up after 10 min total
+const POLL_MAX_MS      = 10 * 60 * 1000   // stop watching after 10 min; the mail takes over
 
 const EASE_INTERVAL_MS = 120    // bar catches up to the reported value
 
@@ -46,6 +46,9 @@ export default function EnCoursPage() {
   const [progress,   setProgress]   = useState(0)   // what the bar renders
   const [done,       setDone]        = useState(false)
   const [error,      setError]       = useState<string | null>(null)
+  // This page stopped watching, not the server: a run past POLL_MAX_MS may
+  // still finish, and its mail says so. Not an error, so not « n'a pas abouti ».
+  const [stalled,    setStalled]     = useState(false)
   const [hint,       setHint]        = useState<string | null>(null)
   const [elapsed,    setElapsed]     = useState(0)
   const startRef  = useRef(Date.now())
@@ -69,7 +72,7 @@ export default function EnCoursPage() {
     const poll = async () => {
       if (!alive) return
       if (Date.now() - startRef.current > POLL_MAX_MS) {
-        setError("L'analyse a expiré. Veuillez réessayer.")
+        setStalled(true)
         return
       }
       try {
@@ -138,18 +141,24 @@ export default function EnCoursPage() {
 
         <div className="mb-8 text-center">
           <p className="eyebrow mb-4 inline-flex items-center gap-2 text-orange-dark">
-            <InfinityMark animate={!error} className="h-[1.2em]" />
+            <InfinityMark animate={!error && !stalled} className="h-[1.2em]" />
             {error
               ? "Analyse interrompue"
-              : `Analyse en cours${hint ? ` · ${hint}` : ""}`}
+              : `Analyse en cours${hint && !stalled ? ` · ${hint}` : ""}`}
           </p>
           <h1 className="font-display text-3xl font-bold tracking-tight text-navy">
-            {error ? "L’analyse n’a pas abouti" : "Analyse en cours"}
+            {error
+              ? "L’analyse n’a pas abouti"
+              : stalled
+                ? "C’est plus long que prévu"
+                : "Analyse en cours"}
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
             {error
               ? "Vous pouvez relancer une analyse, vos informations sont conservées."
-              : "Nous lisons votre profil et préparons votre rapport."}
+              : stalled
+                ? "Vous recevrez un email dès qu’elle sera prête."
+                : "Nous lisons votre profil et préparons votre rapport."}
           </p>
         </div>
 
@@ -163,6 +172,15 @@ export default function EnCoursPage() {
             >
               <ArrowLeft className="size-4" />
               Nouvelle analyse
+            </Button>
+          </div>
+        ) : stalled ? (
+          <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-card sm:p-8">
+            {/* Not « Nouvelle analyse »: the first run may still be going, and
+                a second would cost a second generation. */}
+            <Button variant="navy" size="lg" onClick={() => router.push("/espace")}>
+              <ArrowLeft className="size-4" />
+              Retour à mon espace
             </Button>
           </div>
         ) : (
@@ -216,7 +234,7 @@ export default function EnCoursPage() {
               </div>
               <Progress value={progress} className="h-2" />
               <p className="mt-4 text-center text-[12px] leading-relaxed text-muted-foreground">
-                Laissez cet onglet ouvert, le rapport s’affiche automatiquement.
+                Le rapport s’affiche ici automatiquement. Vous recevrez un email quand il sera prêt — vous pouvez fermer cette page.
               </p>
             </div>
           </div>
