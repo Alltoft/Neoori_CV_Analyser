@@ -15,7 +15,7 @@ from ..extensions import db, bcrypt
 from ..models.counselor_profile import CounselorProfile
 from ..models.profile import ACCEPTED_AGE_BRACKETS, CONSENT_VERSION, Profile
 from ..models.user import User
-from ..services import auth_mail, email_service
+from ..services import auth_mail, demande_mail, email_service
 from ..utils import auth_links
 from ..utils.request_body import json_object, text_field, raw_text_field
 
@@ -198,6 +198,9 @@ def verify_email():
     if user.email_verified_at is None:
         user.email_verified_at = datetime.utcnow()
         db.session.commit()
+        # This address's first proof: a demande waiting on it joins the admin
+        # queue now. A second use of the link is a login and skips this.
+        demande_mail.notify_if_visible(user)
 
     response = jsonify({"user": user.to_dict(), "next": _landing(user, payload)})
     _issue_session(response, user)
@@ -242,7 +245,8 @@ def reset_password():
     user.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
     # Opening the link proved the inbox, exactly as the verification link
     # does (spec decision 12).
-    if user.email_verified_at is None:
+    newly_verified = user.email_verified_at is None
+    if newly_verified:
         user.email_verified_at = datetime.utcnow()
     db.session.commit()
 
@@ -250,6 +254,9 @@ def reset_password():
     # when someone else held the link; not paced by auth_mail_sent_at, since
     # the link that made this reset possible already was.
     email_service.send_password_changed(user)
+    if newly_verified:
+        # The same first proof verify_email() reacts to, by the other door.
+        demande_mail.notify_if_visible(user)
 
     response = jsonify({"user": user.to_dict()})
     _issue_session(response, user)

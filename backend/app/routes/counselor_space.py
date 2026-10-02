@@ -28,7 +28,7 @@ from ..models.counselor_profile import (
 from ..models.profile import Profile
 from ..models.user import User
 from ..models.voyage import Voyage
-from ..services import auth_mail, code_service
+from ..services import auth_mail, code_service, demande_mail
 from ..utils.decorators import approved_counselor_required
 from ..utils.request_body import json_object, raw_text_field, text_field
 from .auth import password_problem
@@ -193,6 +193,10 @@ def apply():
         # landing on the « demande en attente » screen. The demande waits for
         # the same proof before the admin queue shows it (decision 16).
         body["mail_sent"] = auth_mail.verification_if_due(user, "/conseiller")
+    else:
+        # Signed in means a proven address (no session before one), so this
+        # demande is in the admin queue from the commit above.
+        demande_mail.notify_if_visible(user)
     return jsonify(body), 201
 
 
