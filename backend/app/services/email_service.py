@@ -45,7 +45,7 @@ def send(to: str, subject: str, html: str, text: str | None = None) -> bool:
 
 
 def _layout(title: str, body: str) -> str:
-    """One sober frame for both mails. Inline styles: mail clients drop <style>."""
+    """One sober frame for every mail. Inline styles: mail clients drop <style>."""
     return (
         '<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#1d1a17;'
         'max-width:520px;margin:0 auto;padding:24px">'
@@ -134,23 +134,50 @@ def _button(href: str, label: str) -> str:
     )
 
 
-def _link_mail(paragraphs: list[str], label: str, link: str, small: str) -> tuple[str, str]:
-    """The HTML body and the plain-text body of an account mail, built from one
-    copy so a wording edit cannot reach one form and miss the other. Paragraphs
-    are plain text: escaped here for the HTML form only."""
+class _Quote(str):
+    """A paragraph _mail() sets in the grey box: someone else's words, such as
+    an admin's reason. Escaped like every paragraph; plain in the text form."""
+
+
+_QUOTE_STYLE = "padding:12px;background:#f3eee2;border-radius:8px"
+
+
+def _mail(
+    paragraphs: list[str],
+    *,
+    button: tuple[str, str] | None = None,
+    small: str | None = None,
+) -> tuple[str, str]:
+    """The HTML body and the plain-text body of a mail, built from one copy so
+    a wording edit cannot reach one form and miss the other. Paragraphs are
+    plain text, escaped here for the HTML form only; a _Quote one goes in the
+    grey box. `button` is (label, href): the text form prints the bare href."""
     def esc(s: str) -> str:
         return html_escape.escape(s, quote=False)
 
-    body = (
-        "".join(f"<p>{esc(p)}</p>" for p in paragraphs)
-        + _button(link, label)
-        + f'<p style="font-size:13px">{esc(small)}</p>'
+    body = "".join(
+        f'<p style="{_QUOTE_STYLE}">{esc(p)}</p>' if isinstance(p, _Quote) else f"<p>{esc(p)}</p>"
+        for p in paragraphs
     )
-    text = "\n\n".join(paragraphs) + f"\n\n{link}\n\n{small}\n\n{FOOTER}\n"
-    return body, text
+    parts = list(paragraphs)
+    if button is not None:
+        label, href = button
+        body += _button(href, label)
+        parts.append(href)
+    if small is not None:
+        body += f'<p style="font-size:13px">{esc(small)}</p>'
+        parts.append(small)
+    parts.append(FOOTER)
+    return body, "\n\n".join(parts) + "\n"
 
 
-def _prenom(user) -> str:
+def _greeting(prenom: str) -> str:
+    return f"Bonjour {prenom}," if prenom else "Bonjour,"
+
+
+def prenom_of(user) -> str:
+    """The prénom on the person's profile, or "" when there is none. Public:
+    the generation thread reads it before it releases its DB connection."""
     profile = Profile.query.filter_by(user_id=user.id).first()
     return (profile.prenom or "").strip() if profile else ""
 
@@ -169,15 +196,14 @@ def send_verification(user, next_path=None) -> bool:
     """« Confirmez votre adresse ». Fail-soft like every mail here."""
     try:
         link = f"{_app_url()}/verifier-email?token={auth_links.make_verify_token(user, next_path)}"
-        prenom = _prenom(user)
-        body, text = _link_mail(
+        body, text = _mail(
             [
-                f"Bonjour {prenom}," if prenom else "Bonjour,",
+                _greeting(prenom_of(user)),
                 "Pour activer votre compte neoori, confirmez votre adresse : ouvrez le "
                 "lien ci-dessous puis saisissez votre mot de passe. Il est valable 48 heures.",
             ],
-            "Confirmer mon adresse", link,
-            "Si vous n'avez pas créé de compte, ignorez ce message.",
+            button=("Confirmer mon adresse", link),
+            small="Si vous n'avez pas créé de compte, ignorez ce message.",
         )
         return _deliver_link(
             user, "Confirmez votre adresse email",
@@ -192,13 +218,13 @@ def send_password_reset(user) -> bool:
     """« Réinitialiser votre mot de passe ». Fail-soft."""
     try:
         link = f"{_app_url()}/reinitialiser-mot-de-passe?token={auth_links.make_reset_token(user)}"
-        body, text = _link_mail(
+        body, text = _mail(
             [
                 "Une demande de réinitialisation a été faite pour votre compte. Le lien "
                 "est valable 1 heure et ne sert qu'une fois.",
             ],
-            "Choisir un nouveau mot de passe", link,
-            "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : "
+            button=("Choisir un nouveau mot de passe", link),
+            small="Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : "
             "votre mot de passe reste inchangé.",
         )
         return _deliver_link(
