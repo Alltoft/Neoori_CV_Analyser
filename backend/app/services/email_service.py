@@ -234,3 +234,137 @@ def send_password_reset(user) -> bool:
     except Exception:
         current_app.logger.exception("Could not build/send the reset mail.")
         return False
+
+
+# ── Lot 2 (transactional mails spec, 2026-10-02) ─────────────────────────────
+# Each one leaves after the commit that decided it and says that something
+# happened and where to read it, behind a login — never the content itself.
+
+
+def send_analysis_ready(to: str, prenom: str, *, unlocked: bool) -> bool:
+    """« Votre analyse est prête ». Plain values, not rows: the generation
+    thread releases its DB connection before calling this. `unlocked` is the
+    row's second run, started by a payment or a code (unlock_method set)."""
+    try:
+        if unlocked:
+            subject, title = "Votre analyse complète est prête", "Analyse complète prête"
+            line = (
+                "La version complète de votre analyse est prête. Elle remplace la "
+                "version précédente dans votre espace."
+            )
+        else:
+            subject, title = "Votre analyse est prête", "Analyse prête"
+            line = "Votre analyse est prête. Elle est enregistrée dans votre espace."
+        body, text = _mail(
+            [_greeting(prenom), line],
+            button=("Ouvrir mon espace", f"{_app_url()}/espace"),
+        )
+        return send(to, subject, _layout(title, body), text)
+    except Exception:
+        current_app.logger.exception("Could not build/send the analysis-ready mail.")
+        return False
+
+
+def send_analysis_failed(to: str, prenom: str, *, unlocked: bool, analysis_id: str) -> bool:
+    """« Votre analyse n'a pas abouti ». After an unlock the espace has nothing
+    to offer — a second unlock is a 409 — so that variant asks for a reply and
+    carries the row id to find it by. Relaunching it is the team's job."""
+    try:
+        if unlocked:
+            subject, title = "Le déblocage de votre analyse n'a pas abouti", "Déblocage interrompu"
+            body, text = _mail([
+                _greeting(prenom),
+                "Votre déblocage est bien enregistré, mais la version complète n'a pas pu "
+                "être générée. Répondez à ce message : nous la relançons pour vous.",
+                f"Référence : {analysis_id}",
+            ])
+        else:
+            subject, title = "Votre analyse n'a pas abouti", "Analyse interrompue"
+            body, text = _mail(
+                [
+                    _greeting(prenom),
+                    "La génération de votre analyse n'a pas abouti. Vous pouvez relancer "
+                    "une analyse depuis votre espace.",
+                ],
+                button=("Ouvrir mon espace", f"{_app_url()}/espace"),
+            )
+        return send(to, subject, _layout(title, body), text)
+    except Exception:
+        current_app.logger.exception(
+            "Could not build/send the analysis-failed mail for %s.", analysis_id
+        )
+        return False
+
+
+def send_new_demande(admin) -> bool:
+    """« Nouvelle demande de compte conseiller », to one admin. Nothing about
+    the applicant: name, structure and phone stay behind the dashboard login."""
+    try:
+        body, text = _mail(
+            [
+                _greeting(prenom_of(admin)),
+                "Une demande de compte conseiller attend votre décision.",
+            ],
+            button=("Voir les demandes", f"{_app_url()}/admin/conseillers"),
+        )
+        return send(
+            admin.email, "Nouvelle demande de compte conseiller",
+            _layout("Nouvelle demande", body), text,
+        )
+    except Exception:
+        current_app.logger.exception("Could not build/send the new-demande mail.")
+        return False
+
+
+def send_counselor_revoked(profile: CounselorProfile) -> bool:
+    # Same reasoning as send_counselor_approved above: profile.user and
+    # profile.decision_reason are post-commit reads that can themselves fail.
+    # The reason is already shown on /conseiller; the mail discloses nothing new.
+    try:
+        user = profile.user
+        body, text = _mail([
+            _greeting(prenom_of(user)),
+            "Votre accès conseiller a été retiré.",
+            _Quote(profile.decision_reason or ""),
+            "Les codes que vous avez déjà remis restent valables. Votre compte reste "
+            "utilisable comme compte candidat.",
+        ])
+        return send(
+            user.email, "Votre accès conseiller",
+            _layout("Accès conseiller retiré", body), text,
+        )
+    except Exception:
+        # profile.id is itself an expired post-commit attribute -- fall back
+        # rather than let the logging call raise.
+        try:
+            profile_id = profile.id
+        except Exception:
+            profile_id = "?"
+        current_app.logger.exception(
+            "Could not build/send the revocation mail for profile %s.", profile_id
+        )
+        return False
+
+
+def send_password_changed(user) -> bool:
+    """« Votre mot de passe a été modifié », after a reset. Neither checks nor
+    stamps auth_mail_sent_at: it follows a reset whose link that clock already
+    paced, and it must reach the owner even when someone else held the link."""
+    try:
+        body, text = _mail(
+            [
+                _greeting(prenom_of(user)),
+                "Le mot de passe de votre compte neoori vient d'être modifié.",
+                "Si c'est vous, il n'y a rien à faire.",
+                "Si vous n'êtes pas à l'origine de ce changement, choisissez-en un "
+                "nouveau tout de suite.",
+            ],
+            button=("Choisir un nouveau mot de passe", f"{_app_url()}/mot-de-passe-oublie"),
+        )
+        return send(
+            user.email, "Votre mot de passe a été modifié",
+            _layout("Mot de passe modifié", body), text,
+        )
+    except Exception:
+        current_app.logger.exception("Could not build/send the password-changed mail.")
+        return False
