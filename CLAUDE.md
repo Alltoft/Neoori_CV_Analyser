@@ -335,6 +335,39 @@ refresh tokens (an access token already issued lives up to 1 h).
 
 Spec: `docs/superpowers/specs/2026-09-29-email-verification-design.md`
 
+## Mails transactionnels
+
+Every mail is built in `services/email_service.py`, leaves after the commit
+that decided it, and is fail-soft: a Resend failure logs and returns False —
+never a 500, never a rolled-back write. No mail carries content: no report
+text, no voyage text, no applicant data. Each one says something happened and
+links to where it can be read behind a login. HTML and plain text come from
+one paragraph list (`_mail`), so a wording edit reaches both.
+
+| Mail | To | Sent by |
+|---|---|---|
+| Confirmez votre adresse | the account | signup, conseiller demande, resend — `services/auth_mail.py` |
+| Réinitialiser votre mot de passe | the account | « mot de passe oublié » — `services/auth_mail.py` |
+| Votre mot de passe a été modifié | the account | `auth.reset_password`, after its commit |
+| Votre analyse est prête / n'a pas abouti | the analysis owner, verified only | `anthropic_service._notify_outcome`, at every final status |
+| Nouvelle demande de compte conseiller | every verified admin | `services/demande_mail.notify_if_visible` |
+| Compte activé / demande non retenue / accès retiré | the conseiller | `admin` approve / reject / revoke |
+
+- **The analysis mail goes out on every finished run, watched or not.** That
+  is what lets the waiting page say « vous pouvez fermer cette page », and why
+  its 10-minute give-up reads « C'est plus long que prévu », not an error.
+- **The run an unlock starts (`unlock_method` set) has its own wording.** When
+  it fails, the code is still a dead end — a second unlock is a 409 — so the
+  mail asks the candidate to reply, with the analysis id. Relaunching it is
+  manual.
+- **The admin mail fires when a demande enters the queue**: a signed-in
+  applicant applies, or an applicant's address is proven for the first time,
+  by its verification link or by a reset link. Admin « Marquer comme vérifié »
+  does not send it.
+- Resend's free plan is 100 mails a day, shared by every mail above.
+
+Spec: `docs/superpowers/specs/2026-10-02-transactional-mails-design.md`
+
 ## Out of scope
 - Portrait module
 - CV-per-job adaptation
