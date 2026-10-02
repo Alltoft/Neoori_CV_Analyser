@@ -1,6 +1,6 @@
 # Mails transactionnels, lot 2 — Design Spec
 Date: 2026-10-02
-Status: approved 2026-10-02; amended the same day while planning (see « Amendments »)
+Status: approved 2026-10-02; amended the same day, while planning and after the build (see « Amendments »)
 
 ## Overview
 
@@ -295,7 +295,7 @@ Found on 2026-10-01, flagged, not fixed by this spec:
   nneoori@proton.me.
 - Plain-text parts for the approved/rejected mails.
 
-## Amendments (planning, 2026-10-02)
+## Amendments (2026-10-02: planning, then after the build)
 
 Found while writing the implementation plan
 (`docs/superpowers/plans/2026-10-02-transactional-mails.md`), against the code:
@@ -312,7 +312,8 @@ Found while writing the implementation plan
 4. **`send_new_demande(admin)` takes the admin's `User`**, so the admin mail
    greets by prénom like the others.
 5. **After the build, developer ruling: `ADMIN_NOTIFY_EMAIL` names the
-   recipients** (supersedes decision 3 where it is set). Production's only
+   recipients** (where it is set, supersedes Decisions §3 and amendment 4
+   above). Production's only
    admin, the shared login `admin@neoori.dev`, has no mailbox (neoori.dev has
    no MX record), so « every verified admin » would bounce every demande mail.
    The VPS `.env` names a real inbox; unset, every verified admin still gets
