@@ -339,23 +339,30 @@ Spec: `docs/superpowers/specs/2026-09-29-email-verification-design.md`
 
 Every mail is built in `services/email_service.py`, leaves after the commit
 that decided it, and is fail-soft: a Resend failure logs and returns False —
-never a 500, never a rolled-back write. No mail carries content: no report
-text, no voyage text, no applicant data. Each one says something happened and
-links to where it can be read behind a login. HTML and plain text come from
-one paragraph list (`_mail`), so a wording edit reaches both.
+never a 500, never a rolled-back write. A mail says that something happened,
+never what a report or a voyage contains, and nothing about a conseiller
+applicant. The one free text a mail carries is an admin's reason, on the
+rejection and revocation mails — already shown to the conseiller on
+`/conseiller`. The analysis, demande and approval mails link to a page behind
+a login; the account mails link to their `(auth)` pages; the unlock-failure,
+rejection and revocation mails carry no link. HTML and plain text come from
+one paragraph list (`_mail`), so a wording edit reaches both — except the
+approval and rejection mails, which predate it and are HTML-only.
 
 | Mail | To | Sent by |
 |---|---|---|
 | Confirmez votre adresse | the account | signup, conseiller demande, resend — `services/auth_mail.py` |
 | Réinitialiser votre mot de passe | the account | « mot de passe oublié » — `services/auth_mail.py` |
 | Votre mot de passe a été modifié | the account | `auth.reset_password`, after its commit |
-| Votre analyse est prête / n'a pas abouti | the analysis owner, verified only | `anthropic_service._notify_outcome`, at every final status |
+| Votre analyse est prête / n'a pas abouti | the analysis owner, verified only | `anthropic_service._notify_outcome`, at every final status `_run_analysis` writes |
 | Nouvelle demande de compte conseiller | every verified admin | `services/demande_mail.notify_if_visible` |
 | Compte activé / demande non retenue / accès retiré | the conseiller | `admin` approve / reject / revoke |
 
-- **The analysis mail goes out on every finished run, watched or not.** That
-  is what lets the waiting page say « vous pouvez fermer cette page », and why
-  its 10-minute give-up reads « C'est plus long que prévu », not an error.
+- **The analysis mail goes out on every run `_run_analysis` finishes, watched
+  or not.** That is what lets the waiting page say « vous pouvez fermer cette
+  page », and why its 10-minute give-up reads « C'est plus long que prévu »,
+  not an error. A run orphaned by a restart is not one of them:
+  `reap_stale_running` marks it `error` at startup and sends nothing.
 - **The run an unlock starts (`unlock_method` set) has its own wording.** When
   it fails, the code is still a dead end — a second unlock is a 409 — so the
   mail asks the candidate to reply, with the analysis id. Relaunching it is
