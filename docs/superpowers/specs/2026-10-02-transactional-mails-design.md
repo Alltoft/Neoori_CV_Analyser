@@ -1,6 +1,6 @@
 # Mails transactionnels, lot 2 — Design Spec
 Date: 2026-10-02
-Status: approved in conversation 2026-10-02, awaiting written-spec review
+Status: approved 2026-10-02; amended the same day while planning (see « Amendments »)
 
 ## Overview
 
@@ -73,10 +73,11 @@ links from `APP_URL`.
 - Body: « Votre analyse est prête. Elle est enregistrée dans votre espace. »
 - Button: « Ouvrir mon espace » → `{APP_URL}/espace`
 
-### Analysis ready — paid regeneration
+### Analysis ready — after an unlock
 
-"Paid regeneration" = the row has `unlock_method` set (`unlock_service`
-writes it before the second run, for Stripe and for a counselor code alike).
+"After an unlock" = the row has `unlock_method` set (`unlock_service` writes
+it before the second run, for Stripe and for a counselor code alike). Not the
+paid *tier*: a first run can already be on it.
 
 - Subject: « Votre analyse complète est prête »
 - Title: « Analyse complète prête »
@@ -95,7 +96,7 @@ error.
   une analyse depuis votre espace. »
 - Button: « Ouvrir mon espace » → `{APP_URL}/espace`
 
-### Analysis failed — paid regeneration
+### Analysis failed — after an unlock
 
 - Subject: « Le déblocage de votre analyse n'a pas abouti »
 - Title: « Déblocage interrompu »
@@ -144,16 +145,17 @@ error.
 ### `services/email_service.py`
 
 - `_link_mail(paragraphs, label, link, small)` becomes
-  `_mail(paragraphs, *, button=None, quote=None, small=None) -> (html, text)`.
-  `button` is `(label, href)`; `quote` is a reason shown in the grey box,
-  escaped for HTML; `small` is the closing small print. The verification and
-  reset mails move to it with byte-identical output (pinned by a test that
-  compares before/after).
+  `_mail(paragraphs, *, button=None, small=None) -> (html, text)`.
+  `button` is `(label, href)`; `small` is the closing small print; a
+  paragraph wrapped in `_Quote(...)` — a reason — renders in the grey box,
+  escaped like the rest. The verification and reset mails move to it with
+  byte-identical output (pinned by a test against the bytes `_link_mail`
+  produced).
 - `send_counselor_approved` / `send_counselor_rejected` are not touched.
 - New builders, fail-soft like every mail here (catch, log, return False):
-  - `send_analysis_ready(to: str, prenom: str, *, paid: bool) -> bool`
-  - `send_analysis_failed(to: str, prenom: str, *, paid: bool, analysis_id: str) -> bool`
-  - `send_new_demande(to: str) -> bool`
+  - `send_analysis_ready(to: str, prenom: str, *, unlocked: bool) -> bool`
+  - `send_analysis_failed(to: str, prenom: str, *, unlocked: bool, analysis_id: str) -> bool`
+  - `send_new_demande(admin) -> bool` — the admin's `User`, for the greeting
   - `send_counselor_revoked(profile: CounselorProfile) -> bool`
   - `send_password_changed(user) -> bool`
 
@@ -174,7 +176,7 @@ including the « Aucun prompt actif » early return) ends with
    same discipline as the stream (`_publish_progress`, the comment above the
    stream).
 4. `success` → `send_analysis_ready`; `error`/`timeout` → `send_analysis_failed`;
-   `paid = unlock_method is not None`.
+   `unlocked = unlock_method is not None`.
 
 The whole helper is wrapped: nothing it does can raise out of the thread or
 change the row. The voyage threads (`services/voyage/generation.py`) are not
@@ -221,9 +223,10 @@ dead link sends nothing.
 
 `frontend/src/app/analyse/en-cours/[id]/page.tsx` only.
 
-- **While running:** under « Nous lisons votre profil et préparons votre
-  rapport. » add « Vous recevrez un email quand il sera prêt — vous pouvez
-  fermer cette page. »
+- **While running:** the card's closing line « Laissez cet onglet ouvert, le
+  rapport s'affiche automatiquement. » — which says the opposite — becomes
+  « Le rapport s'affiche ici automatiquement. Vous recevrez un email quand il
+  sera prêt — vous pouvez fermer cette page. »
 - **Client give-up at `POLL_MAX_MS` (10 min):** a third state, separate from
   `error`. Eyebrow « Analyse en cours », heading « C'est plus long que
   prévu », text « Vous recevrez un email dès qu'elle sera prête. », button
@@ -248,15 +251,16 @@ dead link sends nothing.
 pytest, Resend mocked as in `tests/test_email_service.py`.
 
 - **Builders:** recipient, subject, HTML and text parts present; prénom
-  greeting with and without a profile; revoke reason HTML-escaped; the failed
-  paid mail carries the analysis id and no button; no builder body contains
-  any report text; `send_counselor_revoked` returns False when its post-commit
-  read raises.
+  greeting with and without a profile; revoke reason HTML-escaped; the
+  failure mail after an unlock carries the analysis id and no button; no
+  builder body contains any report text; `send_counselor_revoked` returns
+  False when its post-commit read raises.
 - **`_mail` refactor:** verification and reset mails byte-identical to before.
 - **`_run_analysis`:** success, error, timeout and no-active-prompt each call
-  the right builder exactly once; `paid` follows `unlock_method`; anonymous
-  row, missing user and unverified user send nothing; a builder that raises
-  leaves the written status as it was.
+  the right builder exactly once; `unlocked` follows `unlock_method`; an
+  ownerless row and an unverified owner send nothing (a deleted owner takes
+  the same `user is None` branch — the foreign key keeps it from existing);
+  a builder that raises leaves the written status as it was.
 - **Demande:** verified applicant via `apply` → admins mailed; new-account
   `apply` → nothing until `verify_email`, then exactly one round; second
   `verify_email` → nothing; `reset_password` that verifies → mailed; reset of
@@ -290,3 +294,20 @@ Found on 2026-10-01, flagged, not fixed by this spec:
 - `/confidentialite` RGPD contact « [À COMPLÉTER] »; footer bonjour@ vs site
   nneoori@proton.me.
 - Plain-text parts for the approved/rejected mails.
+
+## Amendments (planning, 2026-10-02)
+
+Found while writing the implementation plan
+(`docs/superpowers/plans/2026-10-02-transactional-mails.md`), against the code:
+
+1. **Waiting page line.** The running card already ended with « Laissez cet
+   onglet ouvert, le rapport s'affiche automatiquement. » — the opposite of
+   the new line. The new copy replaces it instead of being added under the
+   subtitle (Frontend, above).
+2. **`_mail` has no `quote=` keyword.** The revocation reason sits between two
+   paragraphs, which a keyword cannot place; a `_Quote(...)` paragraph does.
+3. **`unlocked`, not `paid`.** A first run can already be on the paid tier
+   (`FORCE_ANALYSIS_TIER` defaults to `paid`); the second wording belongs to
+   the run an unlock starts, which is what `unlock_method` marks.
+4. **`send_new_demande(admin)` takes the admin's `User`**, so the admin mail
+   greets by prénom like the others.
