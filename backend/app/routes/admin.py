@@ -331,6 +331,8 @@ def revoke_counselor_application(profile_id):
 
     _decide(profile, "revoked", reason, get_jwt_identity())
     db.session.commit()
+
+    email_service.send_counselor_revoked(profile)
     return jsonify({"application": profile.to_dict(with_user=True)}), 200
 
 

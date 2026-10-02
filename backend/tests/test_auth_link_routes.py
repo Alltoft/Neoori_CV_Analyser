@@ -292,3 +292,37 @@ def test_a_reset_keeps_surrounding_spaces(client, make_user):
     assert _reset(client, auth_links.make_reset_token(user), "  avec espaces  ").status_code == 200
     login = client.post("/api/auth/login", json={"email": "sp@test.fr", "password": "  avec espaces  "})
     assert login.status_code == 200
+
+
+# ── the password-changed notice ──────────────────────────────────────────────
+
+def test_a_reset_tells_the_address_the_password_changed(client, app, make_user):
+    app.config["RESEND_API_KEY"] = "re_test"
+    user = make_user(email="reset@test.fr")
+    with patch(SEND, return_value={"id": "1"}) as mock_send:
+        assert _reset(client, auth_links.make_reset_token(user)).status_code == 200
+    mock_send.assert_called_once()
+    mail = mock_send.call_args[0][0]
+    assert mail["to"] == ["reset@test.fr"]
+    assert mail["subject"] == "Votre mot de passe a été modifié"
+    # A notice, not an account mail: the one-a-minute clock is not touched.
+    assert _fresh(user).auth_mail_sent_at is None
+
+
+def test_a_refused_reset_sends_no_notice(client, app, make_user):
+    app.config["RESEND_API_KEY"] = "re_test"
+    token = auth_links.make_reset_token(make_user())
+    with patch(SEND, return_value={"id": "1"}) as mock_send:
+        assert _reset(client, token, "court").status_code == 400      # password refused
+        assert _reset(client, "pas-un-lien").status_code == 400       # dead link
+    mock_send.assert_not_called()
+
+
+def test_a_reset_survives_a_mail_outage(client, app, make_user):
+    # Review Focus 4: the password changes and the session opens anyway.
+    app.config["RESEND_API_KEY"] = "re_test"
+    user = make_user(email="reset@test.fr")
+    with patch(SEND, side_effect=RuntimeError("resend down")):
+        res = _reset(client, auth_links.make_reset_token(user))
+    assert res.status_code == 200
+    assert "access_token_cookie" in _cookies(res)

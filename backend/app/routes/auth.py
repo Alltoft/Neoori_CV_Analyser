@@ -15,7 +15,7 @@ from ..extensions import db, bcrypt
 from ..models.counselor_profile import CounselorProfile
 from ..models.profile import ACCEPTED_AGE_BRACKETS, CONSENT_VERSION, Profile
 from ..models.user import User
-from ..services import auth_mail
+from ..services import auth_mail, email_service
 from ..utils import auth_links
 from ..utils.request_body import json_object, text_field, raw_text_field
 
@@ -245,6 +245,11 @@ def reset_password():
     if user.email_verified_at is None:
         user.email_verified_at = datetime.utcnow()
     db.session.commit()
+
+    # After the commit, like every mail. It reaches the address's owner even
+    # when someone else held the link; not paced by auth_mail_sent_at, since
+    # the link that made this reset possible already was.
+    email_service.send_password_changed(user)
 
     response = jsonify({"user": user.to_dict()})
     _issue_session(response, user)

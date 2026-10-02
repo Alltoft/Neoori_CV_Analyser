@@ -3,6 +3,7 @@ is the only thing that takes it back."""
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
 from flask_jwt_extended import create_access_token, create_refresh_token
 
 from app.extensions import db
@@ -222,3 +223,57 @@ def test_a_mail_failure_does_not_undo_the_approval(client, admin_headers, app):
     assert r.status_code == 200
     db.session.refresh(user)
     assert user.role == "counselor"
+
+
+def _active_conseiller():
+    user, profile = _demande(status="approved")
+    user.role = "counselor"
+    db.session.commit()
+    return user, profile
+
+
+def test_revoking_mails_the_conseiller_the_reason(client, admin_headers, app):
+    _user, profile = _active_conseiller()
+    with patch("app.services.email_service.send") as mock_send:
+        r = client.post(
+            f"/api/admin/counselor-applications/{profile.id}/revoke",
+            json={"reason": "Fin de convention."}, headers=admin_headers,
+        )
+    assert r.status_code == 200
+    mock_send.assert_called_once()
+    to, subject, _html, text = mock_send.call_args[0]
+    assert to == "conseiller@test.com"
+    assert subject == "Votre accès conseiller"
+    assert "Fin de convention." in text
+
+
+@pytest.mark.parametrize("status, body", [
+    ("pending", {"reason": "Fin de convention."}),   # 409: not an active conseiller
+    ("approved", {}),                                # 400: no reason given
+])
+def test_a_refused_revocation_mails_nobody(client, admin_headers, app, status, body):
+    _user, profile = _demande(status=status)
+    with patch("app.services.email_service.send") as mock_send:
+        r = client.post(
+            f"/api/admin/counselor-applications/{profile.id}/revoke",
+            json=body, headers=admin_headers,
+        )
+    assert r.status_code in (400, 409)
+    mock_send.assert_not_called()
+
+
+def test_a_mail_failure_does_not_undo_the_revocation(client, admin_headers, app):
+    # Review Focus 4: the decision has committed before the mail is tried.
+    user, profile = _active_conseiller()
+    app.config["RESEND_API_KEY"] = "re_test"
+    with patch("app.services.email_service.resend.Emails.send",
+               side_effect=RuntimeError("resend down")):
+        r = client.post(
+            f"/api/admin/counselor-applications/{profile.id}/revoke",
+            json={"reason": "Fin de convention."}, headers=admin_headers,
+        )
+    assert r.status_code == 200
+    db.session.refresh(profile)
+    db.session.refresh(user)
+    assert profile.status == "revoked"
+    assert user.role == "candidate"
