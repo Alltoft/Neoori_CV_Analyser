@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { api, ApiError } from "@/lib/api"
 import { useCooldown } from "@/lib/useCooldown"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,20 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: 
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const { wait, restart } = useCooldown(false)
+  const sentRef = useRef<HTMLDivElement>(null)
+
+  // Each send ends with the focused control gone: the form and its submit
+  // button unmount when the sent state takes over, and « Renvoyer » is disabled
+  // while it works. Focus then falls to <body>, so a keyboard user starts again
+  // from the top and a screen reader says nothing. Put it on the sent block
+  // instead, unless the person has already moved focus somewhere else.
+  // Keyed on `sending` as well as `sentTo`: a resend keeps the same address.
+  useEffect(() => {
+    const block = sentRef.current
+    if (!sentTo || sending || !block) return
+    const active = document.activeElement
+    if (!active || active === document.body || block.contains(active)) block.focus()
+  }, [sentTo, sending])
 
   const send = async (to: string) => {
     setError(null)
@@ -49,8 +63,10 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: 
   }
 
   if (sentTo) {
+    // A focus target (see the effect above), not a control: tabIndex -1 keeps it
+    // out of the Tab order, outline-none keeps a ring off the whole block.
     return (
-      <div className="space-y-4">
+      <div ref={sentRef} tabIndex={-1} className="space-y-4 outline-none">
         {failed ? (
           <Alert variant="destructive">
             <AlertDescription>L’envoi a échoué. Réessayez dans un instant.</AlertDescription>
@@ -84,6 +100,9 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: 
     )
   }
 
+  // This form mounts when the person asks for it (the button that opened it
+  // unmounts with it) or comes back to it (« Changer d’adresse »), and they are
+  // here to type: so the field takes focus.
   return (
     <form onSubmit={submit} className="space-y-3">
       {error && (
@@ -93,7 +112,7 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: 
         <Label htmlFor="link-email">Email</Label>
         <Input
           id="link-email" type="email" autoComplete="email" className="h-10"
-          placeholder="vous@exemple.fr" required
+          placeholder="vous@exemple.fr" required autoFocus
           value={email} onChange={(e) => setEmail(e.target.value)}
         />
       </div>
