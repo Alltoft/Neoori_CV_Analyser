@@ -1,6 +1,6 @@
 # Connexion Google / Microsoft / lien par email — Design Spec
 Date: 2026-10-03
-Status: design approved section by section 2026-10-03; spec awaiting review
+Status: approved 2026-10-03 (design section by section, then this spec). Plan: `docs/superpowers/plans/2026-10-03-social-login.md`
 
 ## Overview
 
