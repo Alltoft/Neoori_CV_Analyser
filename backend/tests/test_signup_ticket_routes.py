@@ -204,6 +204,21 @@ def test_finalising_onto_an_address_held_by_a_lookalike_is_refused(client, make_
     assert client.get_cookie("signup_ticket", path="/api/auth") is not None
 
 
+def test_a_collision_after_the_users_row_leaves_nothing_behind(client, make_user, monkeypatch):
+    # Pins the single commit (no users row committed before its identity and consent) and the fallback 409.
+    other = make_user(email="autre@test.fr")
+    db.session.add(AuthIdentity(user_id=other.id, provider="google", subject="g-1"))
+    db.session.commit()
+    _give_ticket(client)
+    monkeypatch.setattr(sign_in, "existing_account", lambda *a: None)
+    monkeypatch.setattr(sign_in, "address_in_use", lambda email: False)
+    res = _signup(client)
+    assert res.status_code == 409 and res.get_json()["code"] == "address_unavailable"
+    assert User.query.filter_by(email="marie@gmail.com").count() == 0
+    assert Profile.query.count() == 0
+    assert client.get_cookie("signup_ticket", path="/api/auth") is not None
+
+
 def test_a_prenom_longer_than_the_column_is_refused_not_a_500(client):
     # Review Focus 4: SQLite stores it; MySQL raises "Data too long".
     _give_ticket(client)
