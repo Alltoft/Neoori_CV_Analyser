@@ -354,9 +354,10 @@ All three end in `routes/auth._issue_session()`.
 - **An address is believed only when the provider proves it**
   (`services/sign_in.trusted_email`). Google: `email_verified`. Microsoft: the
   personal-account tenant, or `xms_edov`. A work tenant's `email` claim can be
-  any address its admin types (nOAuth). Without proof a sign-in enters nothing
-  and creates nothing. `xms_edov` is added in the Entra app's manifest; the
-  portal no longer lists it.
+  any address its admin types (nOAuth). Without that proof, and with no
+  identity already linked, a sign-in enters nothing and creates nothing.
+  `xms_edov` is added in the Entra app's manifest; the portal no longer lists
+  it.
 - **Addresses are ASCII, and an account is entered only under its own
   address.** `email_shape_ok` refuses non-ASCII addresses, and
   `sign_in.account_of` compares the stored address after normalising it.
@@ -421,7 +422,8 @@ approval and rejection mails, which predate it and are HTML-only.
   manual.
 - **The admin mail fires when a demande enters the queue**: a signed-in
   applicant applies, or an applicant's address is proven for the first time,
-  by its verification link or by a reset link. Admin « Marquer comme vérifié »
+  by its verification link, by a reset link, or by a Google / Microsoft /
+  email-link sign-in (`sign_in.enter`). Admin « Marquer comme vérifié »
   does not send it. Production sets `ADMIN_NOTIFY_EMAIL` in
   `/srv/neoori/.env` (comma-separated; today `ouakouriimran@gmail.com`): the
   shared admin login, `admin@neoori.dev`, has no mailbox — neoori.dev has no
