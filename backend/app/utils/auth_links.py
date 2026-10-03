@@ -67,6 +67,9 @@ def safe_next(value) -> str | None:
         # parsing, so "/<TAB>/evil.com" would start like a path and resolve
         # as "//evil.com".
         or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+        # A lone surrogate cannot be encoded as UTF-8, and the token minters
+        # would raise UnicodeEncodeError when JSON-serialising the path.
+        or any(0xD800 <= ord(ch) <= 0xDFFF for ch in value)
         or _has_dot_segment(value)
     ):
         return None
@@ -125,14 +128,13 @@ def normalise_email(raw) -> str:
 
 
 def email_shape_ok(email) -> bool:
-    """A light check before an address is mailed or stored: the right shape,
-    fits users.email, and encodable — a lone surrogate, which JSON can carry,
-    is not."""
+    """A light check before an address is mailed or stored: ASCII addresses only,
+    the right shape, and fits users.email. MySQL's utf8mb4_unicode_ci collation
+    compares accented letters equal to their base letters, so a non-ASCII lookalike
+    (marie@gmaïl.com for marie@gmail.com) could enter another person's account."""
     if not isinstance(email, str) or not 0 < len(email) <= EMAIL_MAX_LENGTH:
         return False
-    try:
-        email.encode("utf-8")
-    except UnicodeEncodeError:
+    if not email.isascii():
         return False
     return _EMAIL_SHAPE.fullmatch(email) is not None
 

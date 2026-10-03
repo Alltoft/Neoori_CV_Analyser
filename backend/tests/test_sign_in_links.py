@@ -23,6 +23,7 @@ def test_a_plain_address_passes_the_shape_check(email):
     "", "marie", "marie@", "@test.fr", "marie@test", "ma rie@test.fr", "marie@@test.fr",
     "marie@test.fr\n", "ma\x00rie@test.fr", "\ud800@test.fr", "a" * 250 + "@test.fr",
     None, 42,
+    "marie@gmaïl.com", "marié@gmail.com", "ma​rie@test.fr",
 ])
 def test_anything_else_fails_it(email):
     assert not auth_links.email_shape_ok(email)
@@ -49,6 +50,11 @@ def test_a_login_link_round_trips(app):
 
 def test_a_login_link_drops_an_unsafe_destination(app):
     token = auth_links.make_login_token("j-1", "marie@test.fr", "//evil.com")
+    assert auth_links.load_login_token(token).payload["next"] is None
+
+
+def test_a_login_link_drops_an_unencodable_destination(app):
+    token = auth_links.make_login_token("j-1", "marie@test.fr", "/a\ud800")
     assert auth_links.load_login_token(token).payload["next"] is None
 
 
@@ -80,6 +86,11 @@ def test_a_ticket_round_trips(app):
         "method": "google", "sub": "1234", "email": "marie@gmail.com",
         "prenom_hint": "Marie", "next": "/espace",
     }
+
+
+def test_a_ticket_drops_an_unencodable_destination(app):
+    ticket = auth_links.make_signup_ticket(method="email", sub=None, email="marie@test.fr", next_path="/a\ud800")
+    assert auth_links.load_signup_ticket(ticket).payload["next"] is None
 
 
 def test_a_ticket_expires(app, monkeypatch):
