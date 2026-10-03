@@ -225,6 +225,13 @@ def test_a_legacy_address_in_capitals_is_still_entered(app, make_user, monkeypat
     assert outcome.kind == "user" and outcome.user.id == legacy.id
 
 
+def test_account_of_names_only_the_account_of_that_address(app, make_user, monkeypatch):
+    lookalike = make_user(email="jean@société.fr")
+    monkeypatch.setattr(sign_in, "_account_at", lambda email: lookalike)
+    assert sign_in.account_of("jean@societe.fr") is None
+    assert sign_in.account_of("jean@société.fr").id == lookalike.id
+
+
 def test_a_free_address_is_not_in_use(app):
     assert sign_in.address_in_use("personne@test.fr") is False
 

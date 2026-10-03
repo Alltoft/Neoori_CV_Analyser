@@ -103,6 +103,17 @@ def _account_at(email: str) -> User | None:
     return User.query.filter_by(email=email).first()
 
 
+def account_of(email: str) -> User | None:
+    """The account OF this address, or None. A row that only collates equal
+    (« jean@société.fr » for « jean@societe.fr ») belongs to someone else.
+    Expects an already-normalised address; normalising the stored side keeps
+    a legacy mixed-case address findable."""
+    user = _account_at(email)
+    if user is not None and auth_links.normalise_email(user.email) == email:
+        return user
+    return None
+
+
 def existing_account(provider: str | None, sub: str | None, email: str | None) -> User | None:
     """The account this sign-in enters, already entered, or None (decision 8,
     branches 1 and 2). A known identity wins even when the provider's address
@@ -114,12 +125,8 @@ def existing_account(provider: str | None, sub: str | None, email: str | None) -
             enter(user)
             return user
     if email:
-        user = _account_at(email)
-        # Enter only the account OF the proven address. A row that merely
-        # collates equal (« jean@société.fr » for « jean@societe.fr ») belongs
-        # to someone else. Normalising the stored side keeps a legacy
-        # mixed-case address enterable.
-        if user is not None and auth_links.normalise_email(user.email) == email:
+        user = account_of(email)
+        if user is not None:
             enter(user, provider, sub)
             return user
     return None

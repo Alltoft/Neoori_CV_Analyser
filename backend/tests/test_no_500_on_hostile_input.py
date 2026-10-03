@@ -328,6 +328,30 @@ ROUTES = [
         base=lambda rig: {"body": "note de test"},
         fields=["body"],
     ),
+    dict(
+        name="email_link",
+        method="post",
+        path=lambda rig: "/api/auth/email-link",
+        headers=lambda rig: {},
+        base=lambda rig: {"email": "fuzz-link@test.fr", "next": "/espace"},
+        fields=["email", "next"],
+    ),
+    dict(
+        name="email_link_check",
+        method="post",
+        path=lambda rig: "/api/auth/email-link/check",
+        headers=lambda rig: {},
+        base=lambda rig: {"token": "not-a-token"},
+        fields=["token"],
+    ),
+    dict(
+        name="email_link_consume",
+        method="post",
+        path=lambda rig: "/api/auth/email-link/consume",
+        headers=lambda rig: {},
+        base=lambda rig: {"token": "not-a-token"},
+        fields=["token"],
+    ),
 ]
 
 PAYMENT_ROUTE_NAMES = {"checkout", "verify"}

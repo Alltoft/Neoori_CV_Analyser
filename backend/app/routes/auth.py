@@ -164,6 +164,14 @@ LINK_ERRORS = {
 # stranger whether an address has an account (spec decision 11).
 RESEND_MESSAGE = "Si cette adresse attend une confirmation, un nouveau lien vient d'être envoyé."
 FORGOT_MESSAGE = "Si un compte existe pour cette adresse, un email vient d'être envoyé."
+# A sign-in proved an address the database already files under another,
+# only collation-equal account (« marie@gmaïl.com » for « marie@gmail.com »).
+# Entering it would hand one person's account to another; creating a new one
+# would collide with the unique index. Wording provisional (PM may reword).
+ADDRESS_UNAVAILABLE = (
+    "Cette adresse ne peut pas être utilisée pour se connecter. "
+    "Répondez à l'email reçu pour nous écrire."
+)
 
 
 @auth_bp.post("/verify-email/check")
