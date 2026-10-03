@@ -12,13 +12,15 @@ interface Props {
   /** Where the link should land, when the page knows. Sent as given. */
   next?: string | null
   submitLabel?: string
+  /** Focus the field on mount — for a form the person just asked for. */
+  autoFocus?: boolean
 }
 
 /** « Recevoir un lien de connexion »: an address, then the sent state with
  *  « Renvoyer » on the server's one-a-minute clock (social sign-in spec,
  *  decision 14). The server sends whether or not the address has an
  *  account, so this screen can say plainly that a link left. */
-export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: Props) {
+export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien", autoFocus = false }: Props) {
   const [email, setEmail] = useState("")
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -100,9 +102,11 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: 
     )
   }
 
-  // This form mounts when the person asks for it (the button that opened it
-  // unmounts with it) or comes back to it (« Changer d’adresse »), and they are
-  // here to type: so the field takes focus.
+  // With `autoFocus`, the field takes focus whenever this form mounts: the
+  // person asked for it (the button that opened it unmounts with it) or came
+  // back to it (« Changer d’adresse »), and they are here to type. Without it
+  // the form is page content, and the field must not pull focus ahead of the
+  // heading and the message a screen reader reads first.
   return (
     <form onSubmit={submit} className="space-y-3">
       {error && (
@@ -112,7 +116,7 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien" }: 
         <Label htmlFor="link-email">Email</Label>
         <Input
           id="link-email" type="email" autoComplete="email" className="h-10"
-          placeholder="vous@exemple.fr" required autoFocus
+          placeholder="vous@exemple.fr" required autoFocus={autoFocus}
           value={email} onChange={(e) => setEmail(e.target.value)}
         />
       </div>

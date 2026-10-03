@@ -56,7 +56,7 @@ export function SocialSignIn({ next, separator }: Props) {
           </a>
         ))}
         {linkOpen ? (
-          <EmailLinkForm next={next} />
+          <EmailLinkForm next={next} autoFocus />
         ) : (
           <Button
             type="button"
