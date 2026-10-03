@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthLayout } from "@/components/layout/AuthLayout"
 import { VerificationPending } from "@/components/auth/VerificationPending"
+import { SocialSignIn } from "@/components/auth/SocialSignIn"
 import { TRANCHES_AGE } from "@/lib/profile-options"
 
 // Prénom and tranche d'âge are asked here because session_lock has demanded
@@ -92,7 +93,9 @@ function InscriptionForm() {
       <h1 className="font-display text-2xl font-bold text-navy">Créer un compte</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">Gratuit · 1 analyse offerte.</p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4">
+      <SocialSignIn next={next} separator="ou avec un mot de passe" />
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>

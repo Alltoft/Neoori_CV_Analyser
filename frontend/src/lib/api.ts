@@ -2,6 +2,12 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 type ApiOptions = RequestInit & { skipRedirect?: boolean }
 
+/** A same-origin URL for a full-page navigation to the API — the OAuth start,
+ *  which must leave the app for the provider's page, as fetch() cannot. */
+export function apiHref(path: string): string {
+  return `${BASE}/api${path}`
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
