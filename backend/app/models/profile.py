@@ -29,6 +29,11 @@ CONSENT_VERSION = "v1.2"
 # and a prescriber auditing Art. 9 data wants to see which wording was shown.
 CONSENT_SENSITIVE_VERSION = "v1"
 
+# profiles.prenom's width. MySQL refuses a longer value with an error, which
+# SQLite (the tests) never does, so the signup doors check it themselves
+# (routes/auth._seed_problem) and the signup ticket trims its hint to it.
+PRENOM_MAX_LENGTH = 120
+
 # Bloc 1 — search radius around the declared city.
 SEARCH_RADIUS = ("ma_ville", "30km", "ma_region", "toute_la_france")
 
@@ -100,7 +105,7 @@ class Profile(db.Model):
     )
 
     # Bloc 1 — Vous
-    prenom = db.Column(db.String(120), nullable=True)
+    prenom = db.Column(db.String(PRENOM_MAX_LENGTH), nullable=True)
     nom = db.Column(db.String(120), nullable=True)
     ville = db.Column(db.String(160), nullable=True)
     rayon = db.Column(db.String(24), nullable=True)
