@@ -61,6 +61,8 @@ def test_a_link_reaches_an_address_with_no_account(app):
     assert sent is True and mock_send.call_count == 1
     payload = auth_links.load_login_token(TOKEN.search(_sent(mock_send)["text"]).group(1)).payload
     assert payload["email"] == "marie@test.fr" and payload["next"] == "/analyse/nouveau"
+    # The test and the code share one session: a new one sees only what was committed.
+    db.session.remove()
     row = db.session.get(LoginLink, payload["jti"])
     assert row.email_hash == auth_links.email_hash("marie@test.fr") and row.used_at is None
 

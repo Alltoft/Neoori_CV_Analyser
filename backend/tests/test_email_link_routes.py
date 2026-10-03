@@ -195,6 +195,8 @@ def test_a_link_that_hands_out_a_ticket_is_spent(client, app):
     # once the person had finalised, find the new account, and get a session.
     _, token = _request_link(client, app)
     assert _consume(client, token).get_json() == {"signup": True}
+    # Requests share one session in tests: a new one sees only what was committed.
+    db.session.remove()
     again = _consume(client, token)
     assert again.status_code == 400 and again.get_json()["code"] == "link_invalid"
 
@@ -227,4 +229,6 @@ def test_a_link_to_an_address_held_by_a_lookalike_is_refused(client, app, make_u
     assert client.get_cookie("signup_ticket", path="/api/auth") is None
     db.session.expire_all()
     assert db.session.get(User, lookalike.id).email_verified_at is None
+    # Requests share one session in tests: a new one sees only what was committed.
+    db.session.remove()
     assert _consume(client, token).get_json()["code"] == "link_invalid"      # spent by the refusal

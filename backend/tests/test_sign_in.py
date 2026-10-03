@@ -22,8 +22,10 @@ MS_WORK = {"sub": "m-2", "email": "marie@entreprise.fr", "tid": WORK_TENANT}
 
 
 def _fresh(user):
-    db.session.expire_all()
-    return db.session.get(User, user.id)
+    # The test and the code it calls share one session.
+    uid = user.id                  # read before remove(): the instance detaches
+    db.session.remove()            # a new session sees only what was committed
+    return db.session.get(User, uid)
 
 
 def _ticket_in(response) -> dict:
