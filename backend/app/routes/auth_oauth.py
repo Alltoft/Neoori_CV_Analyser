@@ -21,8 +21,11 @@ from .auth import _issue_session, _landing
 auth_oauth_bp = Blueprint("auth_oauth", __name__)
 
 # Where /start keeps `next` for its callback, tied to the state it belongs
-# to. One slot: of two sign-ins started in parallel, the earlier lands on its
-# home rather than on a destination meant for the other.
+# to. One slot, like the one live state per provider that start keeps: a
+# later /start with the same provider replaces both, so an earlier tab's
+# callback fails cleanly with « echec ». A later one with the other provider
+# leaves the earlier state alone, and that sign-in lands on its home rather
+# than on a destination meant for the other.
 _NEXT_SLOT = "oauth_next"
 
 

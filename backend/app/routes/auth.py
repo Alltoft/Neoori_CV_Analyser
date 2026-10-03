@@ -125,7 +125,11 @@ def signup():
     if user is None and sign_in.address_in_use(email):
         # Held already: by a racing submit that has just committed (look
         # again and enter it), or by an account whose address only collates
-        # equal to this one (refuse: it is someone else's).
+        # equal to this one (refuse: it is someone else's). Under MySQL's
+        # default REPEATABLE READ the second look reads the same snapshot as
+        # the first, so a racing twin is in practice entered by the
+        # IntegrityError fallback below; the re-look helps only under READ
+        # COMMITTED.
         user = sign_in.existing_account(provider, sub, email)
         if user is None:
             return jsonify({"error": ADDRESS_UNAVAILABLE, "code": "address_unavailable"}), 409
@@ -401,9 +405,11 @@ def _password_bytes(password: str) -> int | None:
 
 def _seed_problem(seed: dict, consent, brackets=ACCEPTED_AGE_BRACKETS) -> str | None:
     """Why a signup's profile seed cannot be stored, as the sentence to show,
-    or None. register and signup share it: they are the two doors that write
-    a first consent (social sign-in spec, decision 20). The length check is
-    the one SQLite never makes and MySQL answers with an error."""
+    or None. register and signup share it: they are the two signup doors
+    that write a first consent (social sign-in spec, decision 20). PUT
+    /api/profile writes one too, without this length check (a known,
+    separate gap). The length check is the one SQLite never makes and MySQL
+    answers with an error."""
     if consent is not True:
         return "Le consentement est requis."
     bracket = seed.get("tranche_age")

@@ -237,10 +237,9 @@ def send_password_reset(user) -> bool:
 
 
 def send_login_link(to: str, prenom: str, token: str) -> bool:
-    """« Votre lien de connexion ». One wording for every address. One link a
-    minute per address: an account shares auth_mail_sent_at with its other
-    mails, an address without one is paced by its latest login_links row.
-    Nothing is written unless Resend accepted the mail."""
+    """« Votre lien de connexion ». One wording whatever the address's account
+    state (social sign-in spec, decision 15): it goes to the inbox owner, and an
+    address with no account gets the same link, which signs it up. Fail-soft."""
     try:
         link = f"{_app_url()}/connexion/lien?token={token}"
         body, text = _mail(

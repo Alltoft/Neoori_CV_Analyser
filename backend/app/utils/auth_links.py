@@ -4,9 +4,10 @@ proven address carries to « Finaliser votre inscription ».
 
 Stateless on purpose (email verification spec, decision 3): the link carries
 its own proof, signed with SECRET_KEY, so there is no token table to store,
-expire or clean up. One salt per purpose, so a link minted for one job is
-refused by the other. Rotating SECRET_KEY kills every link in flight — the
-person asks for a new one.
+expire or clean up. The sign-in link is the one exception: its single use
+lives in the login_links table (social sign-in spec, decision 17). One salt
+per purpose, so a link minted for one job is refused by the other. Rotating
+SECRET_KEY kills every link in flight — the person asks for a new one.
 """
 import hashlib
 import hmac

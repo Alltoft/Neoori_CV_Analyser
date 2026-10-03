@@ -73,7 +73,9 @@ def _reset(client, user):
     })
 
 
-# ── the three doors into the queue ───────────────────────────────────────────
+# ── the four doors into the queue ────────────────────────────────────────────
+# The fourth, a sign-in that proves an unverified address (sign_in.enter), is
+# tested in test_sign_in.py.
 
 def test_a_signed_in_applicant_reaches_the_admins_at_once(client, make_user):
     admin = _admin(make_user)
