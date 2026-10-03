@@ -40,6 +40,13 @@ def start(provider):
         return _to_connexion("indisponible")
     state = secrets.token_urlsafe(32)
     session[_NEXT_SLOT] = {"state": state, "next": auth_links.safe_next(request.args.get("next"))}
+    # Authlib keeps one entry per /start (the authorize URL, PKCE verifier and
+    # nonce) and sweeps only expired ones at a callback: on a shared computer,
+    # abandoned starts would grow the session cookie past the browser's 4 KB
+    # limit, after which every provider sign-in in that browser fails. One
+    # live sign-in per provider per browser, like the single `next` slot.
+    for key in [k for k in session if k.startswith(f"_state_{provider}_")]:
+        session.pop(key, None)
     try:
         return client.authorize_redirect(
             _redirect_uri(provider), state=state, **oauth_clients.AUTHORIZE_PARAMS[provider]
@@ -77,6 +84,8 @@ def callback(provider):
                 "OAuth provider error for %s: %r %r", provider, error[:100],
                 (request.args.get("error_description") or "")[:300],
             )
+        # The flow ends here: its state goes, as a completed flow's does.
+        client.framework.clear_state_data(session, request.args.get("state"))
         return _to_connexion("annule" if error == "access_denied" else "echec")
 
     try:

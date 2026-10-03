@@ -446,3 +446,38 @@ def test_the_destination_reaches_the_ticket(client, providers):
     ticket = auth_links.load_signup_ticket(
         client.get_cookie("signup_ticket", path="/api/auth").value).payload
     assert ticket["next"] == "/analyse/nouveau"
+
+
+# ── the state kept between start and callback ─────────────────────────────────
+
+def _state_keys(client, provider="google") -> list[str]:
+    """The Authlib state entries in this browser's Flask session, read at the
+    path the session cookie is scoped to: anywhere else, nothing is sent."""
+    with client.session_transaction("/api/auth/google/start") as sess:
+        return sorted(k for k in sess if k.startswith(f"_state_{provider}_"))
+
+
+def test_a_new_start_replaces_the_previous_state(client, providers):
+    # Authlib keeps one entry per /start and sweeps only expired ones: on a
+    # shared computer, abandoned starts would outgrow the 4 KB cookie.
+    other = _query(_start(client, "microsoft"))["state"]
+    _start(client, "google")
+    latest = _query(_start(client, "google"))["state"]
+    assert _state_keys(client, "google") == [f"_state_google_{latest}"]
+    # Only this provider's: a sign-in started with the other one is left alone.
+    assert _state_keys(client, "microsoft") == [f"_state_microsoft_{other}"]
+
+
+def test_a_cancel_clears_its_state(client, providers):
+    state = _query(_start(client, "google"))["state"]
+    assert _state_keys(client) == [f"_state_google_{state}"]
+    client.get(f"/api/auth/google/callback?error=access_denied&state={state}")
+    assert _state_keys(client) == []
+
+
+def test_the_session_cookie_is_scoped_to_auth(client, providers):
+    from app.config import Config
+    assert Config.SESSION_COOKIE_PATH == "/api/auth"
+    res = _start(client, "google")
+    cookie = next(h for h in res.headers.getlist("Set-Cookie") if h.startswith("session="))
+    assert "Path=/api/auth" in [part.strip() for part in cookie.split(";")]

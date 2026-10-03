@@ -51,6 +51,10 @@ class Config:
     # session cookie between /start and /callback. Lax: the provider sends
     # the browser back with a top-level GET, which carries it.
     SESSION_COOKIE_SAMESITE = "Lax"
+    # The Flask session only carries the OAuth state between
+    # /api/auth/<provider>/start and /callback; nothing else uses it, so it
+    # need not ride on every page and asset request.
+    SESSION_COOKIE_PATH = "/api/auth"
     FRONTEND_ORIGINS = [
         o.strip()
         for o in os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:3001").split(",")
