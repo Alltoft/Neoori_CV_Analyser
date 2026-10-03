@@ -1,22 +1,31 @@
 # Phase 2 (NGINX_MODE=https): TLS termination once the ${DOMAIN} certificate
 # has been issued (see DOCKER.md). HTTP only answers ACME + redirects.
 
-# Per-IP limits on the auth endpoints (email verification spec, decision 21).
+# Per-IP limits on the auth endpoints (email verification spec, decision 21;
+# social sign-in spec, decision 23).
 # Each map turns every other URI into an empty key, which limit_req does not
 # count, so the rest of /api/ is untouched. envsubst leaves $uri and
 # $binary_remote_addr alone: it only replaces names set in the environment.
 # The key is wrong for IPv6 clients (docker-proxy hides them): never publish
 # an AAAA record, see DOCKER.md, "Do not publish an AAAA record".
 map $uri $auth_mail_key {
-    ~^/api/(auth/(register|resend-verification|forgot-password)|counselor/apply)/?$  $binary_remote_addr;
+    ~^/api/(auth/(register|resend-verification|forgot-password|email-link)|counselor/apply)/?$  $binary_remote_addr;
     default "";
 }
 map $uri $auth_login_key {
-    ~^/api/auth/(login|verify-email|reset-password)/?$  $binary_remote_addr;
+    ~^/api/auth/(login|verify-email|reset-password|email-link/(check|consume)|signup)/?$  $binary_remote_addr;
     default "";
 }
 limit_req_zone $auth_mail_key  zone=auth_mail:10m  rate=5r/m;
 limit_req_zone $auth_login_key zone=auth_login:10m rate=10r/m;
+# Looser for the OAuth round trip: each provider sign-in costs two requests
+# (start, callback), a France Travail workshop puts a whole room behind one
+# address, and neither endpoint checks a secret anyone could guess.
+map $uri $auth_oauth_key {
+    ~^/api/auth/(google|microsoft)/(start|callback)/?$  $binary_remote_addr;
+    default "";
+}
+limit_req_zone $auth_oauth_key zone=auth_oauth:10m rate=30r/m;
 limit_req_status 429;
 
 server {
@@ -75,6 +84,7 @@ server {
     location /api/ {
         limit_req zone=auth_mail  burst=3 nodelay;
         limit_req zone=auth_login burst=5 nodelay;
+        limit_req zone=auth_oauth burst=10 nodelay;
         proxy_pass http://backend:5000;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
