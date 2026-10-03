@@ -95,6 +95,14 @@ def enter(user: User, provider: str | None = None, sub: str | None = None) -> No
         demande_mail.notify_if_visible(user)
 
 
+def _account_at(email: str) -> User | None:
+    """The account the database files under this address. On MySQL the
+    users.email collation (utf8mb4_unicode_ci) ignores accents and invisible
+    characters, so the row found may hold a different address that only
+    collates equal: callers compare before trusting it."""
+    return User.query.filter_by(email=email).first()
+
+
 def existing_account(provider: str | None, sub: str | None, email: str | None) -> User | None:
     """The account this sign-in enters, already entered, or None (decision 8,
     branches 1 and 2). A known identity wins even when the provider's address
@@ -106,21 +114,34 @@ def existing_account(provider: str | None, sub: str | None, email: str | None) -
             enter(user)
             return user
     if email:
-        user = User.query.filter_by(email=email).first()
-        if user is not None:
+        user = _account_at(email)
+        # Enter only the account OF the proven address. A row that merely
+        # collates equal (« jean@société.fr » for « jean@societe.fr ») belongs
+        # to someone else. Normalising the stored side keeps a legacy
+        # mixed-case address enterable.
+        if user is not None and auth_links.normalise_email(user.email) == email:
             enter(user, provider, sub)
             return user
     return None
 
 
+def address_in_use(email: str) -> bool:
+    """Whether the database already holds an account under this address,
+    exactly or by collation. A sign-in that matched no account exactly must
+    not create one here: the unique index would refuse it."""
+    return _account_at(email) is not None
+
+
 def resolve_oauth(provider: str, claims) -> Outcome:
     """Decision 8 in order: known identity, trusted address of an account,
-    trusted address without one (signup), anything else refused."""
+    trusted address without one (signup), anything else refused — including a
+    trusted address already held by a lookalike account, which is neither
+    entered nor signed up."""
     email = trusted_email(provider, claims)
     user = existing_account(provider, claims["sub"], email)
     if user is not None:
         return Outcome("user", user=user)
-    if email is None:
+    if email is None or address_in_use(email):
         return Outcome("refused")
     return Outcome("signup", email=email)
 

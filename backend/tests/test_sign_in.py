@@ -198,6 +198,37 @@ def test_an_address_alone_enters_without_linking_anything(app, make_user):
     assert AuthIdentity.query.count() == 0
 
 
+def test_an_address_that_only_collates_equal_is_not_entered(app, make_user, monkeypatch):
+    # MySQL's utf8mb4_unicode_ci files « jean@société.fr » under
+    # « jean@societe.fr »; SQLite cannot, so the lookup is stood in for.
+    lookalike = make_user(email="jean@société.fr")
+    monkeypatch.setattr(sign_in, "_account_at", lambda email: lookalike)
+    assert sign_in.existing_account(None, None, "jean@societe.fr") is None
+    assert sign_in.address_in_use("jean@societe.fr") is True
+    assert AuthIdentity.query.count() == 0
+
+
+def test_a_provider_sign_in_onto_a_lookalike_address_is_refused(app, make_user, monkeypatch):
+    lookalike = make_user(email="marie@gmaïl.com", verified=False)
+    monkeypatch.setattr(sign_in, "_account_at", lambda email: lookalike)
+    assert sign_in.resolve_oauth("google", GOOGLE).kind == "refused"
+    assert AuthIdentity.query.count() == 0
+    fresh = _fresh(lookalike)
+    assert fresh.email_verified_at is None          # not verified by someone else's proof
+    assert password_matches(fresh, "motdepasse1")   # and its password untouched
+
+
+def test_a_legacy_address_in_capitals_is_still_entered(app, make_user, monkeypatch):
+    legacy = make_user(email="Marie@Gmail.com")     # stored before register lowercased
+    monkeypatch.setattr(sign_in, "_account_at", lambda email: legacy)
+    outcome = sign_in.resolve_oauth("google", GOOGLE)
+    assert outcome.kind == "user" and outcome.user.id == legacy.id
+
+
+def test_a_free_address_is_not_in_use(app):
+    assert sign_in.address_in_use("personne@test.fr") is False
+
+
 # ── the signup ticket (decision 18) ───────────────────────────────────────────
 
 def test_the_ticket_cookie_is_scoped_and_hidden_from_scripts(app):
