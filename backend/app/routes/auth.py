@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -145,6 +145,7 @@ def signup():
         except IntegrityError:
             # A concurrent submit committed the same address first — or, on
             # MySQL, a lookalike account appeared since the look above.
+            current_app.logger.warning("POST /signup fell back after an IntegrityError.", exc_info=True)
             db.session.rollback()
             user = sign_in.existing_account(provider, sub, email)
             if user is None:

@@ -88,6 +88,11 @@ def test_a_ticket_round_trips(app):
     }
 
 
+def test_a_ticket_drops_an_unsafe_destination(app):
+    ticket = auth_links.make_signup_ticket(method="email", sub=None, email="marie@test.fr", next_path="//evil.com")
+    assert auth_links.load_signup_ticket(ticket).payload["next"] is None
+
+
 def test_a_ticket_drops_an_unencodable_destination(app):
     ticket = auth_links.make_signup_ticket(method="email", sub=None, email="marie@test.fr", next_path="/a\ud800")
     assert auth_links.load_signup_ticket(ticket).payload["next"] is None

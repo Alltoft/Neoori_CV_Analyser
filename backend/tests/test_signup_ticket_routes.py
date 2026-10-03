@@ -1,5 +1,6 @@
 """« Finaliser votre inscription »: the account a signup ticket was waiting
 for (social sign-in spec, decisions 1 and 18–22)."""
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -217,6 +218,22 @@ def test_a_collision_after_the_users_row_leaves_nothing_behind(client, make_user
     assert User.query.filter_by(email="marie@gmail.com").count() == 0
     assert Profile.query.count() == 0
     assert client.get_cookie("signup_ticket", path="/api/auth") is not None
+
+
+def test_a_fallback_after_an_integrity_error_is_logged(client, make_user, monkeypatch, caplog):
+    # The unique constraints settling a race should be rare: when they do,
+    # the log says so. The message names no address.
+    other = make_user(email="autre@test.fr")
+    db.session.add(AuthIdentity(user_id=other.id, provider="google", subject="g-1"))
+    db.session.commit()
+    _give_ticket(client)
+    monkeypatch.setattr(sign_in, "existing_account", lambda *a: None)
+    monkeypatch.setattr(sign_in, "address_in_use", lambda email: False)
+    with caplog.at_level(logging.WARNING):
+        assert _signup(client).status_code == 409
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert [r.getMessage() for r in warnings] == ["POST /signup fell back after an IntegrityError."]
+    assert warnings[0].exc_info is not None
 
 
 def test_a_prenom_longer_than_the_column_is_refused_not_a_500(client):

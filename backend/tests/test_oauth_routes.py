@@ -17,6 +17,7 @@ from app.extensions import db
 from app.models.auth_identity import AuthIdentity
 from app.models.counselor_profile import CounselorProfile
 from app.models.user import User
+from app.routes import auth_oauth
 from app.services import oauth_clients, sign_in
 from app.utils import auth_links
 
@@ -412,6 +413,18 @@ def test_a_failure_while_resolving_is_a_failure_not_a_500(client, providers, mon
     assert res.headers["Location"] == "/connexion?erreur=echec"
 
 
+def test_a_failure_while_choosing_the_landing_is_a_failure_not_a_500(
+        client, providers, make_user, monkeypatch):
+    # The landing queries the database too: is there a conseiller's demande?
+    def broken(*args):
+        raise RuntimeError("database unavailable")
+    monkeypatch.setattr(auth_oauth, "_landing", broken)
+    make_user(email="marie@gmail.com")
+    res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com", email_verified=True)
+    assert res.headers["Location"] == "/connexion?erreur=echec"
+    assert "access_token_cookie" not in _cookies(res)
+
+
 @pytest.mark.parametrize("sub", ["x" * 256, "sujet-é", ""])
 def test_an_unusable_subject_is_a_failure_and_links_nothing(client, providers, make_user, sub):
     make_user(email="marie@gmail.com")
@@ -446,6 +459,28 @@ def test_the_destination_reaches_the_ticket(client, providers):
     ticket = auth_links.load_signup_ticket(
         client.get_cookie("signup_ticket", path="/api/auth").value).payload
     assert ticket["next"] == "/analyse/nouveau"
+
+
+def test_a_cancel_keeps_the_destination_for_the_retry(client, providers):
+    # /connexion reads `redirect` through safeRedirect: the retry goes where
+    # the first attempt was heading.
+    state = _query(_start(client, "google", "/analyse/nouveau"))["state"]
+    res = client.get(f"/api/auth/google/callback?error=access_denied&state={state}")
+    assert res.headers["Location"] == "/connexion?erreur=annule&redirect=%2Fanalyse%2Fnouveau"
+
+
+def test_a_refused_sign_in_keeps_the_destination_byte_for_byte(client, providers):
+    destination = "/analyse/nouveau?parcours=2&x=a%20b"
+    res = _sign_in(client, "google", next_path=destination, sub="g-1",
+                   email="marie@gmail.com", email_verified=False)
+    assert _query(res) == {"erreur": "email_non_verifie", "redirect": destination}
+
+
+def test_an_unavailable_provider_keeps_only_a_safe_destination(client):
+    assert _start(client, "google", "/analyse/nouveau").headers["Location"] \
+        == "/connexion?erreur=indisponible&redirect=%2Fanalyse%2Fnouveau"
+    assert _start(client, "google", "//evil.com").headers["Location"] \
+        == "/connexion?erreur=indisponible"
 
 
 # ── the state kept between start and callback ─────────────────────────────────
