@@ -41,6 +41,16 @@ class Config:
     # separated. Production names a real inbox: the shared admin login
     # (admin@neoori.dev) has no mailbox. Unset, every verified admin gets it.
     ADMIN_NOTIFY_EMAILS = _addresses(os.environ.get("ADMIN_NOTIFY_EMAIL", ""))
+    # « Continuer avec Google / Microsoft » (social sign-in spec, decision 13):
+    # a provider's button shows only once both its keys are set.
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+    MICROSOFT_CLIENT_ID = os.environ.get("MICROSOFT_CLIENT_ID")
+    MICROSOFT_CLIENT_SECRET = os.environ.get("MICROSOFT_CLIENT_SECRET")
+    # Authlib keeps the OAuth state, PKCE verifier and nonce in Flask's
+    # session cookie between /start and /callback. Lax: the provider sends
+    # the browser back with a top-level GET, which carries it.
+    SESSION_COOKIE_SAMESITE = "Lax"
     FRONTEND_ORIGINS = [
         o.strip()
         for o in os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:3001").split(",")
@@ -58,6 +68,7 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
     JWT_COOKIE_SECURE = True   # required for SameSite=None
+    SESSION_COOKIE_SECURE = True   # the OAuth state cookie, and the signup ticket
 
 
 class TestingConfig(Config):
