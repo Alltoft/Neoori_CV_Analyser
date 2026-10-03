@@ -26,6 +26,8 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien", au
   const [failed, setFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  // Set by « Changer d’adresse »: the person's own return to this form.
+  const [returned, setReturned] = useState(false)
   const { wait, restart } = useCooldown(false)
   const sentRef = useRef<HTMLDivElement>(null)
 
@@ -93,7 +95,7 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien", au
         </Button>
         <button
           type="button"
-          onClick={() => { setSentTo(null); setFailed(false); setError(null) }}
+          onClick={() => { setSentTo(null); setFailed(false); setError(null); setReturned(true) }}
           className="link-underline block w-full text-center text-sm font-medium text-orange-dark"
         >
           Changer d’adresse
@@ -102,11 +104,14 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien", au
     )
   }
 
-  // With `autoFocus`, the field takes focus whenever this form mounts: the
-  // person asked for it (the button that opened it unmounts with it) or came
-  // back to it (« Changer d’adresse »), and they are here to type. Without it
-  // the form is page content, and the field must not pull focus ahead of the
-  // heading and the message a screen reader reads first.
+  // The field takes focus when this form mounts if the caller says the person
+  // just asked for it (`autoFocus`: the button that opened it unmounts with
+  // it), or if the person came back with « Changer d’adresse » (`returned`:
+  // the button they pressed has just unmounted, and they are here to type).
+  // React applies autoFocus at mount and the sent block is a different tree,
+  // so the field mounts, and takes focus, exactly on that return. Otherwise
+  // this is page content, and its first mount must not pull focus ahead of
+  // the heading and the message a screen reader reads first.
   return (
     <form onSubmit={submit} className="space-y-3">
       {error && (
@@ -116,7 +121,7 @@ export function EmailLinkForm({ next = null, submitLabel = "Envoyer le lien", au
         <Label htmlFor="link-email">Email</Label>
         <Input
           id="link-email" type="email" autoComplete="email" className="h-10"
-          placeholder="vous@exemple.fr" required autoFocus={autoFocus}
+          placeholder="vous@exemple.fr" required autoFocus={autoFocus || returned}
           value={email} onChange={(e) => setEmail(e.target.value)}
         />
       </div>
