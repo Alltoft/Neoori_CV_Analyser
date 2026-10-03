@@ -1,5 +1,6 @@
-"""Signed, expiring links for the two mails that prove an inbox: confirming an
-address, and resetting a password.
+"""Signed, expiring tokens for everything that proves an inbox: the links that
+confirm an address, reset a password or sign in, and the signup ticket a
+proven address carries to « Finaliser votre inscription ».
 
 Stateless on purpose (email verification spec, decision 3): the link carries
 its own proof, signed with SECRET_KEY, so there is no token table to store,
@@ -8,6 +9,7 @@ refused by the other. Rotating SECRET_KEY kills every link in flight — the
 person asks for a new one.
 """
 import hashlib
+import hmac
 import re
 from dataclasses import dataclass
 
@@ -19,6 +21,15 @@ RESET_SALT = "password-reset"
 VERIFY_MAX_AGE = 48 * 3600   # seconds
 RESET_MAX_AGE = 3600
 NEXT_MAX_LENGTH = 512
+LOGIN_SALT = "email-login"
+SIGNUP_SALT = "signup-ticket"
+LOGIN_MAX_AGE = 15 * 60      # social sign-in spec, decision 15
+SIGNUP_MAX_AGE = 30 * 60     # decision 18
+EMAIL_MAX_LENGTH = 255       # users.email
+# One @, a dot after it, no whitespace or control character anywhere.
+_EMAIL_SHAPE = re.compile(
+    r"[^@\s\x00-\x1f\x7f]+@[^@\s\x00-\x1f\x7f]+\.[^@\s\x00-\x1f\x7f]+"
+)
 # Dot segments as a URL parser reads them, percent-encoded forms included:
 # "/..//evil.com" and "/%2e%2e//evil.com" both resolve to the path
 # "//evil.com", which a router then takes for another host.
@@ -105,3 +116,53 @@ def make_reset_token(user) -> str:
 
 def load_reset_token(token) -> LinkResult:
     return _load(RESET_SALT, token, RESET_MAX_AGE)
+
+
+def normalise_email(raw) -> str:
+    """The one form an address is stored and looked up under — the one
+    register stores: stripped, lowercased. Anything but a string is ""."""
+    return raw.strip().lower() if isinstance(raw, str) else ""
+
+
+def email_shape_ok(email) -> bool:
+    """A light check before an address is mailed or stored: the right shape,
+    fits users.email, and encodable — a lone surrogate, which JSON can carry,
+    is not."""
+    if not isinstance(email, str) or not 0 < len(email) <= EMAIL_MAX_LENGTH:
+        return False
+    try:
+        email.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return _EMAIL_SHAPE.fullmatch(email) is not None
+
+
+def email_hash(email: str) -> str:
+    """What login_links keeps instead of the address (social sign-in spec,
+    decision 4): an HMAC of the normalised address keyed on SECRET_KEY, so a
+    table dump does not tell which known addresses asked for a link. Call it
+    on a shape-checked address."""
+    key = current_app.config["SECRET_KEY"].encode("utf-8")
+    return hmac.new(key, normalise_email(email).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def make_login_token(jti: str, email: str, next_path=None) -> str:
+    return _serializer(LOGIN_SALT).dumps(
+        {"jti": jti, "email": email, "next": safe_next(next_path)}
+    )
+
+
+def load_login_token(token) -> LinkResult:
+    return _load(LOGIN_SALT, token, LOGIN_MAX_AGE)
+
+
+def make_signup_ticket(*, method: str, sub, email: str, prenom_hint: str = "",
+                       next_path=None) -> str:
+    return _serializer(SIGNUP_SALT).dumps({
+        "method": method, "sub": sub, "email": email,
+        "prenom_hint": prenom_hint, "next": safe_next(next_path),
+    })
+
+
+def load_signup_ticket(token) -> LinkResult:
+    return _load(SIGNUP_SALT, token, SIGNUP_MAX_AGE)
