@@ -151,6 +151,7 @@ def create_app(env: str | None = None) -> Flask:
     from .models import (  # noqa: F401
         user, analysis, prompt_version, counselor_note, counselor_code,
         counselor_profile, code_redemption, profile, price_feedback, voyage,
+        auth_identity, login_link,
     )
 
     # Blueprints
