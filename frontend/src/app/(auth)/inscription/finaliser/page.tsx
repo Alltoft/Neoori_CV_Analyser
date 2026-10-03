@@ -46,6 +46,8 @@ export default function FinaliserPage() {
   const [ticket, setTicket] = useState<Ticket>({ kind: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  // Set once the account exists: the button stays disabled while the navigation runs, after isSubmitting has gone false.
+  const [leaving, setLeaving] = useState(false)
 
   const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<Fields>({
     resolver: zodResolver(schema),
@@ -74,6 +76,7 @@ export default function FinaliserPage() {
     try {
       const res = await api.post<{ user: User; next: string | null }>("/auth/signup", fields, { skipRedirect: true })
       await refresh()
+      setLeaving(true)
       router.replace(res.next ?? homeFor(res.user.role))
     } catch (e) {
       const code = e instanceof ApiError ? e.body?.code : undefined
@@ -172,8 +175,8 @@ export default function FinaliserPage() {
           {errors.consent && <p className="text-xs text-destructive">{errors.consent.message}</p>}
         </div>
 
-        <Button type="submit" size="lg" className="h-11 w-full" disabled={isSubmitting}>
-          {isSubmitting ? "Création…" : "Créer mon compte"}
+        <Button type="submit" size="lg" className="h-11 w-full" disabled={isSubmitting || leaving}>
+          {isSubmitting || leaving ? "Création…" : "Créer mon compte"}
         </Button>
       </form>
     </AuthLayout>
