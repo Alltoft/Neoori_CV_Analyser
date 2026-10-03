@@ -11,6 +11,7 @@ from app.models.counselor_profile import CounselorProfile
 from app.models.login_link import LoginLink
 from app.models.profile import CONSENT_VERSION, Profile
 from app.models.user import User
+from app.routes import auth_link
 from app.routes.auth import password_matches
 from app.services import sign_in
 from app.utils import auth_links
@@ -64,6 +65,16 @@ def test_an_address_typed_with_capitals_and_spaces_is_paced_as_one(client, app):
     assert LoginLink.query.count() == 1
 
 
+def test_an_address_typed_with_capitals_and_spaces_signs_in_its_account(client, app, make_user):
+    # The test above cannot tell a stripped address from a refused one: a
+    # spaced address fails the shape check, and no mail leaves either way.
+    # Here the mail must leave and name the stored address, so both the strip
+    # and the lowercase have to happen in the send path.
+    make_user(email="marie@test.fr")
+    _, token = _request_link(client, app, "  MARIE@Test.FR ")
+    assert _consume(client, token).get_json()["user"]["email"] == "marie@test.fr"
+
+
 def test_the_destination_rides_in_the_link(client, app):
     _, token = _request_link(client, app, next="/analyse/nouveau")
     assert auth_links.load_login_token(token).payload["next"] == "/analyse/nouveau"
@@ -74,10 +85,14 @@ def test_a_lookalike_row_neither_greets_nor_is_paced(client, app, make_user, mon
     db.session.add(Profile(user_id=lookalike.id, prenom="Squatteur",
                            consent_at=datetime.utcnow(), consent_version=CONSENT_VERSION))
     db.session.commit()
-    monkeypatch.setattr(sign_in, "_account_at", lambda email: lookalike)
+    asked = []
+    monkeypatch.setattr(sign_in, "_account_at", lambda email: asked.append(email) or lookalike)
     app.config["RESEND_API_KEY"] = "re_test"
     with patch(SEND, return_value={"id": "1"}) as mock_send:
         client.post("/api/auth/email-link", json={"email": "marie@gmail.com"})
+    # SQLite finds no row for « marie@gmail.com » by itself, so without this
+    # the test would pass even if the route skipped account_of altogether.
+    assert asked == ["marie@gmail.com"]
     assert mock_send.call_args[0][0]["text"].startswith("Bonjour,")
     assert db.session.get(User, lookalike.id).auth_mail_sent_at is None
 
@@ -130,6 +145,26 @@ def test_a_link_is_single_use(client, app, make_user):
     assert _check(client, token).get_json()["code"] == "link_invalid"
 
 
+def test_two_clicks_racing_spend_the_link_once(client, app, make_user, monkeypatch):
+    # Both clicks pass the liveness read; only the UPDATE can tell them apart.
+    make_user(email="marie@test.fr")
+    _, token = _request_link(client, app)
+    payload = auth_links.load_login_token(token).payload
+    monkeypatch.setattr(auth_link, "_live_link", lambda t: (payload, None))
+    assert _consume(client, token).status_code == 200
+    second = _consume(client, token)
+    assert second.status_code == 400 and second.get_json()["code"] == "link_invalid"
+
+
+def test_spending_one_link_leaves_another_live(client, app):
+    # The claim names its own row. Without the id filter, one consume would
+    # spend every unused link, and with two of them waiting would refuse itself.
+    _, marie = _request_link(client, app, "marie@test.fr")
+    _, paul = _request_link(client, app, "paul@test.fr")
+    assert _consume(client, marie).status_code == 200
+    assert _check(client, paul).status_code == 200
+
+
 def test_a_tampered_link_is_invalid(client, app):
     _, token = _request_link(client, app)
     res = _consume(client, token + "x")
@@ -153,6 +188,15 @@ def test_an_address_without_an_account_goes_on_to_finalise(client, app):
     ).payload
     assert ticket == {"method": "email", "sub": None, "email": "marie@test.fr",
                       "prenom_hint": "", "next": "/analyse/nouveau"}
+
+
+def test_a_link_that_hands_out_a_ticket_is_spent(client, app):
+    # Spent on this path too: otherwise anyone holding the link could replay it
+    # once the person had finalised, find the new account, and get a session.
+    _, token = _request_link(client, app)
+    assert _consume(client, token).get_json() == {"signup": True}
+    again = _consume(client, token)
+    assert again.status_code == 400 and again.get_json()["code"] == "link_invalid"
 
 
 def test_a_link_to_an_unverified_account_applies_ruling_4(client, app, make_user):
@@ -183,3 +227,4 @@ def test_a_link_to_an_address_held_by_a_lookalike_is_refused(client, app, make_u
     assert client.get_cookie("signup_ticket", path="/api/auth") is None
     db.session.expire_all()
     assert db.session.get(User, lookalike.id).email_verified_at is None
+    assert _consume(client, token).get_json()["code"] == "link_invalid"      # spent by the refusal
