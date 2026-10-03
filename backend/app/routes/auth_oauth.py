@@ -67,6 +67,16 @@ def callback(provider):
 
     error = request.args.get("error")
     if error:
+        if error != "access_denied":
+            # Setup and policy failures (unauthorized_client, invalid_request,
+            # a tenant's consent policy) are what to expect when the keys
+            # first go live, and the redirect hides which. Both values are the
+            # provider's, or an attacker's forging this URL: capped, and %r
+            # keeps them on one log line.
+            current_app.logger.warning(
+                "OAuth provider error for %s: %r %r", provider, error[:100],
+                (request.args.get("error_description") or "")[:300],
+            )
         return _to_connexion("annule" if error == "access_denied" else "echec")
 
     try:

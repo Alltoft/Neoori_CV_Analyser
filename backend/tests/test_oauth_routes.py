@@ -2,6 +2,7 @@
 with the provider faked at the network boundary only (social sign-in spec,
 decisions 5–13). Signature verification is the one step skipped; state,
 PKCE, nonce, issuer, audience and expiry all run for real."""
+import logging
 import time
 from unittest.mock import patch
 from urllib.parse import parse_qs, quote, urlsplit
@@ -263,13 +264,49 @@ def test_a_token_naming_another_tenant_s_issuer_is_refused(client, providers, ma
     assert res.headers["Location"] == "/connexion?erreur=echec"
 
 
-def test_a_token_issued_to_another_app_is_refused(client, providers, make_user):
+def test_a_google_token_from_another_issuer_is_refused(client, providers, make_user):
+    # Authlib falls back to the discovery document's issuer only when no
+    # claims_options are passed. The route always passes them, so this check
+    # is ours alone.
     make_user(email="marie@gmail.com")
     q = _query(_start(client, "google"))
     claims = _id_claims("google", q["nonce"], sub="g-1", email="marie@gmail.com",
-                        email_verified=True, aud="someone-else")
-    assert _callback(client, "google", claims, state=q["state"]).headers["Location"] \
-        == "/connexion?erreur=echec"
+                        email_verified=True)
+    claims["iss"] = "https://evil.example"
+    res = _callback(client, "google", claims, state=q["state"])
+    assert res.headers["Location"] == "/connexion?erreur=echec"
+    assert "access_token_cookie" not in _cookies(res)
+
+
+@pytest.mark.parametrize("issuer", ["https://accounts.google.com", "accounts.google.com"])
+def test_both_google_issuer_spellings_are_accepted(client, providers, make_user, issuer):
+    # Google's documentation says it writes its issuer both ways. Spelled out
+    # here rather than read from GOOGLE_ISSUERS, so that dropping one from the
+    # tuple fails a test instead of quietly shrinking it.
+    make_user(email="marie@gmail.com")
+    q = _query(_start(client, "google"))
+    claims = _id_claims("google", q["nonce"], sub="g-1", email="marie@gmail.com",
+                        email_verified=True, iss=issuer)
+    assert _callback(client, "google", claims, state=q["state"]).headers["Location"] == "/espace"
+
+
+@pytest.mark.parametrize("provider", ["google", "microsoft"])
+@pytest.mark.parametrize("azp", [None, "ours"])
+def test_a_token_issued_to_another_app_is_refused(client, providers, make_user, provider, azp):
+    # Without azp, Authlib's own authorized-party rule refuses the token before
+    # our audience check matters. With azp naming us that rule is satisfied,
+    # and our audience check alone stands between the token and the account.
+    vouched = {
+        "google": {"sub": "g-1", "email": "marie@gmail.com", "email_verified": True},
+        "microsoft": {"sub": "m-1", "email": "marie@outlook.fr", "tid": sign_in.MSA_TENANT_ID},
+    }[provider]
+    make_user(email=vouched["email"])   # a token that got through would sign it in
+    q = _query(_start(client, provider))
+    extra = {"azp": CLIENT_ID[provider]} if azp == "ours" else {}
+    claims = _id_claims(provider, q["nonce"], **vouched, aud="someone-else", **extra)
+    res = _callback(client, provider, claims, state=q["state"])
+    assert res.headers["Location"] == "/connexion?erreur=echec"
+    assert "access_token_cookie" not in _cookies(res)
 
 
 def test_a_token_for_another_sign_in_is_refused(client, providers, make_user):
@@ -311,6 +348,42 @@ def test_cancelling_at_the_provider_says_so(client, providers):
 def test_any_other_provider_error_is_a_failure(client, providers):
     res = client.get("/api/auth/google/callback?error=server_error")
     assert res.headers["Location"] == "/connexion?erreur=echec"
+
+
+def test_a_provider_error_is_logged_and_a_cancel_is_not(client, providers, caplog):
+    # Decision 12. unauthorized_client, invalid_request, a tenant's consent
+    # policy: what to expect when the keys first go live, and the redirect
+    # alone says nothing about which. A person's own cancel is not a fault.
+    state = _query(_start(client, "google"))["state"]
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        res = client.get(f"/api/auth/google/callback?error=access_denied&state={state}")
+        assert res.headers["Location"] == "/connexion?erreur=annule"
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+        caplog.clear()
+        res = client.get("/api/auth/google/callback"
+                         "?error=unauthorized_client&error_description=Client+not+allowed")
+        assert res.headers["Location"] == "/connexion?erreur=echec"
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(warnings) == 1
+        message = warnings[0].getMessage()
+        assert "google" in message and "unauthorized_client" in message
+        assert "Client not allowed" in message
+
+
+def test_a_provider_error_is_capped_and_kept_on_one_log_line(client, providers, caplog):
+    # Both values are the provider's, or an attacker's forging this URL.
+    with caplog.at_level(logging.WARNING):
+        client.get("/api/auth/google/callback?error=" + "q" * 150
+                   + "&error_description=first%0Asecond" + "z" * 400)
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    message = warnings[0].getMessage()
+    assert "q" * 100 in message and "q" * 101 not in message
+    # The description's cap is 300 characters, 12 of them "first\nsecond".
+    assert "z" * 288 in message and "z" * 289 not in message
+    assert "\n" not in message
 
 
 @pytest.mark.parametrize("query", ["?code=c&state=never-issued", "?code=c", ""])
