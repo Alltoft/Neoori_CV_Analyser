@@ -17,7 +17,8 @@ This is sub-project 1 of 3. The other two get their own specs:
    base domain a single setting.
 
 This one ships alone, from `initial`. Its only overlap with the unmerged
-`feat/social-sign-in` branch is `CLAUDE.md` and `DOCKER.md`.
+`feat/social-sign-in` branch is `CLAUDE.md`, `DOCKER.md` and
+`backend/app/config.py`, on different lines.
 
 ## Decisions
 
@@ -55,10 +56,17 @@ Developer rulings, 2026-10-08:
    `/analyse/depart` are deleted and answer 404 — no redirect.
 8. **The server stamps every new analysis `_path: "1"`**, whatever the request
    body says.
-9. **Copy: every P2/P3 mention leaves the UI**, with minimal rewrites in the
-   existing tone. The exact before/after is in « Copy » below and needs the
-   PM's sign-off. The landing's real redesign waits for sub-project 3, where
-   each subdomain gets its own landing.
+9. **Copy: every P2/P3 mention leaves the current site**, with minimal
+   rewrites in the existing tone — nothing else on it changes. The exact
+   before/after is in « Copy » below. The site at the root domain stays as it
+   is until the outcome of the split is known; each subdomain then gets its
+   own landing, describing its product as a separate app (sub-project 3).
+10. **The counselor view goes in sub-project 2, not here.** Ruling: the
+    counselor sees the full report, on the counselor's page; `/c/<token>` with
+    its §1/§4/§5 selection disappears. Until sub-project 2 ships, this
+    sub-project only removes the view's P2/P3 branches.
+11. **The legacy Vercel/Render/TiDB test environment no longer exists.** Its
+    leftovers in the repo go too (« Legacy hosting leftovers » below).
 
 ## What stays of the parcours machinery
 
@@ -153,7 +161,11 @@ The local dev database gets the same treatment first, as a rehearsal.
 | `components/report/ReportSection.tsx` | Comment only. The chip logic stays: parcours 1 needs it for "verdict", "10" and "11". |
 | Landing, `SiteNav`, `SiteFooter`, `AuthLayout`, `app/layout.tsx`, legal pages | See « Copy ». |
 
-## Copy (needs PM sign-off)
+## Copy
+
+Every sentence of the current site that names P2/P3, or promises an analysis
+without a CV. Left as is, the site would advertise what no longer exists and
+link to pages that answer 404. The wording is approved with this spec.
 
 | # | Where | Before | After |
 |---|---|---|---|
@@ -188,6 +200,23 @@ complet »).
 The H1 « Où que vous en soyez, faites ressortir votre vrai potentiel. » stays:
 with row 1's last sentence pointing to le voyage, it remains true for someone
 without a target.
+
+## Legacy hosting leftovers
+
+The Vercel/Render/TiDB environment is gone; nothing in the repo may describe it
+as current.
+
+| Where | Change |
+|---|---|
+| `CLAUDE.md` | Delete the line « The legacy Vercel/Render/TiDB test env keeps serving its last deploy until cutover… ». |
+| `DOCKER.md` | Delete the section « Data migration (TiDB Cloud → VPS MySQL, at cutover) ». |
+| `frontend/vercel.json` | Deleted. |
+| `.gitignore`, `frontend/.gitignore`, `frontend/.dockerignore` | Drop the `.vercel` entries. |
+| `backend/app/config.py` | Reword the pre-ping comment, which names TiDB Cloud. **Keep `pool_pre_ping`**: MySQL also closes connections idle past `wait_timeout`. |
+| `backend/app/routes/analyses.py`, `TEST-PLAN.md` | « FORCE_ANALYSIS_TIER="" on Render » → in `/srv/neoori/.env`. |
+| `.github/workflows/deploy.yml` | Header comment no longer refers to the Vercel/Render auto-deploys. |
+
+Migrations and dated docs keep their mentions: they record their time.
 
 ## Errors and edge cases
 
@@ -269,8 +298,7 @@ report, the counselor view `/c/<token>`, `/admin/prompts` showing three slots.
 - Sub-projects 2 and 3, and the landing redesign.
 - Removing the parcours abstraction itself (registry, slot lookup): it stays,
   with one entry.
-- The legacy Vercel/Render/TiDB test environment: if it is still up, it still
-  serves P2/P3 from its old code and data. Shutting it down is separate.
+- The counselor view `/c/<token>`: replaced in sub-project 2 (decision 10).
 - `video/` (the motion ad, outside git): its card scene shows the three
   parcours. Untouched here; it needs a re-render before any use.
 - Issues found during exploration, not fixed here: the frontend never refreshes
