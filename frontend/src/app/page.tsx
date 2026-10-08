@@ -199,7 +199,7 @@ export default function LandingPage() {
       </section>
 
       {/* ───────────────────── Le voyage ───────────────────── */}
-      <section id="voyage" className="mx-auto max-w-6xl px-5 pt-16 sm:px-8 lg:pt-20">
+      <section id="voyage" className="mx-auto max-w-6xl px-5 pb-16 pt-16 sm:px-8 lg:pb-20 lg:pt-20">
         <Reveal>
           <div className="overflow-hidden rounded-3xl bg-navy shadow-float">
             <div className="voyage-rule" />
