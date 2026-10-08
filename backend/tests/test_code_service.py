@@ -26,28 +26,28 @@ def test_normalize_accepts_spacing_and_case(app):
 
 def test_resolve_returns_an_active_code(app):
     c = _code()
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert refusal is None
     assert found.id == c.id
 
 
 def test_resolve_refuses_an_inactive_code(app):
     c = _code(is_active=False)
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert found is None
     assert refusal == code_service.INVALID
 
 
 def test_resolve_refuses_a_revoked_code(app):
     c = _code(revoked_at=datetime.utcnow())
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert found is None
     assert refusal == code_service.INVALID
 
 
 def test_resolve_refuses_an_expired_code(app):
     c = _code(expires_at=datetime.utcnow() - timedelta(days=1))
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert found is None
     assert refusal == code_service.EXPIRED
 
@@ -57,7 +57,7 @@ def test_resolve_refuses_an_exhausted_code(app):
     db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-1"))
     db.session.commit()
 
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert found is None
     assert refusal == code_service.EXHAUSTED
 
@@ -67,7 +67,7 @@ def test_a_legacy_code_is_never_exhausted(app):
     uses_count with no redemption rows behind it; the count check never runs
     on them, so that history cannot lock anybody out."""
     c = _code(uses_count=97)
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert refusal is None
     assert found.id == c.id
 
@@ -80,15 +80,14 @@ def test_resolve_ignores_a_drifted_uses_count(app):
     db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-1"))
     db.session.commit()
 
-    found, refusal = code_service.resolve(c.code)
+    found, refusal = code_service.resolve(c.code, "analysis")
     assert refusal is None
     assert found.id == c.id
 
 
-def test_record_writes_the_row_and_bumps_the_counter(app):
+def test_redeem_writes_the_row_and_bumps_the_counter(app):
     c = _code()
-    code_service.record(c, user_id=None, target_type="analysis", target_id="a-1")
-    db.session.commit()
+    assert code_service.redeem(c, user_id=None, target_type="analysis", target_id="a-1") is None
 
     row = CodeRedemption.query.filter_by(code_id=c.id).one()
     assert row.user_id is None

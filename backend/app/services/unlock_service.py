@@ -7,6 +7,21 @@ from . import tiers
 from .anthropic_service import start_analysis
 
 
+def refusal(analysis: Analysis) -> str | None:
+    """Why this analysis cannot be unlocked, or None. The one rule checkout
+    and unlock_analysis share (four-doors spec, decision 41), so a payment is
+    never taken for an unlock that then refuses."""
+    if analysis.status in ("queued", "running"):
+        return "Une génération est déjà en cours pour cette analyse."
+    if analysis.status == "draft":
+        return "Cette analyse n'a pas encore été générée."
+    if analysis.status != "success":
+        return "L'analyse doit être terminée avant le déblocage."
+    if analysis.unlock_method or "5" in (analysis.output or {}):
+        return "Cette analyse est déjà débloquée."
+    return None
+
+
 def unlock_analysis(
     analysis: Analysis,
     method: str,
@@ -19,14 +34,11 @@ def unlock_analysis(
     or a regeneration is already in flight. Caller commits are not needed —
     this commits before spawning the generation thread.
     """
-    inputs = analysis.inputs or {}
+    reason = refusal(analysis)
+    if reason:
+        return False, reason
 
-    if analysis.status in ("queued", "running"):
-        return False, "Une génération est déjà en cours pour cette analyse."
-    if analysis.status == "draft":
-        return False, "Cette analyse n'a pas encore été générée."
-    if analysis.unlock_method or "5" in (analysis.output or {}):
-        return False, "Cette analyse est déjà débloquée."
+    inputs = analysis.inputs or {}
 
     # JSON column: reassign a new dict so SQLAlchemy sees the change
     new_inputs = dict(inputs)

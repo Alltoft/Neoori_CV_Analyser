@@ -165,6 +165,9 @@ def rig(client, app, monkeypatch):
     _db.session.commit()
 
     analysis = _analysis(share_token="fuzz-share-token")
+    # /unlock is the owner's alone (401 / 403 before the body is read), so its
+    # row needs an analysis the candidate owns.
+    owned_analysis = _analysis(owner=candidate)
 
     # POST /api/auth/signup reads its body only behind a live ticket. Every
     # fuzzed call leaves at least one field invalid but one (consent=True),
@@ -182,6 +185,7 @@ def rig(client, app, monkeypatch):
         "candidate_email": candidate.email,
         "admin_id": admin.id,
         "analysis_id": analysis.id,
+        "owned_analysis_id": owned_analysis.id,
         "share_token": analysis.share_token,
     }
 
@@ -256,8 +260,8 @@ ROUTES = [
     dict(
         name="unlock_with_code",
         method="post",
-        path=lambda rig: f"/api/analyses/{rig['analysis_id']}/unlock",
-        headers=lambda rig: {},
+        path=lambda rig: f"/api/analyses/{rig['owned_analysis_id']}/unlock",
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {"code": "AAAA1111"},
         fields=["code"],
     ),

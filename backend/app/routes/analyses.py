@@ -4,6 +4,7 @@ from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from ..extensions import db
 from ..models.analysis import Analysis
+from ..models.counselor_code import CounselorCode
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..models.voyage import Voyage
@@ -14,6 +15,7 @@ from ..utils.request_body import json_object, text_field, dict_field
 from ..services import code_service
 from ..services import section_registry as registry
 from ..services import tiers
+from ..services import unlock_service
 from ..services.anthropic_service import start_analysis
 from ..services.unlock_service import unlock_analysis
 
@@ -189,34 +191,39 @@ def get_analysis(analysis_id):
 
 
 @analyses_bp.post("/<analysis_id>/unlock")
+@jwt_required()
 def unlock_with_code(analysis_id):
-    """Redeem a counselor code: free paid-tier regeneration (Cap Emploi /
-    France Travail beneficiaries). Payment unlocks go through /api/payments."""
+    """Redeem a promo code on the caller's own free report (four-doors spec,
+    decision 22). A conseiller code is refused here: with one, the full report
+    goes to the counselor through the advisor door, never back to the
+    candidate (ruling 2)."""
     analysis = Analysis.query.get_or_404(analysis_id)
-    if not _may_access(analysis):
+    user_id = get_jwt_identity()
+    if analysis.user_id is None or analysis.user_id != user_id:
         return jsonify({"error": "Accès non autorisé."}), 403
-    data = json_object()
 
-    code_str = code_service.normalize(text_field(data, "code"))
+    code_str = code_service.normalize(text_field(json_object(), "code"))
     if not code_str:
-        return jsonify({"error": "Code requis."}), 400
-
-    code, refusal = code_service.resolve(code_str)
+        return jsonify({"error": code_service.REQUIRED}), 400
+    # The kind first: a spent or expired conseiller code still gets the
+    # sentence that says where such a code goes, not « limite atteinte ».
+    known = CounselorCode.query.filter_by(code=code_str).first()
+    if known is not None and code_service.kind(known) != code_service.PROMO:
+        return jsonify({"error": code_service.NOT_FOR_UNLOCK}), 409
+    code, refusal = code_service.resolve(code_str, "analysis")
     if refusal:
         return jsonify({"error": refusal}), 400
+
+    reason = unlock_service.refusal(analysis)
+    if reason:
+        return jsonify({"error": reason}), 409
+    refused = code_service.redeem(code, user_id=user_id, target_type="analysis", target_id=analysis.id)
+    if refused:
+        return jsonify({"error": refused}), 409
 
     ok, reason = unlock_analysis(analysis, method="code")
     if not ok:
         return jsonify({"error": reason}), 409
-
-    # analysis.user_id, not the JWT: this route has no auth decorator, and an
-    # analysis created anonymously before accounts were required has no
-    # owner. Such an analysis logs a NULL person and still counts against the
-    # code.
-    code_service.record(
-        code, user_id=analysis.user_id, target_type="analysis", target_id=analysis.id
-    )
-    db.session.commit()
     return jsonify({"analysis": analysis.to_dict()}), 200
 
 

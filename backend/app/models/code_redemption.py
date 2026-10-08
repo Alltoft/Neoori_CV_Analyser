@@ -17,9 +17,10 @@ class CodeRedemption(db.Model):
     code_id = db.Column(
         db.String(36), db.ForeignKey("counselor_codes.id"), nullable=False, index=True
     )
-    # Nullable on purpose: POST /api/analyses/<id>/unlock carries no auth
-    # decorator, so the anonymous flow redeems codes too. ON DELETE SET NULL
-    # keeps the count when the person is erased — the row survives, they do not.
+    # Nullable on purpose: an advisor-door redemption has no account to name,
+    # and an erased person (ON DELETE SET NULL) or an erased voyage
+    # (DELETE /api/voyage) clears it — the row survives, so the use stays
+    # counted. NULLs never collide in the unique keys below.
     user_id = db.Column(
         db.String(36),
         db.ForeignKey("users.id", ondelete="SET NULL"),

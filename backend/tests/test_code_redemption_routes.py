@@ -16,8 +16,9 @@ from app.models.user import User
 from app.models.voyage import Voyage
 
 
-def _analysis():
+def _analysis(owner):
     a = Analysis(
+        user_id=owner.id,
         inputs={"_path": "A", "_tier": "haiku", "cible_visee": "x"},
         status="success",
         output={"1": {"title": "t", "body_markdown": "b", "items": []}},
@@ -43,38 +44,56 @@ def _candidate(email="beneficiaire@test.com"):
 
 
 @patch("app.services.unlock_service.start_analysis")
-def test_analysis_unlock_logs_an_anonymous_redemption(mock_start, client, app):
-    """The route carries no auth decorator, so user_id may legitimately be NULL
-    — and the use must still count."""
-    a = _analysis()
+def test_analysis_unlock_logs_the_person(mock_start, client, app):
+    """/unlock is the owner's alone (four-doors spec, decision 22), so the
+    redemption always names the account that spent the code."""
+    user, headers = _candidate()
+    a = _analysis(user)
     c = _code()
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=headers)
     assert r.status_code == 200
 
     row = CodeRedemption.query.filter_by(code_id=c.id).one()
-    assert row.user_id is None
+    assert row.user_id == user.id
     assert row.target_type == "analysis"
     assert row.target_id == a.id
 
 
 @patch("app.services.unlock_service.start_analysis")
 def test_analysis_unlock_refuses_an_exhausted_code(mock_start, client, app):
-    a = _analysis()
+    user, headers = _candidate()
+    a = _analysis(user)
     c = _code(max_uses=1)
-    db.session.add(CodeRedemption(code_id=c.id, target_type="voyage", target_id="v-0"))
+    db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-0", slot=1))
     db.session.commit()
 
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=headers)
     assert r.status_code == 400
     assert r.get_json()["error"] == "Ce code a atteint sa limite d'utilisation."
     mock_start.assert_not_called()
 
 
 @patch("app.services.unlock_service.start_analysis")
+def test_a_voyage_use_leaves_the_analysis_unlock_open(mock_start, client, app):
+    """Uses are counted per kind (ruling 10): a single-use code already spent
+    on a voyage still opens one analysis."""
+    user, headers = _candidate()
+    a = _analysis(user)
+    c = _code(max_uses=1)
+    db.session.add(CodeRedemption(code_id=c.id, target_type="voyage", target_id="v-0", slot=1))
+    db.session.commit()
+
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=headers)
+    assert r.status_code == 200
+    mock_start.assert_called_once()
+
+
+@patch("app.services.unlock_service.start_analysis")
 def test_analysis_unlock_refuses_an_expired_code(mock_start, client, app):
-    a = _analysis()
+    user, headers = _candidate()
+    a = _analysis(user)
     c = _code(expires_at=datetime.utcnow() - timedelta(days=1))
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=headers)
     assert r.status_code == 400
     assert r.get_json()["error"] == "Ce code a expiré."
 
@@ -121,7 +140,7 @@ def test_voyage_unlock_refuses_an_exhausted_code(client, app):
     db.session.add(v)
     db.session.commit()
     c = _code(max_uses=1)
-    db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-0"))
+    db.session.add(CodeRedemption(code_id=c.id, target_type="voyage", target_id="v-0", slot=1))
     db.session.commit()
 
     r = client.post("/api/voyage/unlock", json={"code": c.code}, headers=headers)
@@ -129,3 +148,20 @@ def test_voyage_unlock_refuses_an_exhausted_code(client, app):
     assert r.get_json()["error"] == "Ce code a atteint sa limite d'utilisation."
     db.session.refresh(v)
     assert v.counselor_code_id is None
+
+
+def test_an_analysis_use_leaves_the_voyage_unlock_open(client, app):
+    """The other direction of ruling 10: a single-use code already spent on an
+    analysis still opens one voyage."""
+    user, headers = _candidate()
+    v = Voyage(user_id=user.id, consent_at=datetime.utcnow())
+    db.session.add(v)
+    db.session.commit()
+    c = _code(max_uses=1)
+    db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-0", slot=1))
+    db.session.commit()
+
+    r = client.post("/api/voyage/unlock", json={"code": c.code}, headers=headers)
+    assert r.status_code == 200
+    db.session.refresh(v)
+    assert v.counselor_code_id == c.id

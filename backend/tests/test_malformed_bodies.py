@@ -106,9 +106,11 @@ def test_save_draft_survives_malformed_body(client, auth, body):
 
 
 @pytest.mark.parametrize("body", MALFORMED_BODIES)
-def test_unlock_with_code_survives_malformed_body(client, body):
-    a = _analysis()
-    res = client.post(f"/api/analyses/{a.id}/unlock", json=body)
+def test_unlock_with_code_survives_malformed_body(client, candidate, auth, body):
+    # /unlock answers 401 / 403 before it reads the body unless the caller owns
+    # the analysis: the owner's bearer header keeps the body what is tested.
+    a = _analysis(owner=candidate)
+    res = client.post(f"/api/analyses/{a.id}/unlock", json=body, headers=auth)
     assert res.status_code != 500
     assert res.status_code == 400
     assert res.get_json()["error"] == "Code requis."
@@ -195,9 +197,9 @@ def test_login_rejects_non_string_email(client, value):
 
 
 @pytest.mark.parametrize("value", NON_STRING_VALUES)
-def test_unlock_rejects_non_string_code(client, value):
-    a = _analysis()
-    res = client.post(f"/api/analyses/{a.id}/unlock", json={"code": value})
+def test_unlock_rejects_non_string_code(client, candidate, auth, value):
+    a = _analysis(owner=candidate)
+    res = client.post(f"/api/analyses/{a.id}/unlock", json={"code": value}, headers=auth)
     assert res.status_code == 400
     assert res.get_json()["error"] == "Code requis."
 

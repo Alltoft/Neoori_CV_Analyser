@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models.analysis import Analysis
+from ..models.code_redemption import CodeRedemption
 from ..models.profile import Profile
 from ..models.voyage import (
     CONSENT_VERSION,
@@ -173,6 +174,13 @@ def delete_voyage():
         stripped.pop("_voyage", None)
         stripped.pop("_voyage_id", None)
         analysis.inputs = stripped
+
+    # The use stays spent, but no longer names a person who erased their
+    # voyage (four-doors spec, decision 23) — and the per-person unique key no
+    # longer stops them from unlocking a new voyage with another use.
+    CodeRedemption.query.filter_by(target_type="voyage", target_id=voyage.id).update(
+        {"user_id": None}, synchronize_session=False
+    )
 
     try:
         db.session.delete(voyage)
@@ -467,14 +475,17 @@ def unlock_voyage():
     if not code_str:
         return jsonify({"error": "Code requis."}), 400
 
-    code, refusal = code_service.resolve(code_str)
+    code, refusal = code_service.resolve(code_str, "voyage")
     if refusal:
         return jsonify({"error": refusal}), 400
 
-    voyage.counselor_code_id = code.id
-    code_service.record(
+    refused = code_service.redeem(
         code, user_id=voyage.user_id, target_type="voyage", target_id=voyage.id
     )
+    if refused:
+        return jsonify({"error": refused}), 400
+
+    voyage.counselor_code_id = code.id
     db.session.commit()
     return jsonify({"voyage": voyage.to_dict()}), 200
 
