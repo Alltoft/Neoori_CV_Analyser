@@ -39,7 +39,6 @@
   --color-orange-dark: var(--orange-dark);
   --color-peach:       var(--peach);
   --color-peach-soft:  var(--peach-soft);
-  --color-teal:        var(--teal);
   --color-paper:       var(--paper);
   --color-success:     var(--success);
 
@@ -60,11 +59,10 @@
   --navy-500:    #2a4f91;   /* light blue — links / hover */
   --orange:      #ea5624;   /* charter orange — marks, icons, ring, highlights */
   --orange-dark: #c4481e;   /* deep — active states / gradient toward navy */
-  --teal:        #2e8b6e;   /* charter teal — third accent */
   --peach:       #f7b394;   /* warm peach accent, rebased on the charter orange */
   --peach-soft:  #fdeee5;   /* peach tint — chips, badges, blockquote, selection */
   --paper:       #f0f7f4;   /* charter light ground — hero / CTA field base */
-  --success:     #2e8b6e;   /* the charter teal doubles as the success tone */
+  --success:     #2e8b6e;   /* charter teal, kept as the success tone */
 
   /* ── shadcn semantic ── */
   --background:           #ffffff;
@@ -237,10 +235,10 @@ html { scroll-behavior: smooth; }
 }
 
 /* ── Le voyage ──
-   The three parcours own the charter's three full-weight hues (orange, navy,
-   teal). The voyage is a fourth scenario, not a fourth parcours, so instead of
-   a fourth hue it takes the charter's inverted pairing: peach on navy, 6.81:1,
-   the same pair the report header and the landing preview already use. */
+   The analysis owns the charter orange. The voyage is a separate product, so
+   instead of a hue of its own it takes the charter's inverted pairing: peach
+   on navy, 6.81:1, the same pair the report header and the landing preview
+   already use. */
 .voyage-rule {
   height: 6px;
   background: var(--peach);

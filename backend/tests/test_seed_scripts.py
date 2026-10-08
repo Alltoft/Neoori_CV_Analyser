@@ -21,8 +21,6 @@ BACKEND = Path(__file__).resolve().parents[1]
 # seed script → the slot its prompt belongs to
 SEEDS = {
     "seed_prompt_v18.py": "1",                      # ex-path A, « J'ai une cible »
-    "seed_prompt_v11_p3.py": "3",                   # ex-path B, « Je pars de zéro »
-    "seed_prompt_v10_p2.py": "2",                   # authored after the migration
     "seed_prompt_v10_voyage_micro.py": "voyage_micro",
     "seed_prompt_v10_voyage_portrait.py": "voyage_portrait",
 }

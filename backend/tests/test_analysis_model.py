@@ -30,10 +30,13 @@ def _analysis(path, output=None):
 
 # ── parcours resolution ──────────────────────────────────────────────────────
 
-def test_parcours_resolves_legacy_path_codes():
+def test_parcours_resolves_the_legacy_path_code():
     assert _analysis("A").parcours == "1"
-    assert _analysis("B").parcours == "3"
-    assert _analysis("2").parcours == "2"
+
+
+def test_retired_parcours_read_as_parcours_1():
+    for retired in ("2", "3", "B"):
+        assert _analysis(retired).parcours == "1"
 
 
 def test_parcours_defaults_when_missing_or_unknown():
@@ -45,19 +48,15 @@ def test_parcours_defaults_when_missing_or_unknown():
 # ── sections_meta ────────────────────────────────────────────────────────────
 
 def test_sections_meta_is_ordered_and_typed():
-    meta = _analysis("2").to_dict()["sections_meta"]
-    assert [m["key"] for m in meta] == ["A", "C", "D", "verdict", "B", "E", "F", "G"]
-    assert meta[0]["title"] == "Capital professionnel"
-    # §C is the tag-cloud section for parcours 2
-    assert next(m for m in meta if m["key"] == "C")["render"] == "tags"
-    assert next(m for m in meta if m["key"] == "A")["render"] == "markdown"
-
-
-def test_sections_meta_roman_order_is_not_lexicographic():
-    """Sorted alphabetically this would be I, II, III, IV, V, VI -> wrong once
-    IX/X exist; registry order is the contract, not any sort."""
-    meta = _analysis("3").to_dict()["sections_meta"]
-    assert [m["key"] for m in meta] == ["I", "II", "III", "verdict", "IV", "V", "VI"]
+    """Registry order is the contract: the verdict sits between §3 and §4,
+    and a string sort would put §10 and §11 before §2."""
+    meta = _analysis("1").to_dict()["sections_meta"]
+    assert [m["key"] for m in meta] == [
+        "1", "2", "3", "verdict", "4", "5", "6", "7", "8", "9", "10", "11",
+    ]
+    assert meta[0]["title"] == "Lecture stratégique du parcours"
+    assert next(m for m in meta if m["key"] == "3")["render"] == "tags"
+    assert next(m for m in meta if m["key"] == "1")["render"] == "markdown"
 
 
 # ── counselor view ───────────────────────────────────────────────────────────
@@ -68,16 +67,6 @@ def test_counselor_view_filters_to_parcours_1_set():
     data = _analysis("1", output).to_dict(audience="counselor")
     assert set(data["output"].keys()) == {"1", "4", "5"}
     assert [m["key"] for m in data["sections_meta"]] == ["1", "4", "5"]
-
-
-def test_counselor_view_uses_the_right_set_per_parcours():
-    """Regression: the filter was hardcoded to ('1','4','5') for every path,
-    so a parcours-3 counselor link rendered empty skeletons."""
-    output = {k: {"title": k, "body_markdown": "b", "items": []}
-              for k in ("I", "II", "III", "IV", "V", "VI")}
-    data = _analysis("3", output).to_dict(audience="counselor")
-    assert set(data["output"].keys()) == {"I", "III", "V"}
-    assert [m["key"] for m in data["sections_meta"]] == ["I", "III", "V"]
 
 
 def test_candidate_view_keeps_every_generated_section():
@@ -97,7 +86,7 @@ def test_to_dict_carries_the_voyage_that_fed_the_analysis():
 
 
 def test_voyage_id_is_null_rather_than_absent_when_there_is_no_voyage():
-    """The voyage is never required — every parcours runs identically without
+    """The voyage is never required — an analysis runs identically without
     one, and the key must still be there so the client need not branch."""
     payload = _analysis("1").to_dict()
     assert "voyage_id" in payload
@@ -125,12 +114,10 @@ def test_the_counselor_view_does_not_carry_it():
 _SENSITIVE_INPUT_KEYS = {"cv_text", "_conditions", "_oeth", "_voyage", "_voyage_id"}
 
 # Every analysis.inputs.X access in frontend/src/app/c/[token]/page.tsx
-# (verified 2026-09-12): the parcours discriminator, the header name, and the
-# "key facts" strip for both the parcours-1/2 layout and the parcours-3 one.
+# (verified 2026-10-08): the header name and the "key facts" strip.
 _RENDERED_INPUT_KEYS = {
-    "_path", "prenom", "nom", "cible_visee", "type_mobilite",
+    "prenom", "nom", "cible_visee", "type_mobilite",
     "situation_actuelle", "notes_specifiques",
-    "_sub_profile", "aime", "refuse", "accompagnement",
 }
 
 
@@ -150,10 +137,6 @@ def _full_inputs(**extra):
         "type_mobilite": "evolution",
         "situation_actuelle": "en poste",
         "notes_specifiques": "Anxieuse a l'idee de changer de secteur.",
-        "_sub_profile": "b2",
-        "aime": ["organiser", "negocier"],
-        "refuse": ["itinerance"],
-        "accompagnement": "a distance",
     }
     data.update(extra)
     return data
@@ -239,3 +222,17 @@ def test_an_unknown_input_key_does_not_reach_the_counselor_payload():
 
     assert "_future_secret" not in data["inputs"]
     assert set(data["inputs"].keys()) == _RENDERED_INPUT_KEYS
+
+
+@pytest.mark.parametrize("retired", ["2", "3", "B"])
+def test_a_leftover_retired_row_is_served_as_parcours_1(retired, client):
+    """Review Focus 2. Between the deploy and the purge, a P2/P3/'B' row must
+    render as parcours 1 — never a 500 — on the owner's view and on the
+    public counselor link."""
+    row = _persisted_analysis({"_path": retired, "cv_text": "x"},
+                              share_token=f"tok-retired-{retired}")
+    row.output = {"A": {"title": "Capital", "body_markdown": "b", "items": []}}
+    _db.session.commit()
+
+    assert row.to_dict()["sections_meta"][0]["key"] == "1"
+    assert client.get(f"/api/c/tok-retired-{retired}").status_code == 200

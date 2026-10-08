@@ -71,13 +71,6 @@ def test_unlock_already_unlocked(mock_start, client, app):
     mock_start.assert_not_called()
 
 
-def test_unlock_path_b_rejected(client, app):
-    a = _make_analysis(path="B")
-    c = _make_code()
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
-    assert r.status_code == 409
-
-
 def test_unlock_draft_rejected(client, app):
     a = _make_analysis(status="draft", output=None)
     c = _make_code()

@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 import type { PromptSlot, PromptVersion } from "@/types"
 
-const SLOTS: PromptSlot[] = ["1", "2", "3", "voyage_micro", "voyage_portrait"]
+const SLOTS: PromptSlot[] = ["1", "voyage_micro", "voyage_portrait"]
 
 /**
  * Chip labels. These strings are a second copy of `LABELS` in
@@ -30,8 +30,6 @@ const SLOTS: PromptSlot[] = ["1", "2", "3", "voyage_micro", "voyage_portrait"]
  */
 const SLOT_LABEL: Record<PromptSlot, string> = {
   "1": "Parcours 1 · J'ai une cible",
-  "2": "Parcours 2 · Je cherche ma direction",
-  "3": "Parcours 3 · Je pars de zéro",
   voyage_micro: "Voyage · phrase (S0)",
   voyage_portrait: "Voyage · portrait",
 }
@@ -41,8 +39,6 @@ const SLOT_LABEL: Record<PromptSlot, string> = {
  *  for the voyage, which has no report sections. */
 const SLOT_HELP: Record<PromptSlot, string> = {
   "1": "CV en main et cible identifiée. Rapport §1 à §9.",
-  "2": "Un parcours mais pas de cible. Rapport §A à §G.",
-  "3": "Sans CV, à partir des expériences de vie. Rapport §I à §VI.",
   voyage_micro:
     "La phrase écrite juste après la session 0, à partir des trois envies les plus marquées. Une seule phrase, 15 à 25 mots, modèle rapide.",
   voyage_portrait:
@@ -52,19 +48,18 @@ const SLOT_HELP: Record<PromptSlot, string> = {
 /** Version-label suffix per slot; the history list groups on it. */
 const SLOT_SUFFIX: Record<PromptSlot, string> = {
   "1": "-P1",
-  "2": "-P2",
-  "3": "-P3",
   voyage_micro: "-VM",
   voyage_portrait: "-VP",
 }
 
-const SUFFIX_RE = /-(?:P[123]|VM|VP|[AB])$/
+const SUFFIX_RE = /-(?:P1|VM|VP|A)$/
 
-/** Rows written before the v1.2 migration carry the old A/B codes. */
-function toSlot(raw: string | undefined): PromptSlot {
-  if (raw === "A") return "1"
-  if (raw === "B") return "3"
-  return (SLOTS as string[]).includes(raw ?? "") ? (raw as PromptSlot) : "1"
+/** Rows written before the v1.2 migration carry the old "A" code. Any other
+ *  value is not a slot this page edits: it is left out, never shown in
+ *  parcours 1's history or as its « actif ». */
+function toSlot(raw: string | undefined): PromptSlot | null {
+  if (raw === undefined || raw === "A") return "1"
+  return (SLOTS as string[]).includes(raw) ? (raw as PromptSlot) : null
 }
 
 export default function PromptsPage() {

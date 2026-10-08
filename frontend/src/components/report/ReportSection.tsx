@@ -55,8 +55,8 @@ export function ReportSection({
   counselor?: boolean
   unlockHref?: string
 }) {
-  // Keys run "1".."11", "A".."G" and "I".."VI" depending on the parcours. The
-  // free-tier verdict has no ordinal, so it gets no chip rather than "§verdict".
+  // Keys run "1".."11". The free-tier verdict has no ordinal, so it gets no
+  // chip rather than "§verdict".
   const chip = n.length <= 3 ? `§${n}` : null
   return (
     <div className={cn("print-break mb-7", locked && "opacity-60")}>

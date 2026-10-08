@@ -2,6 +2,10 @@
 Date: 2026-09-09
 Status: proposed — developer decisions marked ⚑ are defaults, override any of them
 
+> **2026-10-08:** parcours 2 and 3 were retired
+> (`docs/superpowers/specs/2026-10-08-remove-parcours-2-3-design.md`). The
+> P2/P3 mentions below describe the app as it was designed on 2026-09-09.
+
 ## Overview
 
 Digitise the two PM documents `neoori_cahier_papier.pdf` (student workbook, 6 sessions S0–S5) and `neoori_scoring_restitution-1.pdf` (counselor scoring + restitution manual) as **le voyage** — the module the Parcours doc §7 describes and CLAUDE.md / plan.md had parked as "Portrait module, out of scope".

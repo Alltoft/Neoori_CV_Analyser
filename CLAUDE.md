@@ -143,7 +143,6 @@ Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 - `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Now `https` — login only works in that phase, JWT cookies are `Secure`-only in production.
 - Flask `strict_slashes=False` stays global — the proxies strip trailing slashes before forwarding.
 - Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
-- The legacy Vercel/Render/TiDB test env keeps serving its last deploy until cutover — data migration steps in `DOCKER.md`.
 
 ## Le voyage
 
@@ -183,7 +182,7 @@ python seed_prompt_v10_voyage_portrait.py
 ```
 
 Both scripts are idempotent — re-running does not duplicate a version.
-DOCKER.md's deploy runbook (`DOCKER.md:55-60`) runs the two seed scripts —
+DOCKER.md's deploy runbook (`DOCKER.md:55-59`) runs the two seed scripts —
 not the migration: the production container applies migrations on its own
 at startup (`backend/entrypoint.sh:24`). This section is here so a local
 database, or a fresh VPS one, is not the first place someone rediscovers
@@ -201,14 +200,14 @@ profile:
 - `inputs["_voyage_id"]` and `Analysis.voyage_id` — which voyage fed which
   analysis, recoverable afterwards. Same discipline as `prompt_version_id`.
 - `anthropic_service._voyage_block()` wraps the lines under
-  `--- CE QUE LE VOYAGE A RÉVÉLÉ ---` inside `_common_tail()`, so all three
-  parcours carry it from one place.
+  `--- CE QUE LE VOYAGE A RÉVÉLÉ ---` inside `_common_tail()`, which closes
+  the analysis message.
 
 Two rules hold this together, and both have tests in
 `backend/tests/test_voyage_prompt_context.py`:
 
-1. **Never required.** No voyage → no key, no block, no placeholder. Every
-   parcours runs identically without one.
+1. **Never required.** No voyage → no key, no block, no placeholder. An
+   analysis runs identically without one.
 2. **The stage rule.** Until `portrait_status == "validated"`, an analysis
    receives only session 0's phrase and its three attractions. The full
    reduction travels only after a counselor validates — an analysis must never

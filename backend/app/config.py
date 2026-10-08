@@ -14,8 +14,9 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-in-prod")
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    # TiDB Cloud closes idle connections; without pre-ping the first request
-    # after an idle period hits a stale pooled connection and 500s.
+    # MySQL closes connections idle past wait_timeout; without pre-ping the
+    # first request after an idle period hits a stale pooled connection and
+    # 500s.
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 280,

@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge"
 import {
   ArrowRight, Check, Lock, ShieldCheck, Target, PenLine, FileCheck2,
   UserRound, Building2, Users, Server, EyeOff, History, Mail,
-  Compass, Sprout,
 } from "lucide-react"
 
 /* ── The deliverable, rendered as proof (mirrors the real report chrome) ── */
@@ -76,8 +75,8 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 /* ── Section data ── */
 const STEPS = [
   { icon: UserRound, n: "01", title: "Votre profil", desc: "Rempli une seule fois : votre situation, votre projet, et si vous en avez, vos contraintes ou besoins particuliers — mobilité, aménagement, situation personnelle. L’analyse en tient compte. Elle est faite pour vous, pas pour un profil standard." },
-  { icon: Target, n: "02", title: "Votre point de départ", desc: "Une cible précise, une direction à trouver, ou un départ de zéro. Votre CV si vous en avez un — sinon, quelques questions suffisent." },
-  { icon: PenLine, n: "03", title: "La lecture", desc: "neoori lit votre parcours du point de vue des recruteurs — et votre CV, si vous en avez un, en tenant compte des ATS." },
+  { icon: Target, n: "02", title: "Votre cible", desc: "Une offre d’emploi en main, ou le poste que vous visez décrit avec vos mots. Et votre CV, en PDF ou copié-collé." },
+  { icon: PenLine, n: "03", title: "La lecture", desc: "neoori lit votre parcours et votre CV du point de vue des recruteurs, en tenant compte des ATS." },
   { icon: FileCheck2, n: "04", title: "Votre rapport", desc: "Vous repartez avec des réponses claires. Ce qui fonctionne. Ce qui coince. Et comment avancer, concrètement." },
 ]
 
@@ -91,47 +90,6 @@ const SECTIONS_FULL = [
   { n: "7", t: "Une synthèse de votre profil", free: false },
   { n: "8", t: "Des pistes d’évolution", free: false },
   { n: "9", t: "Une proposition de CV retravaillé, prête à envoyer", free: false },
-]
-
-const PARCOURS = [
-  {
-    href: "/analyse/nouveau",
-    n: "1",
-    icon: Target,
-    title: "J'ai une cible",
-    lead: "Vous visez un poste ou un secteur précis, peut-être avec une offre en main.",
-    detail: "Votre CV est comparé à cette cible, point par point.",
-    needs: "CV requis",
-    // Charter accents, one per scenario — the colour is the wayfinding, so it
-    // has to survive into the form pages too, not just live on this card.
-    ring: "ring-orange/35 hover:ring-orange",
-    bar: "bg-orange",
-    chip: "bg-peach-soft text-orange-dark",
-  },
-  {
-    href: "/analyse/direction",
-    n: "2",
-    icon: Compass,
-    title: "Je cherche ma direction",
-    lead: "Vous avez un parcours, mais pas encore de cible.",
-    detail: "On part de ce que vous avez déjà construit pour identifier des pistes.",
-    needs: "CV requis",
-    ring: "ring-navy/25 hover:ring-navy",
-    bar: "bg-navy",
-    chip: "bg-secondary text-navy",
-  },
-  {
-    href: "/analyse/depart",
-    n: "3",
-    icon: Sprout,
-    title: "Je pars de zéro",
-    lead: "Peu ou pas d'expérience formelle, ou un retour après une longue pause.",
-    detail: "Sport, bénévolat, aidance, projets personnels : tout compte.",
-    needs: "Aucun CV nécessaire",
-    ring: "ring-teal/35 hover:ring-teal",
-    bar: "bg-teal",
-    chip: "bg-teal/10 text-teal",
-  },
 ]
 
 /* Le voyage — described by its shape, never by the cahier's session titles:
@@ -175,12 +133,12 @@ const TRUST = [
 ]
 
 const FAQ = [
-  { q: "Combien ça coûte ?", a: "Chaque analyse commence gratuitement, sans carte bancaire : les trois premières sections et le verdict de diagnostic. Le rapport complet est à 9 € — pour le parcours « J’ai une cible », neuf sections, dont la proposition de CV retravaillé. La première session du voyage est offerte. Si votre conseiller vous a remis un code, le rapport complet et les sessions 1 à 5 du voyage sont offerts." },
+  { q: "Combien ça coûte ?", a: "Chaque analyse commence gratuitement, sans carte bancaire : les trois premières sections et le verdict de diagnostic. Le rapport complet est à 9 € : neuf sections, dont la proposition de CV retravaillé. La première session du voyage est offerte. Si votre conseiller vous a remis un code, le rapport complet et les sessions 1 à 5 du voyage sont offerts." },
   { q: "Qu’est-ce que le voyage ?", a: "Six sessions courtes pour poser ce que vous savez déjà de vous : ce qui vous met en mouvement, le cadre où vous travaillez bien, ce que vous ne voulez plus. La première prend 5 minutes et se fait en autonomie ; les cinq suivantes s’ouvrent avec le code de votre conseiller, qui relit votre portrait avec vous avant que vous le receviez. Aucune session n’est obligatoire : vos analyses fonctionnent sans, et ce que vous y répondez les rend plus précises." },
   { q: "Les conseillers peuvent-ils utiliser neoori ?", a: "Vous accompagnez des candidats et vous souhaitez intégrer neoori à vos entretiens ? Contactez-nous. Nous offrons l’accès complet aux 5 premiers candidats, pour que vous puissiez tester l’outil dans vos conditions réelles." },
   { q: "Que deviennent mes données ?", a: "Elles sont hébergées dans l’Union européenne, chiffrées, et ne servent jamais à entraîner des modèles d’IA. Vous pouvez demander leur suppression à tout moment." },
-  { q: "Combien de temps pour avoir mon rapport ?", a: "Quelques minutes. Le temps de répondre aux questions de votre parcours, l’analyse est déjà en cours." },
-  { q: "Quels formats de CV sont acceptés ?", a: "Un PDF jusqu’à 10 Mo, ou un copier-coller de votre texte directement dans l’interface. Pas de CV ? Le parcours « Je pars de zéro » s’en passe : cinq questions suffisent." },
+  { q: "Combien de temps pour avoir mon rapport ?", a: "Quelques minutes après l’envoi de votre CV et de votre cible." },
+  { q: "Quels formats de CV sont acceptés ?", a: "Un PDF jusqu’à 10 Mo, ou un copier-coller de votre texte directement dans l’interface." },
   { q: "Quelle différence entre le rapport candidat et la synthèse conseiller ?", a: "C’est la même base : une seule et même synthèse — pour pouvoir travailler ensemble, candidat et conseiller, à partir d’une même lecture partagée." },
 ]
 
@@ -199,7 +157,7 @@ export default function LandingPage() {
               <span className="text-gradient-brand">votre vrai potentiel.</span>
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-muted-foreground">
-              Vous visez un poste, vous cherchez votre direction ou vous repartez de zéro : neoori lit votre parcours — avec ou sans CV — et vous dit ce qui fait votre force, ce qui freine, et par où avancer.
+              Vous visez un poste : neoori lit votre parcours et votre CV face à cette cible, et vous dit ce qui fait votre force, ce qui freine, et par où avancer. Pas encore de cible ? Le voyage vous aide à faire le point.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button render={<Link href="/analyse" />} size="xl">
@@ -232,16 +190,12 @@ export default function LandingPage() {
               overlay
             />
             <ReportPreview className="absolute -bottom-6 -left-4 hidden w-[244px] sm:block" />
-            <div className="absolute -right-4 top-6 hidden rounded-xl bg-white px-3.5 py-2.5 shadow-float ring-1 ring-foreground/10 sm:block">
-              <p className="font-display text-xl font-bold leading-none text-navy">3</p>
-              <p className="eyebrow mt-1 text-muted-foreground">parcours</p>
-            </div>
           </div>
         </div>
       </section>
 
       {/* ───────────────────── Le voyage ───────────────────── */}
-      <section id="voyage" className="mx-auto max-w-6xl px-5 pt-16 sm:px-8 lg:pt-20">
+      <section id="voyage" className="mx-auto max-w-6xl px-5 pb-16 pt-16 sm:px-8 lg:pb-20 lg:pt-20">
         <Reveal>
           <div className="overflow-hidden rounded-3xl bg-navy shadow-float">
             <div className="voyage-rule" />
@@ -296,52 +250,6 @@ export default function LandingPage() {
         </Reveal>
       </section>
 
-      {/* ───────────────────── Choose your scenario ───────────────────── */}
-      <section id="parcours" className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
-        <Reveal className="max-w-2xl">
-          <Eyebrow>Par où commencer</Eyebrow>
-          <h2 className="mt-3 font-display text-3xl font-bold text-navy sm:text-4xl">
-            Trois situations, trois lectures
-          </h2>
-          <p className="mt-3 text-muted-foreground">
-            Choisissez celle qui vous ressemble le plus. Chacune pose ses propres questions
-            et produit son propre rapport.
-          </p>
-        </Reveal>
-
-        <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-3">
-          {PARCOURS.map((p, i) => (
-            <Reveal key={p.n} delayMs={i * 90}>
-              <Link
-                href={p.href}
-                className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft ring-1 transition-all hover:shadow-card focus-visible:outline-none focus-visible:ring-2 ${p.ring}`}
-              >
-                <span className={`block h-1.5 ${p.bar}`} />
-                <div className="flex flex-1 flex-col p-6">
-                  <div className="mb-4 flex items-center gap-3">
-                    <span className={`grid size-9 shrink-0 place-items-center rounded-lg ${p.chip}`}>
-                      <p.icon className="size-4" aria-hidden />
-                    </span>
-                    <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                      Parcours {p.n}
-                    </span>
-                  </div>
-                  <h3 className="font-display text-lg font-bold leading-tight text-navy">{p.title}</h3>
-                  <p className="mt-2 text-sm text-navy-700">{p.lead}</p>
-                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{p.detail}</p>
-                  <div className="mt-auto flex items-center justify-between gap-2 pt-5">
-                    <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                      {p.needs}
-                    </span>
-                    <ArrowRight className="size-4 text-orange transition-transform group-hover:translate-x-0.5" aria-hidden />
-                  </div>
-                </div>
-              </Link>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
       {/* ───────────────────── Credibility band ───────────────────── */}
       <section className="border-y border-border bg-card">
         <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
@@ -389,7 +297,7 @@ export default function LandingPage() {
               Un regard qui tient compte de votre réalité.
             </h2>
             <p className="mt-4 text-muted-foreground">
-              Votre rapport part de ce que vous avez partagé — votre parcours, votre projet, votre situation personnelle. Les recommandations sont pensées pour vous, pour votre situation, pour votre vie réelle. Ci-dessous, celui du parcours « J’ai une cible ».
+              Votre rapport part de ce que vous avez partagé — votre parcours, votre projet, votre situation personnelle. Les recommandations sont pensées pour vous, pour votre situation, pour votre vie réelle. Ci-dessous, un exemple.
             </p>
 
             <ul className="mt-7 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
@@ -479,7 +387,7 @@ export default function LandingPage() {
                 <p className="mt-2 font-display text-4xl font-extrabold text-navy">0 €</p>
                 <p className="mt-2 text-sm font-medium text-navy">Une première analyse qui change déjà le regard.</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Vous découvrez ce que votre parcours montre déjà — face au poste que vous visez, ou pour trouver votre direction. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour avancer.
+                  Vous découvrez ce que votre parcours montre déjà face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour avancer.
                 </p>
                 <p className="mt-3 text-xs text-muted-foreground">Trois premières sections et verdict de diagnostic inclus, plus la première session du voyage. Aucune carte bancaire demandée.</p>
                 <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
@@ -499,7 +407,7 @@ export default function LandingPage() {
                   9 € <span className="text-base font-medium text-white/60">/ analyse</span>
                 </p>
                 <p className="mt-1 text-sm text-white/70">Le rapport en entier — pour repartir avec un CV retravaillé, prêt à envoyer.</p>
-                <p className="mt-4 text-sm text-white/70">Pour le parcours « J’ai une cible », en plus des 3 premières sections, vous accédez à :</p>
+                <p className="mt-4 text-sm text-white/70">En plus des 3 premières sections, vous accédez à :</p>
                 <ul className="mt-3 space-y-2.5 text-sm text-white/80">
                   {[
                     "Des préconisations terrain — pas des conseils génériques, des recommandations issues de l’expérience professionnelle réelle du recrutement",

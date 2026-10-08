@@ -2,7 +2,7 @@
 
 `prompt_slots.LABELS` owns the vocabulary, and `prompt_slots.choices()` exists
 to serve it — but nothing consumes it: there is no endpoint behind it, so the
-Next.js page hard-codes the same five strings in `SLOT_LABEL`. Two copies that
+Next.js page hard-codes the same three strings in `SLOT_LABEL`. Two copies that
 agree today drift tomorrow, and the drift is invisible: the page keeps
 rendering, the API keeps accepting the slot, and the PM edits a prompt under a
 name the backend no longer uses.

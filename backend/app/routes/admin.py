@@ -48,7 +48,7 @@ def stats():
     total_tokens_in = int(tokens_row.total_in or 0)
     total_tokens_out = int(tokens_row.total_out or 0)
 
-    # One active prompt per parcours. This used to be a single unfiltered
+    # One active prompt per slot. This used to be a single unfiltered
     # .first(), which returned whichever row the DB happened to yield.
     active_prompts = PromptVersion.query.filter_by(is_active=True).all()
     by_path = {p.path: p.to_dict(include_text=False) for p in active_prompts}

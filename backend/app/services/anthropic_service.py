@@ -38,10 +38,10 @@ def _text(inputs: dict, key: str, fallback: str = "Non renseigné.") -> str:
 
 
 def _profile_block(inputs: dict) -> list[str]:
-    """The Profil de base, shared by all three parcours.
+    """The Profil de base block of the analysis message.
 
     Filled once and never re-asked (Parcours doc §1: "une information, une
-    seule fois"), so every parcours message opens with the same block.
+    seule fois").
     """
     lines = [
         "--- PROFIL DE BASE ---",
@@ -133,7 +133,7 @@ def _voyage_block(inputs: dict) -> list[str]:
     is decided at merge time, so what an unlock regenerates is what the
     first run sent.
 
-    No voyage means no block and no header. Every parcours runs identically
+    No voyage means no block and no header. An analysis runs identically
     without one; the voyage is never required.
     """
     lines = inputs.get("_voyage") or []
@@ -177,58 +177,10 @@ def _format_user_message_p1(inputs: dict) -> str:
     return "\n".join(parts + _common_tail(inputs))
 
 
-def _format_user_message_p2(inputs: dict) -> str:
-    """Parcours 2 — « Je cherche ma direction ». A career, no target.
-
-    Three questions, not four: the non-negotiable constraints already live in
-    bloc 4 of the profile and health is covered for everyone by bloc 5, so
-    re-asking them cost an abandonment for nothing (Parcours doc §5).
-    """
-    parts = [
-        "--- CV OU EXPÉRIENCES ---",
-        _text(inputs, "cv_text"),
-        "",
-        "--- QUESTIONS DE CADRAGE ---",
-        f"Ce qui a donné le plus de satisfaction : {_text(inputs, 'satisfaction')}",
-        f"Ce que la personne ne veut plus faire : {_text(inputs, 'refus')}",
-        f"Raison principale du changement : {_text(inputs, 'raison_changement')}",
-        "",
-    ]
-    return "\n".join(parts + _profile_block(inputs) + _common_tail(inputs))
-
-
-def _format_user_message_p3(inputs: dict) -> str:
-    """Parcours 3 — « Je pars de zéro ». No CV required.
-
-    The life questionnaire is the input: informal activity — sport,
-    volunteering, caring for a relative — is valid raw material, and the
-    report's job is to reformulate it in professional language.
-    """
-    parts = [
-        "--- QUESTIONNAIRE DE VIE ---",
-        f"Ce que la personne a fait jusqu'ici : {_text(inputs, 'experiences')}",
-        f"Ce qu'elle aime faire / sait faire : {_text(inputs, 'aime_faire')}",
-        f"Ce qu'elle ne veut pas ou ne peut pas faire : {_text(inputs, 'refus')}",
-        f"Contraintes pratiques déclarées ici : {_text(inputs, 'contraintes')}",
-        f"Ce qu'est « un bon travail » pour elle : {_text(inputs, 'bon_travail')}",
-    ]
-    cv = (inputs.get("cv_text") or "").strip()
-    if cv:
-        parts += ["", "--- CV PARTIEL (facultatif) ---", cv]
-    parts.append("")
-    return "\n".join(parts + _profile_block(inputs) + _common_tail(inputs))
-
-
-_FORMATTERS = {
-    "1": _format_user_message_p1,
-    "2": _format_user_message_p2,
-    "3": _format_user_message_p3,
-}
-
-
 def _format_user_message(inputs: dict) -> str:
-    parcours = registry.normalize((inputs or {}).get("_path"))
-    return _FORMATTERS[parcours](inputs or {})
+    # One parcours left: every stored row ("1", the legacy "A", or a retired
+    # id still waiting for the purge) gets the parcours 1 message.
+    return _format_user_message_p1(inputs or {})
 
 
 # ── Structured output enforcement ────────────────────────────────────────────
@@ -301,11 +253,9 @@ def _extract_json_candidate(raw: str) -> str:
 def _md_section_re(keys: list[str]) -> re.Pattern:
     """Heading matcher for a parcours' key set.
 
-    Matches "## §1 Titre", "### Section A : Titre", "**§IV — Titre**".
+    Matches "## §1 Titre", "### Section 4 : Titre", "**§10 — Titre**".
     The alternation is built from the actual keys rather than a generic
-    character class, so "VI" can't be read as "V" and parcours 2's letter
-    keys can't collide with parcours 3's Roman numerals. Longest-first
-    ordering is what makes that work.
+    character class, longest first, so "10" and "11" are never read as "1".
     """
     alt = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
     return re.compile(
@@ -397,7 +347,7 @@ def _section_open_re(keys: list[str]) -> re.Pattern:
 
     The negative lookbehind drops `\\"4\\": {` written *inside* a body string —
     escaped there, plain here — so prose quoting a section can't advance the
-    bar. Longest-first, like _md_section_re, so "VI" is never read as "V".
+    bar. Longest-first, like _md_section_re, so "10" is never read as "1".
     """
     alt = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
     return re.compile(rf'(?<!\\)"({alt})"\s*:\s*\{{')
@@ -496,10 +446,7 @@ def _run_analysis(analysis_id: str, app) -> None:
             _notify_outcome(analysis_id)
             return
 
-        # Chemin B is free + Sonnet for all users (decision 4.6 / 4.7).
-        # Parcours 3 runs on the paid model for everyone (free for the
-        # vulnerable populations it serves).
-        tier = tiers.PAID if path == "3" else tiers.normalize(inputs.get("_tier"))
+        tier = tiers.normalize(inputs.get("_tier"))
         model, max_tokens = _select_model_by_tier(tier)
 
         analysis.status = "running"

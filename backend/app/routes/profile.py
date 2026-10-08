@@ -36,8 +36,9 @@ SENSITIVE_CONSENT_REQUIRED = (
 )
 
 # (field, allowed values) — anything outside the set is rejected rather than
-# silently coerced, because these drive routing (parcours 3 youth schemes,
-# the Académie des Ori variant) and a wrong value is not a cosmetic issue.
+# silently coerced, because these drive routing (the Académie des Ori
+# variant, the analysis prompt's age line) and a wrong value is not a
+# cosmetic issue.
 _ENUMS = {
     "rayon": SEARCH_RADIUS,
     "tranche_age": ACCEPTED_AGE_BRACKETS,

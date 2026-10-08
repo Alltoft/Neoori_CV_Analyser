@@ -5,17 +5,19 @@ would make them appear as parcours everywhere the section registry is iterated
 — the admin selector, the cost dashboard, the report renderer — so they get
 names instead, and this module is the only place that knows the legal set.
 """
+import pytest
+
 from app.services import prompt_slots
 from app.services import section_registry as registry
 
 
-def test_the_five_slots_are_the_parcours_plus_the_two_voyage_prompts():
-    assert prompt_slots.valid() == ("1", "2", "3", "voyage_micro", "voyage_portrait")
+def test_the_three_slots_are_parcours_1_plus_the_two_voyage_prompts():
+    assert prompt_slots.valid() == ("1", "voyage_micro", "voyage_portrait")
 
 
 def test_parcours_ids_come_first():
     """The admin selector renders valid() in order; parcours are the daily job."""
-    assert prompt_slots.valid()[:3] == tuple(registry.PARCOURS)
+    assert prompt_slots.valid()[:len(registry.PARCOURS)] == tuple(registry.PARCOURS)
 
 
 def test_every_slot_fits_the_column():
@@ -23,11 +25,16 @@ def test_every_slot_fits_the_column():
     assert max(len(s) for s in prompt_slots.valid()) <= 16
 
 
-def test_legacy_path_codes_still_fold_onto_parcours():
-    """Rows written before the 3-parcours migration carry 'A'/'B'."""
+def test_the_legacy_path_code_still_folds_onto_parcours_1():
+    """Rows written before the 3-parcours migration carry 'A'."""
     assert prompt_slots.normalize("A") == "1"
-    assert prompt_slots.normalize("B") == "3"
     assert prompt_slots.normalize("a") == "1"
+
+
+def test_retired_parcours_ids_read_as_parcours_1():
+    """A stored '2', '3' or 'B' (before the purge) is coerced, never kept."""
+    for retired in ("2", "3", "B", "b"):
+        assert prompt_slots.normalize(retired) == "1"
 
 
 def test_empty_and_unknown_fall_back_to_parcours_one():
@@ -63,8 +70,6 @@ def test_labels_are_french_and_cover_every_slot():
 def test_choices_are_selector_ready():
     assert prompt_slots.choices() == [
         {"value": "1", "label": "Parcours 1 · J'ai une cible"},
-        {"value": "2", "label": "Parcours 2 · Je cherche ma direction"},
-        {"value": "3", "label": "Parcours 3 · Je pars de zéro"},
         {"value": "voyage_micro", "label": "Voyage · phrase (S0)"},
         {"value": "voyage_portrait", "label": "Voyage · portrait"},
     ]
@@ -198,25 +203,40 @@ def test_bogus_path_with_activate_does_not_deactivate_live_prompt(client, admin_
     assert still_active.system_prompt_text == "Original live parcours 1 content"
 
 
-def test_legacy_codes_resolve_to_correct_parcours(client, admin_headers):
-    """Legacy 'A'/'B' codes still work and resolve to the correct parcours."""
-    # Create with legacy code 'A'
-    res_a = client.post("/api/prompts/", headers=admin_headers, json={
+def test_the_legacy_code_a_still_resolves_to_parcours_1(client, admin_headers):
+    res = client.post("/api/prompts/", headers=admin_headers, json={
         "version_label": "v-legacy-a",
         "system_prompt_text": "Legacy A",
         "path": "A",
     })
-    assert res_a.status_code == 201
-    assert res_a.get_json()["prompt"]["path"] == "1"
+    assert res.status_code == 201
+    assert res.get_json()["prompt"]["path"] == "1"
 
-    # Create with legacy code 'B'
-    res_b = client.post("/api/prompts/", headers=admin_headers, json={
-        "version_label": "v-legacy-b",
-        "system_prompt_text": "Legacy B",
-        "path": "B",
+
+@pytest.mark.parametrize("retired", ["2", "3", "B"])
+def test_a_retired_slot_is_refused_and_leaves_the_live_prompt_alone(retired, client, admin_headers):
+    """Review Focus 3. Without the 'B' mapping, 'B' would fall through to slot
+    '1' and, with activate, silently replace the live parcours 1 prompt."""
+    from app.extensions import db
+    from app.models.prompt_version import PromptVersion
+    live = PromptVersion(version_label="v1-live", system_prompt_text="Live P1",
+                         path="1", is_active=True)
+    db.session.add(live)
+    db.session.commit()
+
+    res = client.post("/api/prompts/", headers=admin_headers, json={
+        "version_label": "v-retired",
+        "system_prompt_text": "Retired",
+        "path": retired,
+        "activate": True,
     })
-    assert res_b.status_code == 201
-    assert res_b.get_json()["prompt"]["path"] == "3"
+    assert res.status_code == 400
+    assert "'1', 'voyage_micro', 'voyage_portrait'" in res.get_json()["error"]
+
+    still = PromptVersion.query.filter_by(is_active=True, path="1").one()
+    assert still.id == live.id
+    assert still.system_prompt_text == "Live P1"
+    assert client.get(f"/api/prompts/active?path={retired}").status_code == 400
 
 
 def test_voyage_slots_accept_case_variants(client, admin_headers):

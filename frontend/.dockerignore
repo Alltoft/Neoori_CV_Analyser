@@ -5,6 +5,5 @@ build/
 .env
 .env.*
 *.tsbuildinfo
-.vercel
 .DS_Store
 npm-debug.log*

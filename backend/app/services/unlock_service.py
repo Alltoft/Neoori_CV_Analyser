@@ -3,7 +3,6 @@ from flask import current_app
 
 from ..extensions import db
 from ..models.analysis import Analysis
-from . import section_registry as registry
 from . import tiers
 from .anthropic_service import start_analysis
 
@@ -22,8 +21,6 @@ def unlock_analysis(
     """
     inputs = analysis.inputs or {}
 
-    if registry.normalize(inputs.get("_path")) == "3":
-        return False, "Le portrait de potentiel est déjà complet (pas de version payante)."
     if analysis.status in ("queued", "running"):
         return False, "Une génération est déjà en cours pour cette analyse."
     if analysis.status == "draft":

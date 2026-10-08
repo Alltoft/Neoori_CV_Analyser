@@ -15,7 +15,6 @@ import { copyToClipboard } from "@/lib/utils"
 import type { Analysis } from "@/types"
 import { Printer, Share2, Check } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
-import { normalizeParcours } from "@/types"
 
 export default function RapportPage() {
   const { id } = useParams<{ id: string }>()
@@ -55,12 +54,11 @@ export default function RapportPage() {
   }, [id])
 
   const output = analysis?.output ?? {}
-  const path = normalizeParcours(analysis?.inputs?._path)
   const hasOutput = Object.keys(output).length > 0
 
   // Order and titles come from the backend section registry. Never sort output
-  // keys here: parcours 2 uses letter keys and parcours 3 Roman numerals, and
-  // Number("A") - Number("B") is NaN, which silently leaves insertion order.
+  // keys here: "verdict" sits between "3" and "4", and a string sort puts
+  // "10" and "11" before "2".
   const meta = analysis?.sections_meta ?? []
   const generated = meta.filter((m) => m.key in output)
   // While loading, show a short skeleton list (no phantom locked paid sections).
@@ -125,9 +123,7 @@ export default function RapportPage() {
                   {[analysis?.inputs?.prenom, (analysis?.inputs?.nom ?? "").toUpperCase()].filter(Boolean).join(" ") || "—"}
                 </h1>
                 <p className="mt-1 text-sm italic text-peach">
-                  {path === "3"
-                    ? `Portrait de potentiel · ${monthLabel}`
-                    : `Cible : ${analysis?.inputs?.cible_visee?.slice(0, 60) ?? "—"} · ${monthLabel}`}
+                  {`Cible : ${analysis?.inputs?.cible_visee?.slice(0, 60) ?? "—"} · ${monthLabel}`}
                 </p>
               </>
             )}
@@ -140,20 +136,12 @@ export default function RapportPage() {
             {/* Key facts strip — counselor view */}
             {view === "conseiller" && analysis?.inputs && (
               <div className="mb-6 grid grid-cols-1 gap-3 rounded-lg bg-secondary p-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                {(path === "3"
-                  ? [
-                      ["Sous-profil", analysis.inputs._sub_profile?.toUpperCase() ?? "—"],
-                      ["Aime", (analysis.inputs.aime ?? []).join(", ").slice(0, 60) || "—"],
-                      ["Refus", (analysis.inputs.refuse ?? []).join(", ").slice(0, 60) || "—"],
-                      ["Accompagnement", analysis.inputs.accompagnement ?? "—"],
-                    ]
-                  : [
-                      ["Cible visée", analysis.inputs.cible_visee?.slice(0, 40)],
-                      ["Mobilité", Array.isArray(analysis.inputs.type_mobilite) ? analysis.inputs.type_mobilite.join(" + ") : analysis.inputs.type_mobilite],
-                      ["Posture actuelle", analysis.inputs.situation_actuelle],
-                      ["Points sensibles", analysis.inputs.notes_specifiques || "—"],
-                    ]
-                ).map(([k, v]) => (
+                {[
+                  ["Cible visée", analysis.inputs.cible_visee?.slice(0, 40)],
+                  ["Mobilité", Array.isArray(analysis.inputs.type_mobilite) ? analysis.inputs.type_mobilite.join(" + ") : analysis.inputs.type_mobilite],
+                  ["Posture actuelle", analysis.inputs.situation_actuelle],
+                  ["Points sensibles", analysis.inputs.notes_specifiques || "—"],
+                ].map(([k, v]) => (
                   <div key={k}>
                     <p className="eyebrow text-muted-foreground">{k}</p>
                     <p className="mt-0.5 font-medium text-navy">{v}</p>
@@ -181,8 +169,8 @@ export default function RapportPage() {
               )
             })}
 
-            {/* Free-plan CTA — Chemin A only */}
-            {view === "rapport" && path === "1" && hasOutput && !isPaid && (
+            {/* Free-plan CTA */}
+            {view === "rapport" && hasOutput && !isPaid && (
               <div className="no-print mt-2 flex flex-col items-start justify-between gap-4 rounded-xl bg-brand-gradient p-5 text-white sm:flex-row sm:items-center">
                 <div>
                   <p className="font-display font-bold">Débloquez les 6 sections restantes</p>

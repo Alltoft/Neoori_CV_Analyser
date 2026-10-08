@@ -52,9 +52,8 @@ docker login ghcr.io -u alltoft
 cd /srv/neoori
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-# one prompt per parcours plus the two voyage slots; v1.0-P2 lands inactive,
-# the PM activates it in /admin/prompts
-for s in seed_prompt_v18.py seed_prompt_v11_p3.py seed_prompt_v10_p2.py \
+# the parcours 1 prompt plus the two voyage slots
+for s in seed_prompt_v18.py \
          seed_prompt_v10_voyage_micro.py seed_prompt_v10_voyage_portrait.py; do
   docker compose -f docker-compose.prod.yml exec backend python $s
 done
@@ -165,18 +164,6 @@ expiry date is the comment beside `MICROSOFT_CLIENT_SECRET` in
    comment.
 3. Recreate the backend (command above), then sign in once with Microsoft.
 4. Delete the old secret in Entra.
-
-## Data migration (TiDB Cloud → VPS MySQL, at cutover)
-
-```bash
-mysqldump -h <tidb-host> -P 4000 -u <tidb-user> -p --ssl-mode=REQUIRED \
-  --single-transaction --no-tablespaces --set-gtid-purged=OFF neoori > dump.sql
-scp dump.sql neoori:/srv/neoori/
-ssh neoori 'cd /srv/neoori && docker compose -f docker-compose.prod.yml exec -T db \
-  mysql -uneoori -p"$MYSQL_PASSWORD" neoori < dump.sql'
-```
-
-The alembic version table travels with the dump, so `flask db upgrade` stays consistent.
 
 ## Backups
 

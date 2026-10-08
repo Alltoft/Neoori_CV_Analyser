@@ -7,10 +7,9 @@ places in the frontend.
 Three things every consumer needs, and none of them should be derived by
 sorting keys:
 
-  * **Order** — list position is the order. Parcours 2 uses letter keys
-    (A..G) and parcours 3 Roman numerals (I..VI); neither sorts
-    numerically, and `Number("A") - Number("B")` is NaN, which leaves a
-    JS sort in insertion order without raising.
+  * **Order** — list position is the order. The free-tier "verdict" sits
+    between §3 and §4, and a string sort puts "10" and "11" before "2",
+    so no consumer may sort keys.
   * **Render mode** — "tags" sections render as a tag cloud rather than
     markdown. This used to be a literal `n === "3"` branch.
   * **Tier** — which plans include the section. Enforced by the JSON
@@ -56,55 +55,15 @@ _P1 = [
     _s("11", "Questions difficiles", tiers=PREMIUM_ONLY),
 ]
 
-# ── Parcours 2 — « Je cherche ma direction » ─────────────────────────────────
-# CV in hand, no target. Free tier is capital + transferable skills + two
-# leads without scenarios, plus a verdict inviting a cadrage meeting.
-_P2 = [
-    _s("A", "Capital professionnel"),
-    _s("C", "Compétences transférables", render=TAGS),
-    _s("D", "Pistes hiérarchisées"),
-    _s("verdict", "Verdict", tiers=(FREE,)),
-    _s("B", "Ce qui ne convient plus", tiers=PAID_UP),
-    _s("E", "Scénarios de transition", tiers=PAID_UP),
-    _s("F", "Questions pour l'entretien de cadrage", tiers=PAID_UP),
-    _s("G", "Proto-CV générique", tiers=PAID_UP),
-]
-
-# ── Parcours 3 — « Je pars de zéro » ─────────────────────────────────────────
-# No CV. Five life questions in, a CV draft out. Free tier is life capital +
-# identified skills + two accessible leads, plus a verdict (direct access or
-# training needed).
-_P3 = [
-    _s("I", "Capital de vie"),
-    _s("II", "Compétences identifiées", render=TAGS),
-    _s("III", "Pistes métier accessibles"),
-    _s("verdict", "Verdict", tiers=(FREE,)),
-    _s("IV", "Parcours de transition", tiers=PAID_UP),
-    _s("V", "Dispositifs d'accès", tiers=PAID_UP),
-    _s("VI", "Ébauche de CV", tiers=PAID_UP),
-]
-
 
 # `counselor` is the 5-minute synthesis a Cap Emploi / Mission Locale
-# counselor sees at /c/<share_token>. Parcours 1's set is fixed by the spec
-# (§1, §4, §5); parcours 2 and 3 are not specified, so these pick the
-# equivalent triple — where the person stands, what no longer fits, and what
-# to raise in the meeting.
+# counselor sees at /c/<share_token>, fixed by the spec (§1, §4, §5).
+# Parcours 2 and 3 were retired on 2026-10-08; the dict keeps its shape.
 PARCOURS = {
     "1": {
         "label": "J'ai une cible",
         "sections": _P1,
         "counselor": ("1", "4", "5"),
-    },
-    "2": {
-        "label": "Je cherche ma direction",
-        "sections": _P2,
-        "counselor": ("A", "B", "F"),
-    },
-    "3": {
-        "label": "Je pars de zéro",
-        "sections": _P3,
-        "counselor": ("I", "III", "V"),
     },
 }
 
@@ -116,21 +75,20 @@ def is_valid(parcours: str) -> bool:
 
 
 def normalize(parcours) -> str:
-    """Coerce a parcours id to a known value.
+    """Coerce a stored parcours id to a known value.
 
-    Accepts the legacy 'A'/'B' path codes so rows written before the
-    3-parcours migration keep rendering. `parcours in PARCOURS` needs a
-    hashable value; a hostile request body can hand this a list or a dict
-    for inputs._path (analyses.create_analysis reads it before any
-    validation runs), which raised TypeError -- an unhandled 500. Any other
-    value falls through to the str()-based fallback exactly as before.
+    Accepts the legacy 'A' path code so rows written before the 3-parcours
+    migration keep rendering; anything else — a retired '2', '3' or 'B'
+    waiting for the purge, or garbage — falls back to parcours 1.
+    `parcours in PARCOURS` needs a hashable value; a hostile value (a list,
+    a dict) raised TypeError -- an unhandled 500.
     """
     try:
         if parcours in PARCOURS:
             return parcours
     except TypeError:
         pass  # unhashable (a list, a dict) -- never a valid parcours id
-    legacy = {"A": "1", "B": "3"}
+    legacy = {"A": "1"}
     return legacy.get(str(parcours).upper(), DEFAULT_PARCOURS)
 
 

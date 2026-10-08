@@ -1,5 +1,5 @@
 # Build both images in CI, push to GHCR, then update the VPS over SSH.
-# Replaces the Vercel/Render auto-deploys: `git push` stays the whole workflow.
+# `git push` is the whole workflow.
 #
 # Required repo secrets (Settings > Secrets and variables > Actions):
 #   VPS_HOST      e.g. 186.240.157.26

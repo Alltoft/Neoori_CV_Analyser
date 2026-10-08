@@ -23,9 +23,9 @@ export default function ConfidentialitePage() {
           statut de bénéficiaire de l&apos;obligation d&apos;emploi (voir § 6).
         </li>
         <li>
-          <strong>Analyses</strong> : selon le parcours choisi, le contenu de votre CV, la cible
-          visée (offre d&apos;emploi ou description) et vos réponses aux questions du parcours
-          (pouvant inclure des informations sensibles que vous choisissez de communiquer).
+          <strong>Analyses</strong> : le contenu de votre CV et la cible visée (offre
+          d&apos;emploi ou description), pouvant inclure des informations sensibles que vous
+          choisissez de communiquer.
         </li>
         <li>
           <strong>Le voyage</strong> : vos réponses aux sessions, la phrase et le portrait

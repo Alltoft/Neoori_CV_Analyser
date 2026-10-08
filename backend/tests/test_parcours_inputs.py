@@ -1,9 +1,9 @@
-"""Per-parcours message formatting and validation."""
+"""Parcours 1 — message formatting and validation."""
 import json
 
 import pytest
 
-from app.routes.analyses import VALIDATORS
+from app.routes.analyses import _validate_inputs
 from app.services.anthropic_service import _format_user_message
 
 
@@ -34,44 +34,14 @@ def test_p1_without_chemin_b_has_no_framing_note():
     assert "note de cadrage" not in msg
 
 
-def test_p2_asks_three_questions_not_four():
-    msg = _format_user_message({
-        "_path": "2", "cv_text": "parcours",
-        "satisfaction": "les projets d'équipe",
-        "refus": "le reporting",
-        "raison_changement": "un choix personnel",
-    })
-    assert "les projets d'équipe" in msg
-    assert "le reporting" in msg
-    assert "un choix personnel" in msg
-
-
-def test_p3_runs_off_the_life_questionnaire():
-    msg = _format_user_message({
-        "_path": "3",
-        "experiences": "bénévolat au club de foot",
-        "aime_faire": "organiser",
-        "refus": "le travail de nuit",
-        "contraintes": "pas de voiture",
-        "bon_travail": "une équipe",
-    })
-    assert "bénévolat au club de foot" in msg
-    assert "QUESTIONNAIRE DE VIE" in msg
-
-
-def test_p3_accepts_an_optional_partial_cv():
-    base = {
-        "_path": "3", "experiences": "x", "aime_faire": "y",
-        "refus": "z", "contraintes": "w", "bon_travail": "v",
-    }
-    assert "CV PARTIEL" not in _format_user_message(base)
-    assert "CV PARTIEL" in _format_user_message({**base, "cv_text": "quelques lignes"})
-
-
-def test_legacy_path_codes_still_format():
-    """Analyses written before the migration carry 'A'/'B'."""
-    assert "CV DU CANDIDAT" in _format_user_message({"_path": "A", "cv_text": "x", "cible_visee": "y"})
-    assert "QUESTIONNAIRE DE VIE" in _format_user_message({"_path": "B", "experiences": "x"})
+@pytest.mark.parametrize("stored", ["1", "A", "2", "3", "B", None])
+def test_every_stored_path_builds_the_parcours_1_message(stored):
+    """Rows written before the migration carry 'A'; a retired '2', '3' or 'B'
+    row still in the database before the purge reads as parcours 1 too."""
+    inputs = {"cv_text": "x", "cible_visee": "y"}
+    if stored is not None:
+        inputs["_path"] = stored
+    assert "--- CV DU CANDIDAT ---" in _format_user_message(inputs)
 
 
 # ── bloc 5 and OETH reach the prompt in reduced form only ────────────────────
@@ -111,42 +81,6 @@ def test_no_rights_block_without_the_flag():
 
 # ── validation ───────────────────────────────────────────────────────────────
 
-def test_p2_requires_a_cv_and_all_three_answers():
-    errors = VALIDATORS["2"]({"cv_text": "trop court"})
-    assert len(errors) == 4
-
-
-def test_p2_accepts_a_complete_submission():
-    assert VALIDATORS["2"]({
-        "cv_text": "x" * 200,
-        "satisfaction": "les projets menés de bout en bout",
-        "refus": "les tâches purement administratives",
-        "raison_changement": "une évolution de mon secteur",
-    }) == []
-
-
-def test_p3_needs_no_cv():
-    """The parcours exists for people who don't have one."""
-    assert VALIDATORS["3"]({
-        "experiences": "bénévolat, garde d'enfants",
-        "aime_faire": "organiser des événements",
-        "refus": "le travail de nuit",
-        "contraintes": "pas de permis",
-        "bon_travail": "une équipe soudée",
-    }) == []
-
-
-def test_p3_thresholds_are_lower_than_p2():
-    """A long-answer requirement is the kind of barrier parcours 3 removes."""
-    short = "x" * 12
-    assert VALIDATORS["3"]({
-        "experiences": short, "aime_faire": short, "refus": short,
-        "contraintes": short, "bon_travail": short,
-    }) == []
-    assert VALIDATORS["2"]({"cv_text": "x" * 200, "satisfaction": short,
-                            "refus": short, "raison_changement": short}) != []
-
-
 def test_p1_needs_only_a_cv_and_a_target():
     """The Profil de base supplies the rest.
 
@@ -155,12 +89,12 @@ def test_p1_needs_only_a_cv_and_a_target():
     filled once — and over `type_mobilite`, which the CDC v1.2 profile merged
     into `situation` and no longer exists anywhere.
     """
-    errors = VALIDATORS["1"]({"cv_text": "c" * 300, "cible_visee": "t" * 60})
+    errors = _validate_inputs({"cv_text": "c" * 300, "cible_visee": "t" * 60})
     assert errors == []
 
 
 def test_p1_still_requires_the_cv_and_the_target():
-    errors = VALIDATORS["1"]({"cv_text": "trop court", "cible_visee": "trop courte"})
+    errors = _validate_inputs({"cv_text": "trop court", "cible_visee": "trop courte"})
     assert len(errors) == 2
 
 
@@ -183,7 +117,7 @@ def test_p1_still_carries_notes_from_a_pre_migration_draft():
 
 def test_chemin_b_lets_a_short_target_through():
     """The doc puts the floor for a described target at 20 characters."""
-    errors = VALIDATORS["1"]({
+    errors = _validate_inputs({
         "cv_text": "c" * 300, "_chemin": "B", "cible_visee": "Chauffeur livreur PL",
     })
     assert errors == []
@@ -191,7 +125,7 @@ def test_chemin_b_lets_a_short_target_through():
 
 def test_chemin_a_still_wants_a_real_offer():
     """20 characters of job ad is a paste that went wrong."""
-    errors = VALIDATORS["1"]({
+    errors = _validate_inputs({
         "cv_text": "c" * 300, "_chemin": "A", "cible_visee": "Chauffeur livreur PL",
     })
     assert errors == ["Cible visée trop courte (minimum 50 caractères)."]
@@ -200,7 +134,7 @@ def test_chemin_a_still_wants_a_real_offer():
 def test_an_analysis_without_a_chemin_is_treated_as_an_offer():
     """Rows written before the split behaved as chemin A — no framing note,
     and the 50-character floor."""
-    errors = VALIDATORS["1"]({"cv_text": "c" * 300, "cible_visee": "trop court"})
+    errors = _validate_inputs({"cv_text": "c" * 300, "cible_visee": "trop court"})
     assert errors == ["Cible visée trop courte (minimum 50 caractères)."]
 
 
@@ -235,12 +169,34 @@ def test_create_persists_the_chemin_so_the_framing_note_can_fire(app, client, ca
     assert "note de cadrage" in _format_user_message(stored)
 
 
-def test_create_leaves_parcours_2_and_3_without_a_chemin(app, client, candidate_headers):
-    """Only parcours 1 has chemins; the key elsewhere would be noise in the
-    stored inputs and in every prompt built from them."""
+# ── parcours 2 and 3 are retired: every new analysis is parcours 1 ───────────
+
+P1_TARGET = "Chargé de recrutement dans une PME industrielle du bassin lyonnais"
+
+
+@pytest.mark.parametrize("posted", ["2", "3", "B", "b", ["2"], None])
+def test_create_stamps_parcours_1_whatever_the_body_says(posted, app, client, candidate_headers):
+    """The stored id is the server's: a stale page posting a retired parcours
+    still gets a parcours 1 analysis, with its chemin."""
     from unittest.mock import patch
 
+    inputs = {"cv_text": "c" * 300, "cible_visee": P1_TARGET}
+    if posted is not None:
+        inputs["_path"] = posted
     with patch("app.routes.analyses.start_analysis"):
+        res = client.post("/api/analyses/", json={"inputs": inputs}, headers=candidate_headers)
+    assert res.status_code == 201, res.data
+    stored = json.loads(res.data)["analysis"]["inputs"]
+    assert stored["_path"] == "1"
+    assert stored["_chemin"] == "A"
+
+
+def test_a_stale_parcours_3_form_gets_the_parcours_1_errors(app, client, candidate_headers):
+    """Review Focus 1. The old P3 form sent no CV and no target: it now meets
+    parcours 1's validation — a 400 in French, no run, never a 500."""
+    from unittest.mock import patch
+
+    with patch("app.routes.analyses.start_analysis") as start:
         res = client.post("/api/analyses/", json={"inputs": {
             "_path": "3",
             "experiences": "bénévolat au club de foot pendant six ans",
@@ -249,5 +205,47 @@ def test_create_leaves_parcours_2_and_3_without_a_chemin(app, client, candidate_
             "contraintes": "pas de permis",
             "bon_travail": "une équipe, dehors",
         }}, headers=candidate_headers)
+    assert res.status_code == 400
+    assert json.loads(res.data)["errors"] == [
+        "CV trop court (minimum 200 caractères).",
+        "Cible visée trop courte (minimum 50 caractères).",
+    ]
+    start.assert_not_called()
+
+
+def test_a_stale_parcours_2_form_gets_the_parcours_1_error(app, client, candidate_headers):
+    """Review Focus 1, the other retired page. The old P2 form did post a CV,
+    so only the target is missing: parcours 1's validation answers with that
+    one error — a 400 in French, no run, never a 500."""
+    from unittest.mock import patch
+
+    with patch("app.routes.analyses.start_analysis") as start:
+        res = client.post("/api/analyses/", json={"inputs": {
+            "_path": "2",
+            "cv_text": "c" * 300,
+            "satisfaction": "les projets menés de bout en bout",
+            "refus": "les tâches purement administratives",
+            "raison_changement": "une évolution de mon secteur",
+        }}, headers=candidate_headers)
+    assert res.status_code == 400
+    assert json.loads(res.data)["errors"] == [
+        "Cible visée trop courte (minimum 50 caractères).",
+    ]
+    start.assert_not_called()
+
+
+@pytest.mark.parametrize("posted", ["2", "3", "B"])
+def test_a_draft_carrying_a_retired_parcours_is_stamped_1(posted, app, client, candidate_headers):
+    res = client.post("/api/analyses/draft", json={"inputs": {"_path": posted, "cv_text": "x"}},
+                      headers=candidate_headers)
     assert res.status_code == 201, res.data
-    assert "_chemin" not in json.loads(res.data)["analysis"]["inputs"]
+    assert json.loads(res.data)["analysis"]["inputs"]["_path"] == "1"
+
+
+def test_a_draft_without_a_parcours_stays_without_one(app, client, candidate_headers):
+    """An absent _path already means parcours 1; test_malformed_bodies.py also
+    pins that an empty draft stays {}."""
+    res = client.post("/api/analyses/draft", json={"inputs": {"cv_text": "x"}},
+                      headers=candidate_headers)
+    assert res.status_code == 201, res.data
+    assert "_path" not in json.loads(res.data)["analysis"]["inputs"]

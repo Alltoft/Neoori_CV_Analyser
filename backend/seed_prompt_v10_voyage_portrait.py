@@ -12,8 +12,8 @@ rewrites this prompt freely and the structure has to survive it. The ```json
 example below is only there so prompt and schema can be tested against each
 other (tests/test_seed_scripts.py).
 
-Seeded ACTIVE, for the same reason as seed_prompt_v11_p3.py: without an active
-prompt the feature errors the first time someone finishes session 5.
+Seeded ACTIVE: without an active prompt the feature errors the first time
+someone finishes session 5.
 
 Tutoiement inside the voyage is spec decision 15.
 

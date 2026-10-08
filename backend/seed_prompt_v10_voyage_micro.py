@@ -6,10 +6,10 @@ sentence of 15 to 25 words built from the three strongest axes; the sentence
 itself never says where it came from.
 
 Seeded ACTIVE: without an active prompt for this slot the very first session 0
-ends with micro_status = "error" and the hub has nothing to show — same
-rationale as seed_prompt_v11_p3.py. A feature that errors on first use is worse
-than a prompt the PM has not read yet. Tone and wording stay the PM's to edit in
-/admin/prompts, and every edit is a new version with rollback.
+ends with micro_status = "error" and the hub has nothing to show. A feature
+that errors on first use is worse than a prompt the PM has not read yet. Tone
+and wording stay the PM's to edit in /admin/prompts, and every edit is a new
+version with rollback.
 
 Tutoiement inside the voyage is spec decision 15: the cahier is written that
 way, and this sentence sits inside the cahier's world, not the app's chrome.
