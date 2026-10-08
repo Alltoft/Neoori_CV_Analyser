@@ -55,7 +55,9 @@ Developer rulings, 2026-10-08:
    (`#voyage`), in `/espace` and in the account menu. `/analyse/direction` and
    `/analyse/depart` are deleted and answer 404 — no redirect.
 8. **The server stamps every new analysis `_path: "1"`**, whatever the request
-   body says.
+   body says. A draft that carries a `_path` gets "1" too; a draft without one
+   stays without — an absent `_path` already means parcours 1, and an empty
+   draft must stay `{}`.
 9. **Copy: every P2/P3 mention leaves the current site**, with minimal
    rewrites in the existing tone — nothing else on it changes. The exact
    before/after is in « Copy » below. The site at the root domain stays as it
@@ -103,10 +105,12 @@ Developer rulings, 2026-10-08:
 with its tests, once the developer confirms the production purge (runbook
 step 6 at zero).
 
-**Selection.** Every analysis whose raw `inputs._path`, read as a string,
-stripped and upper-cased, is "2", "3" or "B" — the values the old `normalize()`
-sent to parcours 2 and 3. The filter runs in Python, not in SQL: the test
-database is SQLite, and the table is small.
+**Selection.** Exactly the analyses the old `normalize()` sent to parcours 2
+or 3: an `inputs._path` that is exactly "2" or "3", or any value whose `str()`
+upper-cases to "B". Everything that code read as parcours 1 stays, whatever
+its `_path` looks like — " 2" with a space, the number 2, `["2"]`. Drafts are
+included. The filter runs in Python, not in SQL: the test database is SQLite,
+and the table is small.
 
 **Dry-run (default) changes nothing and prints:**
 - analyses to delete, by parcours × status;
@@ -266,14 +270,16 @@ Migrations and dated docs keep their mentions: they record their time.
 - Parcours 1 heading match, longest first: "1" is not read inside "10" or "11"
   (the deleted roman-numeral test gave this coverage).
 - `create_analysis` stamps `_path: "1"` for a body carrying "2", "3", "B", a
-  list or nothing.
+  list or nothing; a draft carrying a retired id is stamped "1", an empty
+  draft stays `{}`.
 - The prompts API refuses "2", "3" and "B" with 400, and still takes "A" as "1".
 - Purge script:
   - the dry-run changes nothing;
   - `--apply` deletes exactly the "2" / "3" / "B" analyses, their notes and
     feedback, and the "2" / "3" prompts;
-  - parcours 1 rows — `_path` "1", legacy "A", or absent — the voyage prompts,
-    users and code redemptions are intact;
+  - parcours 1 rows — `_path` "1", legacy "A", absent, or a value the old code
+    also read as parcours 1 (" 2", 2, `["2"]`) — the voyage prompts, users
+    and code redemptions are intact;
   - it aborts and rolls back when a kept analysis references a prompt marked
     for deletion;
   - a second run deletes nothing.
