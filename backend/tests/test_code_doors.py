@@ -200,3 +200,87 @@ def test_erasing_a_voyage_lets_the_account_unlock_a_new_one_with_the_code(client
     res = client.post("/api/voyage/unlock", json={"code": "CONS0014"}, headers=headers)
     assert res.status_code == 200, res.data
     assert code_service.redemption_count(c.id, "voyage") == 2
+
+
+def _unlockable_voyage():
+    candidate = user()
+    voyage = Voyage(user_id=candidate.id, consent_at=datetime.utcnow(), age_attested=True)
+    db.session.add(voyage)
+    db.session.commit()
+    return candidate, voyage
+
+
+def test_the_voyage_unlock_and_its_redemption_land_in_one_commit(client, app):
+    """redeem()'s commit carries the unlock: there is no moment where a use is
+    spent and the voyage is still locked."""
+    candidate, voyage = _unlockable_voyage()
+    c = code(counselor(), max_uses=2, value="CONS0015")
+
+    with patch.object(db.session, "commit", wraps=db.session.commit) as commit:
+        res = client.post("/api/voyage/unlock", json={"code": "CONS0015"}, headers=bearer(candidate))
+
+    assert res.status_code == 200, res.data
+    assert commit.call_count == 1
+    assert db.session.get(Voyage, voyage.id).counselor_code_id == c.id
+    redemption = CodeRedemption.query.one()
+    assert (redemption.target_id, redemption.slot) == (voyage.id, 1)
+
+
+def test_a_retried_redemption_still_unlocks_the_voyage(client, app):
+    """When another request took the slot first, redeem() rolls back and
+    commits only the redemption on its retry. The unlock rode on the commit
+    that was rolled back, so the route has to finish it."""
+    candidate, voyage = _unlockable_voyage()
+    c = code(counselor(), max_uses=2, value="CONS0016")
+    db.session.add(CodeRedemption(code_id=c.id, target_type="voyage", target_id="v-other", slot=1))
+    db.session.commit()
+
+    real_resolve, real_count = code_service.resolve, code_service.redemption_count
+    state = {"stale_next": False, "stale_served": False}
+
+    def resolve_then_go_stale(code_str, target_type):
+        found = real_resolve(code_str, target_type)
+        state["stale_next"] = True          # redeem()'s first read follows
+        return found
+
+    def count(code_id, target_type=None):
+        if state["stale_next"]:
+            state["stale_next"], state["stale_served"] = False, True
+            return 0                        # a snapshot from before slot 1 was taken
+        return real_count(code_id, target_type)
+
+    with patch.object(code_service, "resolve", side_effect=resolve_then_go_stale), \
+            patch.object(code_service, "redemption_count", side_effect=count):
+        res = client.post("/api/voyage/unlock", json={"code": "CONS0016"}, headers=bearer(candidate))
+
+    assert res.status_code == 200, res.data
+    assert state["stale_served"]            # the first attempt did collide on slot 1
+    assert res.get_json()["voyage"]["has_code"] is True
+    assert db.session.get(Voyage, voyage.id).counselor_code_id == c.id
+    assert sorted(r.slot for r in CodeRedemption.query.filter_by(code_id=c.id)) == [1, 2]
+
+
+def test_a_refusal_after_the_check_leaves_the_voyage_locked(client, app):
+    """redeem() can still refuse once resolve() has said yes: the last place
+    went in between. The unlock set ahead of the redemption must not outlive
+    that refusal."""
+    candidate, voyage = _unlockable_voyage()
+    c = code(counselor(), max_uses=1, value="CONS0017")
+    code_id = c.id
+
+    real_resolve = code_service.resolve
+
+    def resolve_then_lose_the_place(code_str, target_type):
+        found = real_resolve(code_str, target_type)
+        db.session.add(CodeRedemption(code_id=code_id, target_type="voyage", target_id="v-other", slot=1))
+        db.session.commit()
+        return found
+
+    with patch.object(code_service, "resolve", side_effect=resolve_then_lose_the_place):
+        res = client.post("/api/voyage/unlock", json={"code": "CONS0017"}, headers=bearer(candidate))
+
+    assert res.status_code == 400
+    assert res.get_json()["error"] == code_service.EXHAUSTED
+    db.session.expire_all()
+    assert db.session.get(Voyage, voyage.id).counselor_code_id is None
+    assert CodeRedemption.query.count() == 1                 # the other request's

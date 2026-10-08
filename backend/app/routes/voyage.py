@@ -479,14 +479,29 @@ def unlock_voyage():
     if refusal:
         return jsonify({"error": refusal}), 400
 
+    # The unlock is set BEFORE the redemption is written, so redeem()'s commit
+    # carries both: a use is never spent on a voyage that stays locked. The ids
+    # go in locals because a rollback inside redeem() expires these objects.
+    voyage_id, code_id = voyage.id, code.id
+    voyage.counselor_code_id = code_id
     refused = code_service.redeem(
-        code, user_id=voyage.user_id, target_type="voyage", target_id=voyage.id
+        code, user_id=voyage.user_id, target_type="voyage", target_id=voyage_id
     )
     if refused:
+        # redeem() has rolled back on a key violation, but not on its early
+        # EXHAUSTED: either way the pending unlock must not outlive the refusal.
+        db.session.rollback()
         return jsonify({"error": refused}), 400
 
-    voyage.counselor_code_id = code.id
-    db.session.commit()
+    # When another request took the slot first, redeem() rolls back and retries
+    # once, and that retry commits only the redemption. The unlock rode on the
+    # commit that was rolled back, so re-read the voyage and finish it.
+    voyage = db.session.get(Voyage, voyage_id)
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+    if voyage.counselor_code_id != code_id:
+        voyage.counselor_code_id = code_id
+        db.session.commit()
     return jsonify({"voyage": voyage.to_dict()}), 200
 
 
