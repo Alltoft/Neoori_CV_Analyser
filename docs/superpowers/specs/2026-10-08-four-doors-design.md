@@ -531,6 +531,20 @@ means the text as that spec leaves it.
 | Refusals | Decisions 22, 37, 40, the submit table, `ALREADY_USED`; « Merci d’accepter les CGV et la politique de confidentialité. »; nginx 429 in the panel: « Trop de tentatives — réessayez dans une minute. » |
 | Counselor mails | Subject « Une analyse est prête » / « Une analyse n’a pas abouti ». Body « Un bénéficiaire a utilisé votre code : son analyse est prête dans votre espace conseiller. » / « … n’a pas abouti. Vous pouvez la relancer depuis votre espace conseiller. » |
 
+**Strings the implementation plan adds** (same status: provisional, PM)
+
+| Where | Text |
+|---|---|
+| Panel fields and close button | « Prénom », « Nom », « Code », « Fermer » (label only) |
+| Refusals | « Prénom et nom requis. », « Prénom ou nom trop long (80 caractères maximum). », « Porte inconnue. », « Code requis. », « Ce code est un code promo : choisissez « J'ai un code promo ». », « Ce code est un code conseiller : choisissez « J'ai un code conseiller ». », « Ce lien n'est plus valide. », « Votre brouillon a expiré. » |
+| `/analyse/envoyee`, `/c/<token>` | Button « Retour à l’accueil » |
+| `/rapport` | « Copier le lien » / « Lien copié », « Supprimer définitivement ce rapport ? », « Supprimer », « Annuler », « Rapport supprimé. », « Nouvelle analyse »; under the progress bar « Le rapport s’affiche ici automatiquement. Gardez ce lien pour le retrouver. » |
+| `/espace?garder=1` | « Le rapport est maintenant dans votre espace. » |
+| `/conseiller/analyses/<id>` | « Mon espace conseiller », « Relancer », « Supprimer l’analyse », « Supprimer définitivement cette analyse ? », « Analyse en cours… La page se met à jour toute seule. », « L’analyse n’a pas abouti. Vous pouvez la relancer. », « Notes privées », « Visibles par vous seul. », « Enregistrer », « Enregistré. », « Analyse introuvable. »; refusals « Cette analyse n'a pas besoin d'être relancée. », « Note trop longue (20 000 caractères maximum). » |
+| `/conseiller` | Column « Analyse », link « Voir l’analyse »; the codes hint gains « 1 analyse et 1 voyage par place. » |
+| Counselor mails | Button « Ouvrir mon espace conseiller » |
+| Admin « Codes promo » panel | « Un code promo donne le rapport complet, une fois par compte. Un champ vide signifie « illimité ». », « Libellé », « Utilisations », « Validité (jours) », « Créer le code », « Limites », « Révoquer », « Révoquer ce code ? », « illimité », « inchangé », « Aucun code pour le moment. » |
+
 **Changed strings**
 
 | # | Where | Before | After |
@@ -738,8 +752,11 @@ On the developer's go, each step:
   (decision 20).
 - Premium as a promo option or as an upgrade from Complet, Stripe promotion
   codes, account deletion, a per-IP daily cap, a cap on concurrent run threads.
-- Cleaning up unverified accounts that never verify (and the drafts signup
-  attached to them).
+- Cleaning up unverified accounts that never verify (and the rows signup
+  marked for them, which expire with their cookie anyway).
+- `/espace` still shows « Crédits restants » from `credits_remaining`, which
+  defaults to 1 and nothing ever decrements. With the doors it means nothing;
+  removing the card is a one-line follow-up the PM should approve.
 - Issues seen during exploration, not fixed here:
   - the frontend never refreshes the access token (decision 38 makes the open
     pages tolerate that; the rest of the app still lapses after an hour);
