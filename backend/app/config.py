@@ -64,6 +64,21 @@ class Config:
 
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — CV PDF cap
 
+    # Four-doors spec: the client input caps (decision 37), the daily caps on
+    # free runs (decision 40), and how long ownerless rows live (decisions 12,
+    # 29, 35). All overridable from /srv/neoori/.env.
+    CV_TEXT_MAX = int(os.environ.get("CV_TEXT_MAX", "40000"))
+    # Ownerless drafts alive at once (48 h window), all addresses together:
+    # each holds up to ~50 KB, and nginx alone would let one address write
+    # ~14 000 a day (spec decision 40).
+    HELD_DRAFTS_MAX = int(os.environ.get("HELD_DRAFTS_MAX", "2000"))
+    CIBLE_MAX = int(os.environ.get("CIBLE_MAX", "10000"))
+    ANONYMOUS_RUNS_PER_DAY = int(os.environ.get("ANONYMOUS_RUNS_PER_DAY", "200"))
+    FREE_RUNS_PER_ACCOUNT_PER_DAY = int(os.environ.get("FREE_RUNS_PER_ACCOUNT_PER_DAY", "5"))
+    ANONYMOUS_RETENTION_DAYS = int(os.environ.get("ANONYMOUS_RETENTION_DAYS", "30"))
+    ADVISOR_RETENTION_DAYS = int(os.environ.get("ADVISOR_RETENTION_DAYS", "365"))
+    HELD_DRAFT_RETENTION_HOURS = int(os.environ.get("HELD_DRAFT_RETENTION_HOURS", "48"))
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
