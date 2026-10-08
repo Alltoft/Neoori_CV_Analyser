@@ -62,35 +62,28 @@ def create_analysis():
     user_id = get_jwt_identity()
     data = json_object()
     inputs = dict_field(data, "inputs")
-    # normalize() maps the legacy 'A'/'B' codes onto parcours ids and falls
-    # back to parcours 1 for anything unrecognised.
-    path = registry.normalize(inputs.get("_path"))
-    inputs["_path"] = path
-    # Only parcours 1 has chemins; carrying the key elsewhere would be noise in
-    # the stored inputs and in every prompt built from them.
-    if path == "1":
-        inputs["_chemin"] = _normalize_chemin(inputs.get("_chemin"))
+    # Parcours 1 is the only parcours (2 and 3 were retired on 2026-10-08).
+    # The stored id is the server's, whatever the body says: a stale page
+    # posting "2" or "3" gets a parcours 1 analysis, validated as one.
+    inputs["_path"] = registry.DEFAULT_PARCOURS
+    inputs["_chemin"] = _normalize_chemin(inputs.get("_chemin"))
 
     if _FORCE_TIER:
         # TEMPORARY — see _FORCE_TIER above. Delete the default to restore
         # normal tier selection.
         inputs["_tier"] = _FORCE_TIER
-    elif path == "3":
-        # Parcours 3 runs on the paid model for everyone — it serves the
-        # populations the free tier exists to reach.
-        inputs["_tier"] = tiers.PAID
     else:
         # normalize() accepts the legacy "haiku"/"sonnet" nicknames and
         # falls back to free for anything unrecognised.
         inputs["_tier"] = tiers.normalize(data.get("tier"))
 
-    errors = VALIDATORS[path](inputs)
+    errors = _validate_inputs(inputs)
     if errors:
         return jsonify({"errors": errors}), 400
 
-    # Fold in the Profil de base so the parcours forms never re-ask what the
-    # profile already knows, and pre-shape bloc 5 into the three lists the
-    # report may use — the raw answers never reach the model.
+    # Fold in the Profil de base so the form never re-asks what the profile
+    # already knows, and pre-shape bloc 5 into the three lists the report may
+    # use — the raw answers never reach the model.
     _merge_profile(inputs, user_id)
 
     analysis = Analysis(
@@ -126,6 +119,11 @@ def save_draft():
     # as-is on the model, then crash Analysis.parcours -- called from
     # to_dict() a few lines below -- via (self.inputs or {}).get("_path").
     inputs = dict_field(data, "inputs")
+    # Same rule as create_analysis: a draft that names a parcours names
+    # parcours 1. An absent _path already means parcours 1, so an empty draft
+    # stays empty.
+    if "_path" in inputs:
+        inputs["_path"] = registry.DEFAULT_PARCOURS
     # text_field, not a bare data.get(): a non-string draft_id (a list, a
     # dict) reaching filter_by(id=draft_id) as a query parameter raises
     # sqlalchemy.exc.ProgrammingError ("type 'list' is not supported") --
@@ -182,7 +180,7 @@ def get_analysis(analysis_id):
     before that have no owner and stay readable by whoever holds their id.
     An analysis that *has* an owner is readable only by that owner —
     previously any caller could read any analysis, inputs included: CV text,
-    name, location, and the health context parcours 3 collects.
+    name, location, and the bloc 5 context folded in from the profile.
     """
     analysis = Analysis.query.get_or_404(analysis_id)
     if not _may_access(analysis):
@@ -326,7 +324,7 @@ def _merge_voyage(inputs: dict, user_id: str | None) -> None:
     screen. Everything else waits for the restitution the paper protocol
     makes a human act. An analysis is not allowed to perform it first.
 
-    No voyage: no key. Every parcours runs identically without one, and an
+    No voyage: no key. An analysis runs identically without one, and an
     empty key would be a shape every later reader has to allow for.
     """
     inputs.pop("_voyage", None)
@@ -392,62 +390,3 @@ def _validate_inputs(inputs: dict) -> list[str]:
         errors.append(f"Cible visée trop courte (minimum {minimum} caractères).")
 
     return errors
-
-
-# ── per-parcours validation ──────────────────────────────────────────────────
-# Each parcours asks for different things. Keeping the rules in one table
-# rather than nested branches means adding a parcours is a new entry, not a
-# new `if` inside three functions.
-
-def _missing(inputs: dict, field: str, label: str, minimum: int = 1) -> str | None:
-    value = text_field(inputs, field)
-    if len(value) < minimum:
-        if minimum > 1:
-            return f"{label} — réponse trop courte ({minimum} caractères minimum)."
-        return f"{label} — réponse requise."
-    return None
-
-
-def _validate_inputs_p2(inputs: dict) -> list[str]:
-    """Parcours 2 — a CV (or a raw list of experiences) plus 3 questions.
-
-    Three, not four: constraints live in bloc 4 of the profile and health is
-    covered for everyone by bloc 5, so the fourth question was re-asking what
-    the profile already knew.
-    """
-    errors = []
-    if len(text_field(inputs, "cv_text")) < 200:
-        errors.append("CV ou liste d'expériences trop courte (200 caractères minimum).")
-    for field, label in (
-        ("satisfaction", "Ce qui vous a donné le plus de satisfaction"),
-        ("refus", "Ce que vous ne voulez plus faire"),
-        ("raison_changement", "La raison principale de votre changement"),
-    ):
-        if err := _missing(inputs, field, label, minimum=20):
-            errors.append(err)
-    return errors
-
-
-def _validate_inputs_p3(inputs: dict) -> list[str]:
-    """Parcours 3 — no CV. The five life questions are the input."""
-    errors = []
-    for field, label in (
-        ("experiences", "Ce que vous avez fait jusqu'à présent"),
-        ("aime_faire", "Ce que vous aimez faire"),
-        ("refus", "Ce que vous ne voulez pas ou ne pouvez pas faire"),
-        ("contraintes", "Vos contraintes pratiques"),
-        ("bon_travail", "Ce qu'est un bon travail pour vous"),
-    ):
-        # Deliberately lower than parcours 2: this parcours exists for people
-        # who don't have a CV, and a long-answer requirement is exactly the
-        # kind of barrier it is meant to remove.
-        if err := _missing(inputs, field, label, minimum=10):
-            errors.append(err)
-    return errors
-
-
-VALIDATORS = {
-    "1": _validate_inputs,
-    "2": _validate_inputs_p2,
-    "3": _validate_inputs_p3,
-}

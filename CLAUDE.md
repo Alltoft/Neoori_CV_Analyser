@@ -201,14 +201,14 @@ profile:
 - `inputs["_voyage_id"]` and `Analysis.voyage_id` — which voyage fed which
   analysis, recoverable afterwards. Same discipline as `prompt_version_id`.
 - `anthropic_service._voyage_block()` wraps the lines under
-  `--- CE QUE LE VOYAGE A RÉVÉLÉ ---` inside `_common_tail()`, so all three
-  parcours carry it from one place.
+  `--- CE QUE LE VOYAGE A RÉVÉLÉ ---` inside `_common_tail()`, which closes
+  the analysis message.
 
 Two rules hold this together, and both have tests in
 `backend/tests/test_voyage_prompt_context.py`:
 
-1. **Never required.** No voyage → no key, no block, no placeholder. Every
-   parcours runs identically without one.
+1. **Never required.** No voyage → no key, no block, no placeholder. An
+   analysis runs identically without one.
 2. **The stage rule.** Until `portrait_status == "validated"`, an analysis
    receives only session 0's phrase and its three attractions. The full
    reduction travels only after a counselor validates — an analysis must never

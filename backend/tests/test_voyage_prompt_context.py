@@ -5,14 +5,14 @@ Phase 5 wires three pieces together:
   scoring.prompt_context()          a synthesis -> 2 or 9 plain French lines
   routes/analyses._merge_voyage()   those lines -> Analysis.inputs["_voyage"],
                                     the voyage id -> inputs["_voyage_id"]
-  anthropic_service._voyage_block() those lines -> one block in every parcours
+  anthropic_service._voyage_block() those lines -> one block in the analysis
                                     message
 
 Four rules live here, in order of how much damage breaking one does.
 
-1. « Never required ». No voyage means no key and no block. Every parcours
-   runs identically without one — parcours 3 exists to remove barriers, and a
-   six-session game would be the largest barrier in the product.
+1. « Never required ». No voyage means no key and no block. An analysis runs
+   identically without one — a six-session game would be the largest barrier
+   in the product.
 
 2. The stage rule. After session 5 the app drafts a portrait, but nobody has
    restituted it yet. An analysis run in that window must not tell a person
@@ -52,8 +52,6 @@ from app.models.voyage import Voyage
 from app.services.anthropic_service import (
     _format_user_message,
     _format_user_message_p1,
-    _format_user_message_p2,
-    _format_user_message_p3,
     _voyage_block,
 )
 from app.services.voyage import bank, generation, scoring
@@ -98,13 +96,8 @@ S0_LINES = [
 BAN_LIST = ("boussole", "copilote", "miroir", "révélation", "épanouissement",
             "alignement", "excellence", "talent unique", "vous vous démarquez")
 
-# The minimum each parcours' formatter needs to produce a message.
+# The minimum the parcours 1 formatter needs to produce a message.
 P1 = {"_path": "1", "cv_text": "8 ans d'administration", "cible_visee": "Chargé RH"}
-P2 = {"_path": "2", "cv_text": "parcours", "satisfaction": "les projets d'équipe",
-      "refus": "le reporting", "raison_changement": "un choix personnel"}
-P3 = {"_path": "3", "experiences": "bénévolat", "aime_faire": "organiser",
-      "refus": "le travail de nuit", "contraintes": "pas de voiture",
-      "bon_travail": "une équipe"}
 
 # What POST /api/analyses/ accepts for parcours 1: 200+ characters of CV and a
 # target of at least 50 (chemin A's floor).
@@ -256,27 +249,17 @@ def test_the_block_does_not_hand_out_the_stored_list():
     assert block == ["", VOYAGE_HEADER] + S0_LINES + ["intrus"]
 
 
-@pytest.mark.parametrize("formatter, inputs", [
-    (_format_user_message_p1, P1),
-    (_format_user_message_p2, P2),
-    (_format_user_message_p3, P3),
-])
-def test_every_parcours_carries_the_block(formatter, inputs):
-    """One voyage, three parcours. The block is appended by _common_tail, so a
-    parcours added later inherits it instead of forgetting it."""
-    msg = formatter({**inputs, "_voyage": S0_LINES})
+def test_the_analysis_message_carries_the_block():
+    """The block is appended by _common_tail, so it closes the message
+    whatever else the inputs carry."""
+    msg = _format_user_message_p1({**P1, "_voyage": S0_LINES})
     assert VOYAGE_HEADER in msg
     for line in S0_LINES:
         assert line in msg
 
 
-@pytest.mark.parametrize("formatter, inputs", [
-    (_format_user_message_p1, P1),
-    (_format_user_message_p2, P2),
-    (_format_user_message_p3, P3),
-])
-def test_no_parcours_carries_the_block_without_a_voyage(formatter, inputs):
-    assert VOYAGE_HEADER not in formatter(inputs)
+def test_no_block_without_a_voyage():
+    assert VOYAGE_HEADER not in _format_user_message_p1(P1)
 
 
 def test_the_block_comes_after_the_conditions_and_the_rights_blocks():
@@ -296,12 +279,9 @@ def test_the_block_comes_after_the_conditions_and_the_rights_blocks():
 
 
 def test_a_legacy_path_code_still_gets_the_block():
-    """Analyses written before the parcours migration carry '_path': 'A'/'B'."""
+    """Analyses written before the parcours migration carry '_path': 'A'."""
     assert VOYAGE_HEADER in _format_user_message(
         {"_path": "A", "cv_text": "x", "cible_visee": "y", "_voyage": S0_LINES}
-    )
-    assert VOYAGE_HEADER in _format_user_message(
-        {"_path": "B", "experiences": "x", "_voyage": S0_LINES}
     )
 
 

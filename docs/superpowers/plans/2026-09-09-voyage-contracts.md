@@ -4,6 +4,10 @@ Date: 2026-09-09
 Status: **binding**. Reference document, not a plan.
 Source of truth: `docs/superpowers/specs/2026-09-09-voyage-design.md` (authoritative), `CLAUDE.md`, `frontend/AGENTS.md`.
 
+> **2026-10-08:** parcours 2 and 3 were retired
+> (`docs/superpowers/specs/2026-10-08-remove-parcours-2-3-design.md`). The
+> P2/P3 mentions below describe the app as it was designed on 2026-09-09.
+
 This file exists so six plan authors working in parallel cannot drift on names, types or JSON
 shapes. Everything below is pinned. Where the spec already decided something it is transcribed
 verbatim; where it left something genuinely underdetermined the line is marked **⚑ decided here**
