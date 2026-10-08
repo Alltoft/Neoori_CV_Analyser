@@ -158,10 +158,12 @@ numbers are indicative; the plan re-reads them after both merges.
     codes too, so `max_uses` caps analyses and voyages separately for every
     code, and a promo code's voyage use (ruling 8) counts as a voyage use.
 20. *Claude's call.* **A conseiller code works only while its owner is an
-    approved counselor** (not pending, rejected or revoked) — at the advisor
-    door and at `/api/codes/check` alike — answered with the generic « Code
-    invalide ou désactivé. » The report would otherwise go to a page nobody
-    can open.
+    approved counselor** (not pending, rejected or revoked) — everywhere one is
+    checked or redeemed: the advisor door, `/api/codes/check` and the voyage
+    unlock — answered with the generic « Code invalide ou désactivé. » At the
+    advisor door the report would otherwise go to a page nobody can open; at
+    the voyage, a revoked counselor's code would keep opening sessions in their
+    name.
 21. *Claude's call.* **A code typed at the wrong door is answered with the right
     one**: the server refuses with the door the code belongs to, and the panel
     switches to it, keeping what was typed.
@@ -275,11 +277,14 @@ numbers are indicative; the plan re-reads them after both merges.
 35. *Claude's call.* **A held draft not claimed within 48 hours is deleted** —
     the life of the verification link (`VERIFY_MAX_AGE`). The form then opens
     empty with « Votre brouillon a expiré. »
-36. *Claude's call.* **Entering an unverified account deletes its drafts.**
-    Since signup attaches a held draft to an account nobody has proven yet,
-    someone registering another person's address could leave a draft there.
-    `sign_in.enter` already replaces such an account's password « since a
-    stranger may have set it »; its drafts are removed for the same reason.
+36. *Claude's call.* **Proving an address for an account nobody had verified
+    deletes its drafts.** Since signup attaches a held draft to an account
+    nobody has proven yet, someone registering another person's address could
+    leave a draft there. Two paths prove such an address without the
+    registrant's password: `sign_in.enter` (Google, Microsoft, email link),
+    which already replaces the password « since a stranger may have set it »,
+    and `auth.reset_password`. Both remove the account's drafts. Verifying with
+    the link **and** the signup password keeps them: that is the registrant.
 
 ### Inputs and sessions
 
@@ -446,7 +451,7 @@ candidate-facing routes (`GET /<id>`, `GET /by-token`, `DELETE`,
 | `routes/payments.py` | `create_checkout` and `verify_session`: `@jwt_required`, owner only; checkout uses `unlock_service.refusal()`. |
 | `routes/upload.py` | `/cv` and `/projet` drop `@jwt_required`. Otherwise unchanged: PDF only, 10 MB, nothing stored. |
 | `routes/auth.py` | `register`: when it creates a new user and the request carries `neoori_hold`, attach the held row to that user and clear the cookie (decision 34). Never for an address that already has an account. |
-| `services/sign_in.py` | Entering an unverified account also deletes its drafts (decision 36). |
+| `services/sign_in.py`, `routes/auth.py` (`reset_password`) | Proving an address for an unverified account also deletes its drafts (decision 36). |
 | `routes/counselor.py` | Deleted (`/api/c/<token>` and its notes). Blueprint unregistered. |
 | `routes/counselor_space.py` (exists) | Add, under `@approved_counselor_required`, with `analysis.counselor_id == me` or 404: `GET /analyses` (id, prénom, nom, code label, status, created_at); `GET /analyses/<id>` (full `to_dict()`); `DELETE /analyses/<id>` (notes deleted explicitly first: their FK has no cascade); `POST /analyses/<id>/relaunch` (error / timeout only, no redemption, no `run_log` row); `GET` / `PUT /analyses/<id>/notes`. `/beneficiaires` adds `nom` and `analysis_id` for the caller's advisor-door rows; its docstring stops citing decision 9. `/codes` and the stats count uses per kind. |
 | `routes/admin.py` | `POST /counselor-codes` takes `max_uses` and `expires_in_days` (defaults 1 and 90; `null` = illimité). New `PATCH /counselor-codes/<id>` for the two limits. `DELETE` also sets `revoked_at`. The list shows each code's kind and per-kind uses. |
@@ -484,7 +489,7 @@ candidate-facing routes (`GET /<id>`, `GET /by-token`, `DELETE`,
 | File | Change |
 |---|---|
 | `proxy.ts` | `/analyse` stays protected except `/analyse`, `/analyse/nouveau` and `/analyse/envoyee` (exact paths). `/rapport` is outside every protected prefix. |
-| `app/analyse/nouveau/page.tsx` | No `useRequireSession`. Submit opens the doors panel instead of posting. With `?reprendre=compte\|promo`: signed in → `POST /claim`, else the account's latest draft, else the decision 34 message; signed out → `GET /held`. Then refill and open the panel at that door. « Enregistrer le brouillon » stays for signed-in users. No `tier`, no `canPremium`. Label and footer per decision 16. |
+| `app/analyse/nouveau/page.tsx` | No `useRequireSession`. The paragraph « Le reste de l’analyse s’appuie sur ce que vous avez déjà donné… » shows to signed-in visitors only — a signed-out run has no profile. The shield line keeps « Données chiffrées, supprimables à tout moment. » for everyone. Submit opens the doors panel instead of posting. With `?reprendre=compte\|promo`: signed in → `POST /claim`, else the account's latest draft, else the decision 34 message; signed out → `GET /held`. Then refill and open the panel at that door. « Enregistrer le brouillon » stays for signed-in users. No `tier`, no `canPremium`. Label and footer per decision 16. |
 | `components/analyse/DoorsPanel.tsx` (new) | The four doors (three when signed in), one open at a time, each with its fields, notice, checkbox and error. It saves the held draft and builds the sign-in redirect. « Avec mon compte » signed out goes to `/inscription` (signup first, as `proxy.ts` does), whose page links to `/connexion` with the same redirect. Wrong-door switch (decision 21). A 401 at `account` / `promo` restarts the round trip once. |
 | `app/analyse/envoyee/page.tsx` (new) | The advisor-door confirmation. |
 | `app/rapport/page.tsx` (new) | One page, token from `location.hash`: waiting state plus report for a no-login run, polling `GET /analyses/by-token`. Banner, copy link (the full URL with its `#`), « garder » (`POST /hold`, then the round trip to `/espace?garder=1`), delete (decision 32). The 10-minute give-up reads « C’est plus long que prévu. Gardez ce lien : le rapport s’affichera ici dès qu’il sera prêt. » — no mail promise. `metadata.referrer = "no-referrer"`. |
@@ -623,7 +628,8 @@ The last sentence of row 13 is the line the conseiller spec promised for
   - `register` attaches only when it creates the user;
   - claim clears hash and cookie; the old `/rapport#…` token then 404s;
   - a draft's token does not open the report;
-  - entering an unverified account deletes its drafts.
+  - entering an unverified account, or resetting its password, deletes its
+    drafts; verifying it with the signup password keeps them.
 - Counselor routes:
   - another counselor → 404; a candidate → 403;
   - relaunch only on error / timeout; delete removes notes first;
@@ -722,7 +728,8 @@ On the developer's go, each step:
   domain: links are built from `APP_URL` as today.
 - The voyage — its unlock, its `/voyage/c/` page (open to any approved
   counselor holding the token, as today), its prompts — except counting code
-  uses per kind.
+  uses per kind and refusing a code whose counselor is no longer approved
+  (decision 20).
 - Premium as a promo option or as an upgrade from Complet, Stripe promotion
   codes, account deletion, a per-IP daily cap, a cap on concurrent run threads.
 - Cleaning up unverified accounts that never verify (and the drafts signup
