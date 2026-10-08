@@ -134,18 +134,6 @@ traffic arrives over IPv4 and the limits see real clients. Keep it that way
 until the compose network has IPv6 enabled (`enable_ipv6` + a subnet) and the
 templates `listen [::]:80` / `[::]:443`.
 
-## Data migration (TiDB Cloud → VPS MySQL, at cutover)
-
-```bash
-mysqldump -h <tidb-host> -P 4000 -u <tidb-user> -p --ssl-mode=REQUIRED \
-  --single-transaction --no-tablespaces --set-gtid-purged=OFF neoori > dump.sql
-scp dump.sql neoori:/srv/neoori/
-ssh neoori 'cd /srv/neoori && docker compose -f docker-compose.prod.yml exec -T db \
-  mysql -uneoori -p"$MYSQL_PASSWORD" neoori < dump.sql'
-```
-
-The alembic version table travels with the dump, so `flask db upgrade` stays consistent.
-
 ## Backups
 
 Script lives in the repo: `scripts/neoori-backup.sh`. Installed on the VPS

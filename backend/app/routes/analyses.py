@@ -24,7 +24,7 @@ analyses_bp = Blueprint("analyses", __name__)
 # what needs judging — so every analysis runs paid until they're done.
 #
 # To restore normal behaviour: change the default below to "" (or set
-# FORCE_ANALYSIS_TIER="" on Render). The paywall, the unlock flow and the
+# FORCE_ANALYSIS_TIER="" in /srv/neoori/.env). The paywall, the unlock flow and the
 # Premium checkout are untouched — this only decides what a *new* analysis
 # generates.
 _FORCE_TIER = tiers.normalize(os.getenv("FORCE_ANALYSIS_TIER", "paid")) \

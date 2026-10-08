@@ -1,6 +1,6 @@
 # Manual test plan — CDC v1.2 / Parcours build
 
-Test environment: http://localhost:8080 (docker dev) — VPS domain after cutover (see DOCKER.md)
+Test environment: http://localhost:8080 (docker dev), or production (see DOCKER.md)
 
 Work through in order. Each row is: what to do → what should happen. Anything
 that doesn't match, note the URL and what you saw.
@@ -27,7 +27,7 @@ tier selection is overridden. Practical effects:
   because they are. To see the paywall and the Premium card (**§ 7.4–7.6**),
   open an analysis created *before* today.
 
-Reverting is one env var: `FORCE_ANALYSIS_TIER=""` on Render.
+Reverting is one env var: `FORCE_ANALYSIS_TIER=""` in `/srv/neoori/.env` on the VPS.
 
 Everything else below should work end to end.
 

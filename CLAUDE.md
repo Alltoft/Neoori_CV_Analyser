@@ -143,7 +143,6 @@ Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 - `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Now `https` — login only works in that phase, JWT cookies are `Secure`-only in production.
 - Flask `strict_slashes=False` stays global — the proxies strip trailing slashes before forwarding.
 - Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
-- The legacy Vercel/Render/TiDB test env keeps serving its last deploy until cutover — data migration steps in `DOCKER.md`.
 
 ## Le voyage
 
