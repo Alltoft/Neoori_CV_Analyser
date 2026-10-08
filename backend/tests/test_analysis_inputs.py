@@ -40,3 +40,33 @@ def test_the_caps_come_from_config(app):
     app.config["CV_TEXT_MAX"] = 500
     _, errors = analysis_inputs.clean({"cv_text": "c" * 501})
     assert errors == ["CV trop long (500 caractères maximum)."]
+
+
+def test_chemin_b_normalizes(app):
+    inputs, _ = analysis_inputs.clean({"_chemin": "b"})
+    assert inputs == {"_chemin": "B"}
+
+    inputs, _ = analysis_inputs.clean({"_chemin": " B "})
+    assert inputs == {"_chemin": "B"}
+
+
+def test_chemin_a_stays_a(app):
+    inputs, _ = analysis_inputs.clean({"_chemin": "A"})
+    assert inputs == {"_chemin": "A"}
+
+
+def test_chemin_junk_becomes_a(app):
+    inputs, _ = analysis_inputs.clean({"_chemin": "not-a-chemin"})
+    assert inputs == {"_chemin": "A"}
+
+
+def test_chemin_huge_string_becomes_a_with_no_error(app):
+    # The entire huge string becomes "A" with no error: _chemin is unbounded.
+    inputs, errors = analysis_inputs.clean({"_chemin": "x" * 5_000_000})
+    assert inputs == {"_chemin": "A"}
+    assert errors == []
+
+
+def test_chemin_non_string_becomes_a(app):
+    inputs, _ = analysis_inputs.clean({"_chemin": {"dict": "value"}})
+    assert inputs == {"_chemin": "A"}
