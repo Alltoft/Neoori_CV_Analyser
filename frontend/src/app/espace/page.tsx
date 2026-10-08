@@ -168,7 +168,7 @@ export default function EspacePage() {
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary py-20 text-center">
             <span className="grid size-12 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-6" /></span>
             <p className="font-display font-semibold text-navy">Votre première analyse</p>
-            <p className="text-sm text-muted-foreground">~2 min · avec ou sans CV</p>
+            <p className="text-sm text-muted-foreground">~2 min</p>
             <Button render={<Link href="/analyse" />} size="lg" className="mt-2">
               Commencer <ArrowRight />
             </Button>

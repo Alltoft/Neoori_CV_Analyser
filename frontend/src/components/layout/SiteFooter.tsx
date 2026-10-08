@@ -46,7 +46,7 @@ export function SiteFooter() {
           <div className="col-span-2 md:col-span-1">
             <Logo tone="light" className="text-2xl" />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
-              Une lecture de votre parcours, avec ou sans CV, au service de votre projet professionnel.
+              Une lecture de votre parcours, au service de votre projet professionnel.
             </p>
             <p className="eyebrow mt-5 inline-flex items-center gap-2 text-peach">
               <span className="inline-block size-1.5 rounded-full bg-orange" />

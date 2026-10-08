@@ -17,13 +17,12 @@ export default function CgvPage() {
       <h2>2. Description du service</h2>
       <p>
         L&apos;offre gratuite comprend les trois premières sections du rapport d&apos;analyse,
-        ainsi qu&apos;un verdict de diagnostic. L&apos;offre payante débloque le rapport complet
-        du parcours choisi, ainsi que l&apos;export conseiller. Pour le parcours « J&apos;ai une
-        cible », il compte 9 sections, incluant les points à renforcer, les préconisations
-        terrain, un exemple de réécriture, la synthèse, les pistes d&apos;évolution et une
-        proposition de CV retravaillé. Le rapport est généré par intelligence artificielle à
-        partir des informations fournies par l&apos;utilisateur ; il constitue une aide à la décision
-        et non un conseil professionnel individualisé.
+        ainsi qu&apos;un verdict de diagnostic. L&apos;offre payante débloque le rapport complet,
+        ainsi que l&apos;export conseiller. Il compte 9 sections, incluant les points à renforcer,
+        les préconisations terrain, un exemple de réécriture, la synthèse, les pistes
+        d&apos;évolution et une proposition de CV retravaillé. Le rapport est généré par
+        intelligence artificielle à partir des informations fournies par l&apos;utilisateur ; il
+        constitue une aide à la décision et non un conseil professionnel individualisé.
       </p>
 
       <h2>3. Prix</h2>
