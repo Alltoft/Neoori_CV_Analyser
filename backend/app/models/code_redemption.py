@@ -30,6 +30,11 @@ class CodeRedemption(db.Model):
         db.Enum("analysis", "voyage", name="redemption_target"), nullable=False
     )
     target_id = db.Column(db.String(36), nullable=False)
+    # This redemption's place in the code's per-kind ceiling, 1..max_uses, or
+    # NULL for an unlimited code. The unique key below makes the ceiling the
+    # database's to enforce (four-doors spec, decision 23): two requests that
+    # both read "0 used" both try slot 1, and only one insert succeeds.
+    slot = db.Column(db.Integer, nullable=True)
     redeemed_at = db.Column(
         db.DateTime, nullable=False, default=datetime.utcnow, index=True
     )
@@ -38,6 +43,14 @@ class CodeRedemption(db.Model):
         # A retried unlock must not double-count.
         db.UniqueConstraint(
             "code_id", "target_type", "target_id", name="uq_code_redemptions_target"
+        ),
+        db.UniqueConstraint(
+            "code_id", "target_type", "slot", name="uq_code_redemptions_slot"
+        ),
+        # One promo use per account, atomically. Advisor-door redemptions carry
+        # user_id NULL, and NULLs never collide in a unique key.
+        db.UniqueConstraint(
+            "code_id", "target_type", "user_id", name="uq_code_redemptions_user"
         ),
     )
 
@@ -51,5 +64,6 @@ class CodeRedemption(db.Model):
             "user_id": self.user_id,
             "target_type": self.target_type,
             "target_id": self.target_id,
+            "slot": self.slot,
             "redeemed_at": self.redeemed_at.isoformat(),
         }

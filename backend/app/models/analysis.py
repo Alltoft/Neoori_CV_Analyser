@@ -72,10 +72,40 @@ class Analysis(db.Model):
     unlocked_at = db.Column(db.DateTime, nullable=True)
     stripe_session_id = db.Column(db.String(255), nullable=True, index=True)
 
+    # Which of the four doors this run came through (four-doors spec): account
+    # / promo / advisor / anonymous, set at submit. 'legacy' marks the ownerless
+    # rows written before accounts were required (decision 44). NULL for drafts
+    # and for owned rows that predate the doors.
+    door = db.Column(db.String(16), nullable=True)
+    # SHA-256 of the key to a no-login report or a held draft (decisions 30,
+    # 34). The key itself is never stored.
+    access_token_hash = db.Column(db.CHAR(64), unique=True, nullable=True)
+    # The counselor an advisor-door report belongs to — and the only person who
+    # may read it (ruling 2). SET NULL keeps the row closed: `door` still says
+    # advisor, and _may_access refuses on either.
+    counselor_id = db.Column(
+        db.String(36), db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # The account a held row waits for: set by password signup, attached at
+    # verify-email, dropped if the address is proven any other way first
+    # (decisions 34, 36).
+    pending_user_id = db.Column(
+        db.String(36), db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # The CGV + privacy box at the advisor and anonymous doors (decisions 25,
+    # 31), which have no signup consent to rely on.
+    consent_at = db.Column(db.DateTime, nullable=True)
+    consent_version = db.Column(db.String(16), nullable=True)
+    # When the row last went 'running' — the stale-run reaper's clock
+    # (decision 47). created_at is wrong for a relaunch or an unlock.
+    started_at = db.Column(db.DateTime, nullable=True)
+
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
 
     counselor_notes = db.relationship("CounselorNote", backref="analysis", lazy="dynamic")
+
+    __table_args__ = (db.Index("ix_analyses_door_created_at", "door", "created_at"),)
 
     @property
     def parcours(self) -> str:
