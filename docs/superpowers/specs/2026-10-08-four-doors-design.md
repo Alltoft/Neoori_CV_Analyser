@@ -186,6 +186,10 @@ numbers are indicative; the plan re-reads them after both merges.
     - A unique key on `(code_id, target_type, user_id)`: one promo use per
       account is atomic. Advisor redemptions carry `user_id = NULL`, which
       never collides.
+    - Erasing a voyage (`DELETE /api/voyage`) sets `user_id = NULL` on its
+      redemption: the use stays spent, it no longer names the person, and the
+      key above no longer stops them from unlocking a new voyage with another
+      use of the same code.
 
 ### The advisor door
 
@@ -259,7 +263,9 @@ numbers are indicative; the plan re-reads them after both merges.
       held row to the account, clears the hash and the cookie, and returns the
       draft. The form refills and reopens the panel at that door. The person
       confirms; nothing starts on its own. A promo code is retyped (pre-filled
-      from `sessionStorage` in the same browser) — it never rides in a URL.
+      from `localStorage` in the same browser for two hours — the verification
+      link opens a new tab, which `sessionStorage` would not reach) — it never
+      rides in a URL.
     - **Password signup marks; the signup password attaches.**
       `POST /api/auth/register`, when it creates a new user row and the request
       carries the cookie, writes that account's id into the held row's
@@ -339,6 +345,11 @@ numbers are indicative; the plan re-reads them after both merges.
       regenerations by payment or code; a counselor's relaunch writes no row.
     - A per-IP daily cap is left out: it would mean storing addresses. If one
       address drains the anonymous budget, the other doors still work.
+    - Held drafts get a global ceiling too, `HELD_DRAFTS_MAX` (default 2000)
+      alive within their 48 hours: each holds up to ~50 KB, and nginx alone
+      would let one address write ~14 000 a day. Over it, a new held draft is
+      refused with 429 « Le service est très demandé : connectez-vous d’abord,
+      puis revenez à ce formulaire. »; a browser updating its own is not.
 
 ### Payment
 
@@ -364,6 +375,9 @@ numbers are indicative; the plan re-reads them after both merges.
     URL (decisions 30, 34). The fix is still made here because the sign-in round
     trip it routes people through already logs verification and reset tokens,
     `next` paths and Stripe session ids (see « What the code does today »).
+    nginx also writes a refused request to its error log with the request line
+    and the Referer: `limit_req_log_level info` keeps those below the error
+    log's threshold.
 
 ### What goes, what stays
 
@@ -397,6 +411,20 @@ numbers are indicative; the plan re-reads them after both merges.
 48. *Claude's call.* **`CONSENT_VERSION` becomes "v1.3"**, because CGV §2 and §6
     change (copy rows 8–9). It is recorded, never compared, so no existing
     account is asked again (open item 7).
+49. *Claude's call.* **A failed promo run is relaunched by its owner**, on the
+    same row, with no new code use (`POST /api/analyses/<id>/relaunch`, owner
+    and `promo` door only, error / timeout only). The use was spent before the
+    run (decision 23), once-per-account would refuse a second try, and
+    `refusal()` refuses an errored row — without this, a failure burns the
+    code. Like the counselor's « Relancer », it is a conditional update, so a
+    double click starts one run. The waiting page's error card offers
+    « Relancer » for a promo row. Giving the use back instead was rejected: a
+    deleted redemption leaves a hole in the slot numbers that blocks the next
+    use.
+50. *Claude's call.* **Deleting an analysis deletes its price feedback and
+    counselor notes first.** Neither foreign key has `ON DELETE`, so today a
+    candidate deleting a report they rated gets a 500 — and `/rapport`
+    « Supprimer » shows the price probe too.
 
 ## Data model
 
@@ -454,6 +482,8 @@ candidate-facing routes (`GET /<id>`, `GET /by-token`, `DELETE`,
 | `services/code_service.py` | `resolve(code_str, target_type)` counts per kind. `kind(code)` from `owner_id`. `resolve_for_door(code_str, door, user_id)`: the right kind; an approved owner for a conseiller code; for promo, no earlier analysis use by this account (`ALREADY_USED = "Vous avez déjà utilisé ce code."`). The wrong-door refusal carries `door`. `record()` writes `slot` and is committed by the caller **before** the run starts; a unique violation is retried once, then `EXHAUSTED` / `ALREADY_USED`. The docstring's race paragraph is rewritten to match. |
 | `services/unlock_service.py` | Extract `refusal(analysis) -> str \| None` (decision 41); `unlock_analysis` calls it. |
 | `routes/payments.py` | `create_checkout` and `verify_session`: `@jwt_required`, owner only; checkout uses `unlock_service.refusal()`. |
+| `routes/analyses.py` (more) | `POST /<id>/relaunch` for a failed promo row (decision 49). `delete_analysis` deletes price feedback and notes first (decision 50). `unlock_with_code` checks the code's kind before its limits, so a spent conseiller code still gets the « code conseiller » sentence. |
+| `routes/voyage.py` | `DELETE /api/voyage` unlinks its redemption (decision 23). The unlock uses the per-kind resolver. |
 | `routes/upload.py` | `/cv` and `/projet` drop `@jwt_required`. Otherwise unchanged: PDF only, 10 MB, nothing stored. |
 | `routes/auth.py` | `register`: when it creates a new user and the request carries `neoori_hold`, set the held row's `pending_user_id` (decision 34) — never for an address that already has an account. `verify_email`: on success, attach every row pending for that user. `reset_password`: on an unverified account, drop the marks (decision 36). |
 | `services/sign_in.py` | `enter` on an unverified account drops its `pending_user_id` marks (decision 36). |
@@ -787,7 +817,7 @@ On the developer's go, each step:
 Made on the developer's standing instruction (2026-10-08) to take the
 recommended option; each is open to reversal on review:
 
-- Decisions 14–48 above (for 19, only its extension to promo codes).
+- Decisions 14–50 above (for 19, only its extension to promo codes).
 - The door names in code (`account`, `promo`, `advisor`, `anonymous`, `legacy`)
   and their UI names.
 - The order in which the panel shows the doors: the ruling's order — sign in,

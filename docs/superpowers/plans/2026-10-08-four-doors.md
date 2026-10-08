@@ -85,7 +85,7 @@ plus the **sub-project 1 spec**. The build may only start once both
   imports it). No test may reach Anthropic.
 - Limits (env, read from `current_app.config`): `ANONYMOUS_RUNS_PER_DAY=200`,
   `FREE_RUNS_PER_ACCOUNT_PER_DAY=5`, `ANONYMOUS_RETENTION_DAYS=30`,
-  `ADVISOR_RETENTION_DAYS=365`, `HELD_DRAFT_RETENTION_HOURS=48`,
+  `ADVISOR_RETENTION_DAYS=365`, `HELD_DRAFT_RETENTION_HOURS=48`, `HELD_DRAFTS_MAX=2000`,
   `CV_TEXT_MAX=40000`, `CIBLE_MAX=10000`; prénom / nom ≤ 80 characters.
 - Commit messages end with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -103,9 +103,10 @@ requirement names directly. Each has its test in the owning task.
    accepted — Task 3.
 3. **A long but real CV**: a 39 999-character paste passes, 40 001 fails,
    measured after trimming — Task 2.
-4. **A counselor double-clicking « Relancer »**: the second click is refused
-   (409) while the first run is queued or running, so one failure never
-   becomes two paid runs — Task 10.
+4. **A counselor double-clicking « Relancer »**: the button is disabled while
+   the call is pending, and the route's conditional update lets only one of
+   two simultaneous requests start a run (409 for the other) — Task 9
+   (route), Task 17 (button).
 5. **Two tabs, one browser**: saving a signed-out draft twice reuses the same
    held row (one cookie), and claiming twice returns 404 the second time
    without breaking the form — Task 7.
@@ -159,7 +160,8 @@ requirement names directly. Each has its test in the owning task.
 - `components/report/ReportDocument.tsx` — the A4 report, extracted from the
   owner's report page so `/rapport` and the counselor page reuse it.
 - `lib/held.ts` — the client calls for held drafts, claim, hold, by-token.
-- `app/analyse/envoyee/page.tsx`, `app/rapport/page.tsx`,
+- `app/analyse/envoyee/page.tsx`, `app/rapport/page.tsx` (client-only shell),
+  `components/analyse/RapportSansCompte.tsx` (the page itself),
   `app/rapport/layout.tsx` (metadata), `app/conseiller/analyses/[id]/page.tsx`,
   `components/admin/PromoCodesPanel.tsx`.
 
@@ -777,7 +779,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   `analysis_inputs.CLIENT_KEYS`; config keys `CV_TEXT_MAX`, `CIBLE_MAX`,
   `ANONYMOUS_RUNS_PER_DAY`, `FREE_RUNS_PER_ACCOUNT_PER_DAY`,
   `ANONYMOUS_RETENTION_DAYS`, `ADVISOR_RETENTION_DAYS`,
-  `HELD_DRAFT_RETENTION_HOURS`.
+  `HELD_DRAFT_RETENTION_HOURS`, `HELD_DRAFTS_MAX`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -842,6 +844,10 @@ In `backend/app/config.py`, inside `class Config`, after `MAX_CONTENT_LENGTH`:
     # free runs (decision 40), and how long ownerless rows live (decisions 12,
     # 29, 35). All overridable from /srv/neoori/.env.
     CV_TEXT_MAX = int(os.environ.get("CV_TEXT_MAX", "40000"))
+    # Ownerless drafts alive at once (48 h window), all addresses together:
+    # each holds up to ~50 KB, and nginx alone would let one address write
+    # ~14 000 a day (spec decision 40).
+    HELD_DRAFTS_MAX = int(os.environ.get("HELD_DRAFTS_MAX", "2000"))
     CIBLE_MAX = int(os.environ.get("CIBLE_MAX", "10000"))
     ANONYMOUS_RUNS_PER_DAY = int(os.environ.get("ANONYMOUS_RUNS_PER_DAY", "200"))
     FREE_RUNS_PER_ACCOUNT_PER_DAY = int(os.environ.get("FREE_RUNS_PER_ACCOUNT_PER_DAY", "5"))
@@ -1237,18 +1243,22 @@ def redeem(code: CounselorCode, *, user_id: str | None, target_type: str, target
         used = redemption_count(code_id, target_type)
         if max_uses is not None and used >= max_uses:
             return EXHAUSTED
-        db.session.add(CodeRedemption(
-            code_id=code_id,
-            user_id=user_id,
-            target_type=target_type,
-            target_id=target_id,
-            slot=used + 1 if max_uses is not None else None,
-        ))
-        # The legacy counter, kept for the admin screens that still read it.
-        CounselorCode.query.filter_by(id=code_id).update(
-            {"uses_count": CounselorCode.uses_count + 1}, synchronize_session=False
-        )
         try:
+            db.session.add(CodeRedemption(
+                code_id=code_id,
+                user_id=user_id,
+                target_type=target_type,
+                target_id=target_id,
+                slot=used + 1 if max_uses is not None else None,
+            ))
+            # Flushed here, inside the try: the update below would autoflush
+            # it anyway, and a unique-key violation must land in the except,
+            # not escape as a 500.
+            db.session.flush()
+            # The legacy counter, kept for the admin screens that still read it.
+            CounselorCode.query.filter_by(id=code_id).update(
+                {"uses_count": CounselorCode.uses_count + 1}, synchronize_session=False
+            )
             db.session.commit()
             return None
         except IntegrityError:
@@ -1297,7 +1307,8 @@ left a parcours 3 check here, it is already gone.)
 - [ ] **Step 5: Rewrite `unlock_with_code`**
 
 In `backend/app/routes/analyses.py`, replace `unlock_with_code` (add
-`from ..services import unlock_service` to the imports):
+`from ..services import unlock_service` and
+`from ..models.counselor_code import CounselorCode` to the imports):
 
 ```python
 @analyses_bp.post("/<analysis_id>/unlock")
@@ -1315,11 +1326,14 @@ def unlock_with_code(analysis_id):
     code_str = code_service.normalize(text_field(json_object(), "code"))
     if not code_str:
         return jsonify({"error": code_service.REQUIRED}), 400
+    # The kind first: a spent or expired conseiller code still gets the
+    # sentence that says where such a code goes, not « limite atteinte ».
+    known = CounselorCode.query.filter_by(code=code_str).first()
+    if known is not None and code_service.kind(known) != code_service.PROMO:
+        return jsonify({"error": code_service.NOT_FOR_UNLOCK}), 409
     code, refusal = code_service.resolve(code_str, "analysis")
     if refusal:
         return jsonify({"error": refusal}), 400
-    if code_service.kind(code) != code_service.PROMO:
-        return jsonify({"error": code_service.NOT_FOR_UNLOCK}), 409
 
     reason = unlock_service.refusal(analysis)
     if reason:
@@ -1355,6 +1369,41 @@ In `backend/app/routes/voyage.py`, `unlock_voyage`, replace from
     return jsonify({"voyage": voyage.to_dict()}), 200
 ```
 
+- [ ] **Step 6b: Erasing a voyage unlinks its redemption**
+
+The new `(code_id, target_type, user_id)` key would otherwise stop someone who
+erased their voyage from ever unlocking a new one with another use of the same
+code (« Vous avez déjà utilisé ce code. »). In `backend/app/routes/voyage.py`,
+in the `DELETE /api/voyage` handler, next to where it strips `_voyage` from
+past analyses and before the voyage row is deleted:
+
+```python
+    # The use stays spent, but no longer names a person who erased their
+    # voyage (four-doors spec, decision 23) — and the per-person unique key no
+    # longer stops them from unlocking a new voyage with another use.
+    CodeRedemption.query.filter_by(target_type="voyage", target_id=voyage.id).update(
+        {"user_id": None}, synchronize_session=False
+    )
+```
+
+(import `CodeRedemption` from `..models.code_redemption` if absent). Add to
+`test_code_doors.py`, sending whatever body `tests/test_voyage_routes.py` sends
+to `DELETE /api/voyage`:
+
+```python
+def test_erasing_a_voyage_unlinks_its_redemption(client, app):
+    candidate = user()
+    voyage = Voyage(user_id=candidate.id, consent_at=datetime.utcnow(), age_attested=True)
+    db.session.add(voyage)
+    db.session.commit()
+    c = code(counselor(), max_uses=5, value="CONS0012")
+    code_service.redeem(c, user_id=candidate.id, target_type="voyage", target_id=voyage.id)
+
+    assert client.delete("/api/voyage", headers=bearer(candidate)).status_code == 200
+    redemption = CodeRedemption.query.one()
+    assert redemption.user_id is None          # the use stays counted
+```
+
 - [ ] **Step 7: Update the existing tests that used the old API**
 
 Run: `cd backend && grep -n "record(\|resolve(\|/unlock" tests/test_code_service.py tests/test_code_redemption_routes.py tests/test_unlock.py tests/test_voyage_routes.py`
@@ -1371,6 +1420,12 @@ For each hit:
   about the unlock itself.
 - A test asserting that one code use blocks both kinds now expects the other
   kind to stay open (ruling 10).
+- `test_malformed_bodies.py::test_unlock_with_code_survives_malformed_body` and
+  `::test_unlock_rejects_non_string_code` now get 401 before they reach the
+  body: give the rig an analysis owned by a candidate and post with that
+  candidate's bearer header, so the malformed body is still what is tested.
+  Same for the unlock rig in `test_no_500_on_hostile_input.py` (use the
+  `candidate_headers` fixture and an analysis owned by that candidate).
 
 - [ ] **Step 8: Run, then commit**
 
@@ -1859,6 +1914,25 @@ Update `get_analysis`'s docstring: the legacy sentence now reads "an ownerless
 row stays readable by id only when the four-doors migration marked it
 `legacy`".
 
+Replace `delete_analysis` (import `CounselorNote` from `..models.counselor_note`):
+
+```python
+@analyses_bp.delete("/<analysis_id>")
+def delete_analysis(analysis_id):
+    analysis = Analysis.query.get_or_404(analysis_id)
+    if not _may_access(analysis):
+        return jsonify({"error": "Accès non autorisé."}), 403
+    # price_feedback's and counselor_notes' foreign keys have no ON DELETE:
+    # without these two lines, deleting a report someone rated is a 500 —
+    # today already, and on /rapport « Supprimer » once the price probe shows
+    # there.
+    PriceFeedback.query.filter_by(analysis_id=analysis.id).delete()
+    CounselorNote.query.filter_by(analysis_id=analysis.id).delete()
+    db.session.delete(analysis)
+    db.session.commit()
+    return jsonify({"message": "Analyse supprimée."}), 200
+```
+
 - [ ] **Step 5: `to_dict` says the door and when the link expires**
 
 In `backend/app/models/analysis.py` (add `from datetime import timedelta` and
@@ -1881,12 +1955,21 @@ and the method:
         return (self.created_at + timedelta(days=days)).isoformat()
 ```
 
-- [ ] **Step 6: Mark the legacy rows in the existing access tests**
+- [ ] **Step 6: Mark the legacy rows in the existing tests**
 
-Run: `cd backend && python -m pytest tests/test_analysis_access.py -q`. Each test
-that expects an ownerless row to be readable now needs `door="legacy"` on that
-row; a test asserting an ownerless row is readable *without* that mark is
-asserting what decision 44 removes — invert it to expect 403.
+Each test that expects an ownerless row to be readable now needs
+`door="legacy"` on that row; a test asserting an ownerless row is readable
+*without* that mark is asserting what decision 44 removes — invert it to
+expect 403. Known cases:
+- `tests/test_analysis_access.py` (several);
+- `tests/test_stream_progress.py::test_the_poll_endpoint_returns_progress`;
+- `tests/test_malformed_bodies.py::test_price_feedback_survives_malformed_body`
+  and `::test_price_feedback_rejects_non_string_bucket` (they now get 403
+  before the body is read: mark the row `legacy`, so the body is still what
+  they test);
+- the price-feedback rig in `tests/test_no_500_on_hostile_input.py` (same fix).
+
+Find any other with `grep -rln "user_id=None" backend/tests`.
 
 - [ ] **Step 7: Run, then commit**
 
@@ -1968,6 +2051,16 @@ def test_saving_again_reuses_the_held_row(client, app):
 def test_a_held_draft_keeps_only_client_keys(client, app):
     _held_draft(client, {**P1_INPUTS, "_conditions": ["x"], "_tier": "premium"})
     assert set(Analysis.query.one().inputs) == {"cv_text", "cible_visee"}
+
+
+def test_the_global_ceiling_on_held_drafts(client, app):
+    app.config["HELD_DRAFTS_MAX"] = 1
+    assert _held_draft(client).status_code == 201
+    stranger = app.test_client()                       # another browser, no cookie
+    res = stranger.post("/api/analyses/draft", json={"inputs": P1_INPUTS})
+    assert res.status_code == 429 and res.get_json()["error"] == held.TOO_MANY
+    # The first browser still updates its own.
+    assert _held_draft(client).status_code == 200
 
 
 def test_held_reads_the_draft_back_and_404s_without_a_cookie(client, app):
@@ -2079,13 +2172,16 @@ A signed-out draft has to survive a sign-in round trip — a Google redirect, or
 the verification mail opened on a phone — without its key ever travelling in a
 URL, a mail or a log. The key sits in this HttpOnly cookie; the row stores only
 its hash. The same cookie carries a no-login report handed over by « Garder ».
-One held row at a time.
+One held row at a time: the last one held wins. A report displaced that way is
+still reachable by its own link — « Garder » never clears its key.
 
 Nothing here attaches a row to an account before the signup password has
 proven its address (decision 36): signup only marks the row
 (`pending_user_id`), verify-email attaches it, and any other proof of the
 address drops the mark.
 """
+from datetime import datetime, timedelta
+
 from flask import current_app, request
 
 from ..extensions import db
@@ -2093,6 +2189,7 @@ from ..models.analysis import Analysis
 from ..utils.tokens import hash_token, new_access_token
 
 COOKIE = "neoori_hold"
+TOO_MANY = "Le service est très demandé : connectez-vous d’abord, puis revenez à ce formulaire."
 # Every /api route that reads it: drafts, claim, and /auth/register.
 PATH = "/api"
 
@@ -2126,6 +2223,19 @@ def held_row(*, draft_only: bool = False) -> Analysis | None:
     return row
 
 
+def too_many() -> bool:
+    """The global ceiling on ownerless drafts alive at once (spec decision 40):
+    nginx limits each address, this limits all of them together."""
+    since = datetime.utcnow() - timedelta(hours=current_app.config["HELD_DRAFT_RETENTION_HOURS"])
+    alive = Analysis.query.filter(
+        Analysis.status == "draft",
+        Analysis.user_id.is_(None),
+        Analysis.access_token_hash.isnot(None),
+        Analysis.created_at >= since,
+    ).count()
+    return alive >= current_app.config["HELD_DRAFTS_MAX"]
+
+
 def new_held_draft(inputs: dict) -> tuple[Analysis, str]:
     """A new ownerless draft and the raw key for its cookie. Caller commits."""
     token = new_access_token()
@@ -2140,6 +2250,10 @@ def attach(row: Analysis, user_id: str) -> None:
     row.user_id = user_id
     row.access_token_hash = None
     row.pending_user_id = None
+    if row.status == "draft":
+        # The account's newest draft from now on: the cross-device fallback
+        # on the form picks the latest draft (spec decision 34).
+        row.created_at = datetime.utcnow()
 
 
 def mark_for(user_id: str) -> bool:
@@ -2193,6 +2307,8 @@ def save_draft():
     if user_id is None:
         row, token, status = held.held_row(draft_only=True), None, 200
         if row is None:
+            if held.too_many():
+                return jsonify({"error": held.TOO_MANY}), 429
             row, token = held.new_held_draft(inputs)
             status = 201
         else:
@@ -2444,7 +2560,11 @@ def test_advisor_door_sends_complet_to_the_counselor_only(start, client, app):
 def test_advisor_door_folds_nothing_even_when_signed_in(_s, client, app):
     u = _profiled()
     code(counselor(), value="CONS0005")
-    _post(client, bearer(u), door="advisor", code="CONS0005", prenom="Marie", nom="Durand", consent=True)
+    # The fold itself never runs — so no profile, no bloc 5, no voyage,
+    # whatever the account holds.
+    with patch("app.routes.analyses._merge_profile") as merge:
+        _post(client, bearer(u), door="advisor", code="CONS0005", prenom="Marie", nom="Durand", consent=True)
+    merge.assert_not_called()
     row = Analysis.query.one()
     assert row.user_id is None
     assert set(row.inputs) == {"cv_text", "cible_visee", "_chemin", "_path", "_tier", "prenom", "nom"}
@@ -2702,6 +2822,58 @@ minted) and `tiers` if nothing else in the file uses it. Update
 already allow-listed by `analysis_inputs.clean()`, so the pops in
 `_merge_voyage` stay only as defence in depth.
 
+- [ ] **Step 3b: A failed promo run is relaunched by its owner**
+
+The promo use is spent before the run (decision 23); once-per-account would
+refuse a second try, and `refusal()` refuses an errored row. So the owner gets
+the counselor's « Relancer » for this one door (spec decision 49). Add to
+`backend/app/routes/analyses.py`:
+
+```python
+@analyses_bp.post("/<analysis_id>/relaunch")
+@jwt_required()
+def relaunch_promo(analysis_id):
+    """A failed promo-door run, relaunched on the same row with no new code
+    use. A conditional update, so a double click starts one run, not two."""
+    analysis = Analysis.query.get_or_404(analysis_id)
+    if analysis.user_id is None or analysis.user_id != get_jwt_identity() or analysis.door != doors.PROMO:
+        return jsonify({"error": "Accès non autorisé."}), 403
+    claimed = (
+        Analysis.query
+        .filter(Analysis.id == analysis.id, Analysis.status.in_(("error", "timeout")))
+        .update({"status": "queued", "progress": 0}, synchronize_session=False)
+    )
+    db.session.commit()
+    if claimed != 1:
+        return jsonify({"error": "Cette analyse n'a pas besoin d'être relancée."}), 409
+    start_analysis(analysis.id, current_app._get_current_object())
+    return jsonify({"analysis": analysis.to_dict()}), 200
+```
+
+and to `test_submit_doors.py`:
+
+```python
+@patch(START)
+def test_a_failed_promo_run_is_relaunched_once_by_its_owner(start, client, app):
+    owner, other = user(), user("other@test.fr")
+    row = Analysis(user_id=owner.id, door="promo", status="error", inputs={"_path": "1", "_tier": "paid"})
+    db.session.add(row)
+    db.session.commit()
+    assert client.post(f"/api/analyses/{row.id}/relaunch", headers=bearer(other)).status_code == 403
+    assert client.post(f"/api/analyses/{row.id}/relaunch", headers=bearer(owner)).status_code == 200
+    assert client.post(f"/api/analyses/{row.id}/relaunch", headers=bearer(owner)).status_code == 409
+    start.assert_called_once()
+
+
+@patch(START)
+def test_only_the_promo_door_has_an_owner_relaunch(_s, client, app):
+    owner = user()
+    row = Analysis(user_id=owner.id, door="account", status="error", inputs={"_path": "1"})
+    db.session.add(row)
+    db.session.commit()
+    assert client.post(f"/api/analyses/{row.id}/relaunch", headers=bearer(owner)).status_code == 403
+```
+
 - [ ] **Step 4: Open the uploads**
 
 In `backend/app/routes/upload.py`, delete both `@jwt_required()` lines and the
@@ -2884,10 +3056,15 @@ In `backend/app/routes/payments.py` (import `jwt_required`,
 
 The webhook is unchanged: Stripe signs it, and it carries no session cookie.
 
-- [ ] **Step 4: Sign in the 503 test**
+- [ ] **Step 4: Sign in the tests that now stop at 401**
 
-In `test_checkout_503_without_key`, create the analysis with an owner and post
-with `bearer(owner)`: the route now answers 401 before it looks for the key.
+- `test_checkout_503_without_key`: create the analysis with an owner and post
+  with `bearer(owner)` — the route answers 401 before it looks for the key.
+- `test_malformed_bodies.py::test_checkout_survives_malformed_body` and
+  `::test_verify_survives_malformed_body`, and the checkout / verify rigs in
+  `test_no_500_on_hostile_input.py`: post with `candidate_headers` (and, for
+  checkout, an analysis owned by that candidate), so the malformed body is
+  still what they exercise.
 
 - [ ] **Step 5: Run, then commit**
 
@@ -3299,11 +3476,16 @@ def relaunch_my_report(analysis_id):
     row = _my_report(analysis_id)
     if row is None:
         return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
-    if row.status not in ("error", "timeout"):
-        return jsonify({"error": "Cette analyse n'a pas besoin d'être relancée."}), 409
-    row.status = "queued"
-    row.progress = 0
+    # A conditional update, not read-then-write: two clicks that arrive
+    # together both read 'error', and only one of them may start a run.
+    claimed = (
+        Analysis.query
+        .filter(Analysis.id == row.id, Analysis.status.in_(("error", "timeout")))
+        .update({"status": "queued", "progress": 0}, synchronize_session=False)
+    )
     db.session.commit()
+    if claimed != 1:
+        return jsonify({"error": "Cette analyse n'a pas besoin d'être relancée."}), 409
     start_analysis(row.id, current_app._get_current_object())
     return jsonify({"analysis": row.to_dict()}), 200
 
@@ -3638,19 +3820,21 @@ def _row(**fields):
 
 def test_a_finished_advisor_run_mails_its_counselor_only(app):
     c = counselor()
+    email = c.email          # read now: _notify_outcome removes the session
     analysis_id = _row(door="advisor", counselor_id=c.id, status="success")
     with patch(READY) as ready, patch(OWNER_READY) as owner_ready:
         svc._notify_outcome(analysis_id)
-    ready.assert_called_once_with(c.email)
+    ready.assert_called_once_with(email)
     owner_ready.assert_not_called()
 
 
 def test_a_failed_advisor_run_says_so(app):
     c = counselor()
+    email = c.email
     analysis_id = _row(door="advisor", counselor_id=c.id, status="error")
     with patch(FAILED) as failed:
         svc._notify_outcome(analysis_id)
-    failed.assert_called_once_with(c.email)
+    failed.assert_called_once_with(email)
 
 
 def test_an_unverified_counselor_gets_nothing(app):
@@ -4110,6 +4294,10 @@ map "$request_method:$uri" $codes_key {
 }
 limit_req_zone $analyses_key zone=analyses:10m rate=10r/m;
 limit_req_zone $codes_key    zone=codes:10m    rate=10r/m;
+# A refused request is logged at error level with its request line and its
+# Referer — the very things decision 42 keeps out of logs. `info` falls below
+# the image's error-log threshold (notice).
+limit_req_log_level info;
 
 # Four-doors spec, decision 42: log the path, never the query string or the
 # Referer. Verification and reset tokens, `next` paths and Stripe session ids
@@ -4161,6 +4349,7 @@ line and its comment; set `MODEL_FREE=anthropic/claude-haiku-4-5-20251001`
 # ANONYMOUS_RETENTION_DAYS=30
 # ADVISOR_RETENTION_DAYS=365
 # HELD_DRAFT_RETENTION_HOURS=48
+# HELD_DRAFTS_MAX=2000
 ```
 
 - [ ] **Step 4: Verify in the local stack**
@@ -4574,6 +4763,10 @@ export function RunProgress({
   mailed: boolean
   /** « Nouvelle analyse » after a failure. */
   onRestart: () => void
+  /** A failed promo run is relaunched, not restarted (spec decision 49):
+   *  given, and the failed row's door is "promo", the error card's button
+   *  reads « Relancer » and calls this instead of onRestart. */
+  onRelaunch?: () => Promise<unknown>
 }) {
 ```
 
@@ -4593,6 +4786,13 @@ with these changes inside:
   - the line under the bar: `mailed ? "Le rapport s’affiche ici automatiquement. Vous recevrez un email quand il sera prêt — vous pouvez fermer cette page." : "Le rapport s’affiche ici automatiquement. Gardez ce lien pour le retrouver."`
 - `useRouter` is no longer used inside (« Retour à mon espace » becomes
   `<Button render={<Link href="/espace" />} …>`).
+- On `error` / `timeout`, keep the failed row in state (`setFailed(analysis)`).
+  The error card's button: when `onRelaunch` is given and `failed?.door === "promo"`,
+  it reads « Relancer », is disabled while the call is pending, and on success
+  clears `error` / `stalled`, resets the bar to 0, and restarts polling by
+  bumping a `round` counter that the polling effect depends on
+  (`useEffect(…, [round])` instead of `[]`; the refs keep `load` stable).
+  Otherwise it stays « Nouvelle analyse » → `onRestart`.
 
 Then `app/analyse/en-cours/[id]/page.tsx` becomes:
 
@@ -4613,6 +4813,7 @@ export default function EnCoursPage() {
       onDone={() => router.push(`/analyse/${id}/rapport`)}
       mailed
       onRestart={() => router.push("/analyse/nouveau")}
+      onRelaunch={() => api.post(`/analyses/${id}/relaunch`)}
     />
   )
 }
@@ -4712,9 +4913,11 @@ import type { Analysis } from "@/types"
 
 export type DoorId = "account" | "advisor" | "promo" | "anonymous"
 
-/** The promo code survives the sign-in round trip in this tab only — it
- *  never rides in a URL or a mail (four-doors spec, decision 34). */
+/** The promo code survives the sign-in round trip in this browser — the
+ *  verification link opens a new tab, so not sessionStorage — for two hours,
+ *  and never rides in a URL or a mail (four-doors spec, decision 34). */
 const PROMO_KEY = "neoori_promo"
+const PROMO_TTL_MS = 2 * 60 * 60 * 1000
 
 const DOORS: { id: DoorId; title: string }[] = [
   { id: "account", title: "Avec mon compte" },
@@ -4727,10 +4930,17 @@ const WRONG_FOR_PROMO = "Ce code est un code conseiller : choisissez « J'ai un 
 const THROTTLED = "Trop de tentatives — réessayez dans une minute."
 
 function readPromo(): string {
-  try { return sessionStorage.getItem(PROMO_KEY) ?? "" } catch { return "" }
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROMO_KEY) ?? "null") as { code: string; at: number } | null
+    if (!saved || Date.now() - saved.at > PROMO_TTL_MS) return ""
+    return saved.code
+  } catch { return "" }
 }
 function writePromo(value: string | null) {
-  try { value === null ? sessionStorage.removeItem(PROMO_KEY) : sessionStorage.setItem(PROMO_KEY, value) } catch { /* private mode */ }
+  try {
+    if (value === null) localStorage.removeItem(PROMO_KEY)
+    else localStorage.setItem(PROMO_KEY, JSON.stringify({ code: value, at: Date.now() }))
+  } catch { /* private mode: the person retypes it */ }
 }
 
 function Consent({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -4874,7 +5084,7 @@ export function DoorsPanel({
             </div>
             {field("door-code-conseiller", "Code", code, setCode, { autoComplete: "off", placeholder: "ex. A1B2C3D4" })}
             <p className="rounded-lg bg-peach-soft p-3 text-xs leading-relaxed text-navy">
-              Le rapport complet sera envoyé à votre conseiller, pas à vous : vous n'en recevrez pas de copie. Votre conseiller pourra vous le présenter ou vous le transmettre.
+              {"Le rapport complet sera envoyé à votre conseiller, pas à vous : vous n'en recevrez pas de copie. Votre conseiller pourra vous le présenter ou vous le transmettre."}
             </p>
             <Consent checked={consent} onChange={setConsent} />
             <Button onClick={go} size="lg" disabled={busy || !consent || !prenom.trim() || !nom.trim() || !code.trim()}>
@@ -5073,7 +5283,8 @@ Manual, local stack (`docker compose up -d`, http://localhost:8080):
    window** (the phone case), finish: the form comes back filled, panel open
    at « Avec mon compte ».
 5. « J'ai un code promo » with an admin code, signed out → after the round
-   trip the code is pre-filled; confirm → waiting screen.
+   trip (verification link opened in a new tab of the same browser) the code
+   is pre-filled; confirm → waiting screen.
 6. Type a conseiller code at the promo door → the panel switches to « J'ai un
    code conseiller » with the message.
 7. Signed in: three doors, no « Sans compte ».
@@ -5090,7 +5301,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ## Task 16: `/rapport` — the no-login report; « garder » into `/espace`
 
 **Files:**
-- Create: `frontend/src/app/rapport/page.tsx`, `frontend/src/app/rapport/layout.tsx`
+- Create: `frontend/src/app/rapport/page.tsx`, `frontend/src/app/rapport/layout.tsx`,
+  `frontend/src/components/analyse/RapportSansCompte.tsx`
 - Modify: `frontend/src/app/espace/page.tsx` (`?garder=1`)
 
 **Interfaces:**
@@ -5118,9 +5330,30 @@ export default function RapportLayout({ children }: { children: ReactNode }) {
 }
 ```
 
-- [ ] **Step 2: The page**
+- [ ] **Step 2: The page — rendered in the browser only**
+
+The key is in the URL fragment, which only the browser has. Rendering the page
+on the client alone lets its state start from the fragment (lazy `useState`),
+with no hydration mismatch and no synchronous `setState` in an effect (the
+repo's `react-hooks/set-state-in-effect` rule).
 
 `frontend/src/app/rapport/page.tsx`:
+
+```tsx
+"use client"
+
+import dynamic from "next/dynamic"
+
+// The report's key is in the fragment (four-doors spec, decision 30): only
+// the browser has it, so the page renders there and nowhere else.
+const RapportSansCompte = dynamic(() => import("@/components/analyse/RapportSansCompte"), { ssr: false })
+
+export default function RapportPage() {
+  return <RapportSansCompte />
+}
+```
+
+`frontend/src/components/analyse/RapportSansCompte.tsx`:
 
 ```tsx
 "use client"
@@ -5128,8 +5361,9 @@ export default function RapportLayout({ children }: { children: ReactNode }) {
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Printer, Check, Link2, Trash2 } from "lucide-react"
+import { Check, Link2, Printer, Trash2 } from "lucide-react"
 import { AppBar } from "@/components/layout/AppBar"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { RunProgress } from "@/components/analyse/RunProgress"
 import { ReportDocument, isPaidReport } from "@/components/report/ReportDocument"
@@ -5141,24 +5375,29 @@ import type { Analysis } from "@/types"
 type State = "loading" | "running" | "ready" | "gone" | "deleted"
 
 /** A no-login report, opened by the key in its URL fragment (four-doors spec,
- *  decisions 30-32). */
-export default function RapportSansComptePage() {
+ *  decisions 30-32). Client-only: see app/rapport/page.tsx. */
+export default function RapportSansCompte() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
+  const [token] = useState<string | null>(() => tokenFromHash())
+  const [state, setState] = useState<State>(() => (token ? "loading" : "gone"))
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [state, setState] = useState<State>("loading")
   const [copied, setCopied] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const t = tokenFromHash()
-    setToken(t)
-    if (!t) { setState("gone"); return }
-    held.byToken(t)
-      .then((r) => { setAnalysis(r.analysis); setState(r.analysis.status === "success" ? "ready" : "running") })
-      .catch(() => setState("gone"))
-  }, [])
+    if (!token) return
+    let alive = true
+    held.byToken(token)
+      .then((r) => {
+        if (!alive) return
+        setAnalysis(r.analysis)
+        setState(r.analysis.status === "success" ? "ready" : "running")
+      })
+      .catch(() => { if (alive) setState("gone") })
+    return () => { alive = false }
+  }, [token])
 
   const copyLink = async () => {
     setCopied(await copyToClipboard(window.location.href))
@@ -5182,7 +5421,15 @@ export default function RapportSansComptePage() {
   const remove = async () => {
     if (!token || !analysis) return
     setBusy(true)
-    try { await held.remove(analysis.id, token); setState("deleted") } finally { setBusy(false) }
+    setError(null)
+    try {
+      await held.remove(analysis.id, token)
+      setState("deleted")
+    } catch {
+      setError("Erreur inattendue.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (state === "loading") return <div className="min-h-screen bg-secondary" />
@@ -5224,7 +5471,8 @@ export default function RapportSansComptePage() {
       <AppBar />
 
       <div className="no-print border-b border-border bg-card px-4 py-3 text-center text-sm text-navy">
-        {until && <p>Ce rapport n'est accessible que par ce lien, jusqu'au {until}.</p>}
+        {until && <p>{`Ce rapport n'est accessible que par ce lien, jusqu'au ${until}.`}</p>}
+        {error && <Alert variant="destructive" className="mx-auto mt-2 max-w-md"><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
           <Button variant="outline" size="sm" onClick={copyLink}>
             {copied ? <Check className="size-3.5 text-success" /> : <Link2 className="size-3.5" />}
@@ -5362,7 +5610,7 @@ In `frontend/src/lib/counselor.ts`, import `Analysis` and
 ```tsx
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, Printer, RotateCcw, Trash2 } from "lucide-react"
@@ -5390,36 +5638,47 @@ export default function ConseillerAnalysePage() {
   const [noteState, setNoteState] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [relaunching, setRelaunching] = useState(false)
+  // Bumped to restart polling after « Relancer ».
+  const [round, setRound] = useState(0)
 
-  const load = useCallback(async () => {
-    try {
-      const r = await counselor.analysis(id)
-      setAnalysis(r.analysis)
-      setLabel(r.code_label)
-      if (r.analysis.status === "queued" || r.analysis.status === "running") {
-        timer.current = setTimeout(load, POLL_MS)
+  // Polling lives inside the effect, with a cancel flag: a useCallback that
+  // schedules itself trips react-hooks/immutability.
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | null = null
+    async function poll() {
+      try {
+        const r = await counselor.analysis(id)
+        if (!alive) return
+        setAnalysis(r.analysis)
+        setLabel(r.code_label)
+        if (r.analysis.status === "queued" || r.analysis.status === "running") {
+          timer = setTimeout(poll, POLL_MS)
+        }
+      } catch {
+        if (alive) setMissing(true)
       }
-    } catch {
-      setMissing(true)
     }
-  }, [id])
+    void poll()
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [id, round])
 
   useEffect(() => {
-    load()
-    counselor.note(id).then((r) => setNote(r.note)).catch(() => {})
-    return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [id, load])
+    let alive = true
+    counselor.note(id).then((r) => { if (alive) setNote(r.note) }).catch(() => {})
+    return () => { alive = false }
+  }, [id])
 
   const fail = (e: unknown) => setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
 
   const relaunch = async () => {
     setError(null)
+    setRelaunching(true)
     try {
-      const r = await counselor.relaunch(id)
-      setAnalysis(r.analysis)
-      timer.current = setTimeout(load, POLL_MS)
-    } catch (e) { fail(e) }
+      await counselor.relaunch(id)
+      setRound((n) => n + 1)
+    } catch (e) { fail(e) } finally { setRelaunching(false) }
   }
 
   const saveNote = async () => {
@@ -5466,7 +5725,9 @@ export default function ConseillerAnalysePage() {
           <Printer className="size-3.5" /> PDF
         </Button>
         {failed && (
-          <Button size="sm" onClick={relaunch}><RotateCcw className="size-3.5" /> Relancer</Button>
+          <Button size="sm" onClick={relaunch} disabled={relaunching}>
+            <RotateCcw className="size-3.5" /> Relancer
+          </Button>
         )}
         {confirmDelete ? (
           <span className="inline-flex items-center gap-2">
@@ -5618,8 +5879,14 @@ import { copyToClipboard } from "@/lib/utils"
 import type { AdminCodeRow } from "@/types"
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—")
-/** An empty field means illimité, as the API's null does. */
-const limit = (raw: string): number | null => (raw.trim() === "" ? null : Number.parseInt(raw, 10))
+/** An empty field means illimité, as the API's null does. Anything that is
+ *  not a positive whole number goes as 0, which the API refuses with its own
+ *  sentence — never as NaN, which JSON turns into null, i.e. illimité. */
+const limit = (raw: string): number | null => {
+  if (raw.trim() === "") return null
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : 0
+}
 
 function statut(c: AdminCodeRow): string {
   if (c.revoked_at || !c.is_active) return "Révoqué"
