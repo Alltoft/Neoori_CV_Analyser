@@ -260,12 +260,15 @@ numbers are indicative; the plan re-reads them after both merges.
       draft. The form refills and reopens the panel at that door. The person
       confirms; nothing starts on its own. A promo code is retyped (pre-filled
       from `sessionStorage` in the same browser) — it never rides in a URL.
-    - **Password signup attaches at signup.** `POST /api/auth/register`, when
-      it creates a new user row and the request carries the cookie, attaches the
-      held row to that new account. So the verification link opened on a
-      phone finds the draft as that account's most recent draft. Google,
-      Microsoft and password login stay in the same browser, so the claim at
-      the form does it.
+    - **Password signup marks; the signup password attaches.**
+      `POST /api/auth/register`, when it creates a new user row and the request
+      carries the cookie, writes that account's id into the held row's
+      `pending_user_id`. The row stays ownerless and held. `POST
+      /api/auth/verify-email` — the link **and** the signup password, so the
+      registrant — attaches every row pending for that account. So the
+      verification link opened on a phone finds the draft as that account's
+      most recent draft. Google, Microsoft and password login stay in the
+      same browser, so the claim at the form does it.
     - **The one case that loses the thread**: an email sign-in link (« Recevoir
       un lien de connexion ») opened on another device. That device finds no
       draft and says « Votre formulaire est resté sur l’appareil où vous l’avez
@@ -277,14 +280,15 @@ numbers are indicative; the plan re-reads them after both merges.
 35. *Claude's call.* **A held draft not claimed within 48 hours is deleted** —
     the life of the verification link (`VERIFY_MAX_AGE`). The form then opens
     empty with « Votre brouillon a expiré. »
-36. *Claude's call.* **Proving an address for an account nobody had verified
-    deletes its drafts.** Since signup attaches a held draft to an account
-    nobody has proven yet, someone registering another person's address could
-    leave a draft there. Two paths prove such an address without the
-    registrant's password: `sign_in.enter` (Google, Microsoft, email link),
+36. *Claude's call.* **Nothing is attached to an account before the signup
+    password proves its address.** Otherwise someone registering another
+    person's address could leave a draft in that account. If the address is
+    proven another way first — `sign_in.enter` (Google, Microsoft, email link),
     which already replaces the password « since a stranger may have set it »,
-    and `auth.reset_password`. Both remove the account's drafts. Verifying with
-    the link **and** the signup password keeps them: that is the registrant.
+    or `auth.reset_password` — the `pending_user_id` mark is dropped. The row
+    is not deleted: it stays held by the browser that made it, so a registrant
+    who switches to Google in that same browser still claims it at the form,
+    and it expires with its cookie.
 
 ### Inputs and sessions
 
@@ -408,6 +412,7 @@ One Alembic migration.
 | `consent_at` | `DATETIME` NULL | The checkbox at the `advisor` / `anonymous` doors. |
 | `consent_version` | `VARCHAR(16)` NULL | `CONSENT_VERSION` at that moment. |
 | `started_at` | `DATETIME` NULL | Set when the row goes `running`; the reaper's clock (decision 47). |
+| `pending_user_id` | `VARCHAR(36)` NULL, FK `users.id` `ON DELETE SET NULL`, indexed | The account a held row waits for, set by password signup, attached at verify-email (decisions 34, 36). |
 
 `code_redemptions` gains `slot` (`INT` NULL) and two unique keys,
 `(code_id, target_type, slot)` and `(code_id, target_type, user_id)`
@@ -450,12 +455,12 @@ candidate-facing routes (`GET /<id>`, `GET /by-token`, `DELETE`,
 | `services/unlock_service.py` | Extract `refusal(analysis) -> str \| None` (decision 41); `unlock_analysis` calls it. |
 | `routes/payments.py` | `create_checkout` and `verify_session`: `@jwt_required`, owner only; checkout uses `unlock_service.refusal()`. |
 | `routes/upload.py` | `/cv` and `/projet` drop `@jwt_required`. Otherwise unchanged: PDF only, 10 MB, nothing stored. |
-| `routes/auth.py` | `register`: when it creates a new user and the request carries `neoori_hold`, attach the held row to that user and clear the cookie (decision 34). Never for an address that already has an account. |
-| `services/sign_in.py`, `routes/auth.py` (`reset_password`) | Proving an address for an unverified account also deletes its drafts (decision 36). |
+| `routes/auth.py` | `register`: when it creates a new user and the request carries `neoori_hold`, set the held row's `pending_user_id` (decision 34) — never for an address that already has an account. `verify_email`: on success, attach every row pending for that user. `reset_password`: on an unverified account, drop the marks (decision 36). |
+| `services/sign_in.py` | `enter` on an unverified account drops its `pending_user_id` marks (decision 36). |
 | `routes/counselor.py` | Deleted (`/api/c/<token>` and its notes). Blueprint unregistered. |
 | `routes/counselor_space.py` (exists) | Add, under `@approved_counselor_required`, with `analysis.counselor_id == me` or 404: `GET /analyses` (id, prénom, nom, code label, status, created_at); `GET /analyses/<id>` (full `to_dict()`); `DELETE /analyses/<id>` (notes deleted explicitly first: their FK has no cascade); `POST /analyses/<id>/relaunch` (error / timeout only, no redemption, no `run_log` row); `GET` / `PUT /analyses/<id>/notes`. `/beneficiaires` adds `nom` and `analysis_id` for the caller's advisor-door rows; its docstring stops citing decision 9. `/codes` and the stats count uses per kind. |
 | `routes/admin.py` | `POST /counselor-codes` takes `max_uses` and `expires_in_days` (defaults 1 and 90; `null` = illimité). New `PATCH /counselor-codes/<id>` for the two limits. `DELETE` also sets `revoked_at`. The list shows each code's kind and per-kind uses. |
-| `models/analysis.py` | The six columns. Delete `COUNSELOR_VISIBLE_INPUT_KEYS`, the `audience="counselor"` branch, `counselor_keys` and `share_token` in `to_dict()`. Add `door` and `access_expires_at` (unclaimed `anonymous` rows only: `created_at` + `ANONYMOUS_RETENTION_DAYS`). |
+| `models/analysis.py` | The seven columns. Delete `COUNSELOR_VISIBLE_INPUT_KEYS`, the `audience="counselor"` branch, `counselor_keys` and `share_token` in `to_dict()`. Add `door` and `access_expires_at` (unclaimed `anonymous` rows only: `created_at` + `ANONYMOUS_RETENTION_DAYS`). |
 | `models/code_redemption.py`, `models/counselor_note.py`, `models/run_log.py` (new) | Columns and keys from « Data model ». |
 | `models/profile.py` | `CONSENT_VERSION = "v1.3"` (decision 48). |
 | `services/section_registry.py` | Drop the `"counselor"` key and `counselor_keys()`. |
@@ -625,11 +630,12 @@ The last sentence of row 13 is the line the conseiller spec promised for
 - Hold and claim:
   - the token is only ever in the cookie and the hash, never in a response
     body;
-  - `register` attaches only when it creates the user;
+  - `register` marks only when it creates the user; `verify-email` attaches
+    the marked rows; a held row never becomes owned before that;
   - claim clears hash and cookie; the old `/rapport#…` token then 404s;
   - a draft's token does not open the report;
-  - entering an unverified account, or resetting its password, deletes its
-    drafts; verifying it with the signup password keeps them.
+  - entering an unverified account, or resetting its password, drops the
+    marks without deleting the rows; the same browser can still claim.
 - Counselor routes:
   - another counselor → 404; a candidate → 403;
   - relaunch only on error / timeout; delete removes notes first;
