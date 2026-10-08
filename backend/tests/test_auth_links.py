@@ -56,7 +56,7 @@ def test_next_refuses_every_control_character(ch):
 
 def test_next_keeps_a_local_path_and_its_query():
     # Review Focus 4: the query string of a gated page must survive the trip.
-    assert auth_links.safe_next("/analyse/nouveau?parcours=2") == "/analyse/nouveau?parcours=2"
+    assert auth_links.safe_next("/analyse/nouveau?draft=abc") == "/analyse/nouveau?draft=abc"
 
 
 @pytest.mark.parametrize("ok", [

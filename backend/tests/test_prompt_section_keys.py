@@ -1,10 +1,10 @@
 """Every seeded prompt must describe the sections its schema actually asks for.
 
-Parcours 3 shipped for weeks on a prompt that documented sections 1, 2, 3, 8
-and 9 while the registry emitted I, II, III, verdict, IV, V and VI. Nothing
-failed loudly: `_build_output_schema` is built from the registry and the model
-obeys the schema, so the report came back with the right keys and content
-written against instructions for sections that no longer existed.
+A prompt once shipped for weeks documenting sections its schema no longer
+asked for. Nothing failed loudly: `_build_output_schema` is built from the
+registry and the model obeys the schema, so the report came back with the
+right keys and content written against instructions for sections that no
+longer existed.
 
 That is the drift this file exists to catch. A prompt is free to say whatever
 the PM wants about tone, length and content — but the key set it declares in
@@ -25,7 +25,7 @@ from app.services import section_registry as registry
 
 BACKEND = Path(__file__).resolve().parent.parent
 
-# `PATH = "2"` — the parcours a seed script targets.
+# `PATH = "1"` — the parcours a seed script targets.
 _PATH_RE = re.compile(r'^PATH\s*=\s*["\'](\w+)["\']', re.MULTILINE)
 # The ```json ... ``` response example inside the prompt text.
 _JSON_BLOCK_RE = re.compile(r"```json\s*\n(\{.*?\n\})\s*\n```", re.DOTALL)

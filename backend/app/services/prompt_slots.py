@@ -16,15 +16,13 @@ VOYAGE_SLOTS = (VOYAGE_MICRO, VOYAGE_PORTRAIT)
 
 LABELS = {
     "1": "Parcours 1 · J'ai une cible",
-    "2": "Parcours 2 · Je cherche ma direction",
-    "3": "Parcours 3 · Je pars de zéro",
     VOYAGE_MICRO: "Voyage · phrase (S0)",
     VOYAGE_PORTRAIT: "Voyage · portrait",
 }
 
 
 def valid() -> tuple[str, ...]:
-    """('1', '2', '3', 'voyage_micro', 'voyage_portrait') — parcours ids first."""
+    """('1', 'voyage_micro', 'voyage_portrait') — parcours ids first."""
     return tuple(registry.PARCOURS) + VOYAGE_SLOTS
 
 
@@ -41,8 +39,8 @@ def normalize(slot) -> str:
 
     The voyage slots are matched *before* any .upper(): the admin route used to
     uppercase before validating, and "VOYAGE_MICRO" is not a slot. Anything
-    else falls through to the registry, which still folds the legacy 'A'/'B'
-    path codes onto parcours ids and defaults the unrecognised to parcours 1.
+    else falls through to the registry, which folds the legacy 'A' onto
+    parcours 1 and defaults everything else to parcours 1.
     """
     value = str(slot or "").strip()
     if not value:

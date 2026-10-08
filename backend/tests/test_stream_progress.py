@@ -78,6 +78,13 @@ def test_fewer_sections_means_bigger_steps():
     assert _pct(_opened("1", "2"), keys=free_keys) > _pct(_opened("1", "2"))
 
 
+def test_two_digit_keys_open_their_own_sections():
+    """Premium keys: "10" and "11" are their own sections, never a second "1"."""
+    keys = [str(n) for n in range(1, 12)]
+    found = [m.group(1) for m in _section_open_re(keys).finditer(_opened("1", "10", "11"))]
+    assert found == ["1", "10", "11"]
+
+
 # ── ProgressReporter ──────────────────────────────────────────────────────────
 
 class _Clock:

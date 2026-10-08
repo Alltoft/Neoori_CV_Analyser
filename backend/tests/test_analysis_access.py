@@ -1,7 +1,7 @@
 """Ownership checks on the analysis endpoints.
 
 GET /analyses/<id> used to be fully open and returned the raw inputs blob —
-CV text, name, location, and the health context parcours 3 collects. Any
+CV text, name, location, and the bloc 5 context folded in from the profile. Any
 caller with an id could read any analysis.
 """
 import pytest

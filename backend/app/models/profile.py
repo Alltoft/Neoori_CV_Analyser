@@ -1,4 +1,4 @@
-"""Profil de base — the 6 blocks filled once, reused by every parcours.
+"""Profil de base — the 6 blocks filled once, reused by every analysis.
 
 Split in two tables on purpose (PM ruling, 2026-07-29):
 
@@ -46,7 +46,7 @@ SITUATIONS = (
 RECONVERSION_SCOPES = ("meme_domaine", "changer_de_metier", "changer_de_secteur")
 
 # Bloc 1 — brackets, never a date of birth. Routes the Académie des Ori
-# variant and gates the youth schemes in parcours 3.
+# variant of the voyage and gives the analysis prompt its age line.
 #
 # Seven since the voyage brought school-age candidates in: "moins_25" was one
 # bucket where the youth schemes need three. The two sets meet at 25 without

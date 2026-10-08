@@ -12,13 +12,14 @@ _SLOTS_LABEL = ", ".join(f"'{slot}'" for slot in prompt_slots.valid())
 
 
 def _read_path(raw):
-    """Validate a prompt slot from the request, accepting legacy 'A'/'B'.
+    """Validate a prompt slot from the request, accepting the legacy 'A'.
 
     Deliberately does NOT go through prompt_slots.normalize(): that function
     coerces *stored* values and defaults anything unrecognised to parcours 1,
     which is right for rendering an old row and wrong for client input — it
     would turn a typo in the admin UI into a silent overwrite of the live
-    parcours 1 prompt. Unknown input is the caller's error and gets a 400.
+    parcours 1 prompt. Unknown input — the retired '2', '3' and 'B' included
+    — is the caller's error and gets a 400.
 
     Returns (slot, error_response).
     """
@@ -27,9 +28,8 @@ def _read_path(raw):
         return registry.DEFAULT_PARCOURS, None
     if value.lower() in prompt_slots.VOYAGE_SLOTS:
         return value.lower(), None
-    upper = value.upper()
-    if upper in ("A", "B"):
-        return registry.normalize(upper), None
+    if value.upper() == "A":
+        return registry.DEFAULT_PARCOURS, None
     if prompt_slots.is_valid(value):
         return value, None
     return None, (jsonify({"error": f"path doit être l'un de {_SLOTS_LABEL}."}), 400)
@@ -90,7 +90,7 @@ def create_prompt():
     if not version_label or not system_prompt_text:
         return jsonify({"error": "version_label et system_prompt_text requis."}), 400
 
-    # Scoped to the parcours: the same label may exist once per parcours.
+    # Scoped to the slot: the same label may exist once per slot.
     # It used to be a global check, so "v1.7" could only ever belong to one.
     if PromptVersion.query.filter_by(version_label=version_label, path=path).first():
         return jsonify({"error": f"Version '{version_label}' existe déjà pour ce parcours."}), 409

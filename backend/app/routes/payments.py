@@ -15,7 +15,6 @@ from flask import Blueprint, jsonify, request
 
 from ..extensions import db
 from ..models.analysis import Analysis
-from ..services import section_registry as registry
 from ..services import tiers
 from ..services.unlock_service import unlock_analysis
 from ..utils.request_body import json_object, text_field
@@ -92,10 +91,7 @@ def create_checkout():
     offer = _OFFERS[tier]
 
     analysis = Analysis.query.get_or_404(analysis_id)
-    if registry.normalize((analysis.inputs or {}).get("_path")) == "3":
-        return jsonify({"error": "Le portrait de potentiel est déjà complet."}), 400
-    # unlock_method is the sentinel; the old `"5" in output` test is meaningless
-    # for parcours 2 (§A-§G) and 3 (§I-§VI).
+    # unlock_method is the sentinel for a report someone already unlocked.
     if analysis.unlock_method:
         return jsonify({"error": "Cette analyse est déjà débloquée."}), 409
     if analysis.status != "success":

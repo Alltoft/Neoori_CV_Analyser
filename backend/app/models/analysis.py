@@ -7,26 +7,20 @@ from ..services import section_registry as registry
 # GET /api/c/<share_token> is public and unauthenticated -- anyone holding
 # the link gets whatever to_dict(audience="counselor") puts in "inputs".
 # This allow-list mirrors every `analysis.inputs.X` access in
-# frontend/src/app/c/[token]/page.tsx (verified 2026-09-12): the parcours
-# discriminator, the candidate name shown in the header, and the "key facts"
-# strip for both the parcours-1/2 layout and the parcours-3 layout. Anything
-# that page does not render -- cv_text, the encrypted-profile-derived
-# _conditions/_oeth lines, the _voyage/_voyage_id lines -- must never travel
-# over this public link. Add a key here only after confirming that page
-# reads it; this must stay an allow-list, never a deny-list, so an
-# unclassified future field defaults to hidden.
+# frontend/src/app/c/[token]/page.tsx (verified 2026-10-08): the candidate
+# name shown in the header and the "key facts" strip. Anything that page
+# does not render -- cv_text, the encrypted-profile-derived _conditions/_oeth
+# lines, the _voyage/_voyage_id lines -- must never travel over this public
+# link. Add a key here only after confirming that page reads it; this must
+# stay an allow-list, never a deny-list, so an unclassified future field
+# defaults to hidden.
 COUNSELOR_VISIBLE_INPUT_KEYS = frozenset({
-    "_path",
     "prenom",
     "nom",
     "cible_visee",
     "type_mobilite",
     "situation_actuelle",
     "notes_specifiques",
-    "_sub_profile",
-    "aime",
-    "refuse",
-    "accompagnement",
 })
 
 
@@ -37,7 +31,7 @@ class Analysis(db.Model):
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True, index=True)
     prompt_version_id = db.Column(db.String(36), db.ForeignKey("prompt_versions.id"), nullable=True)
     # Which voyage fed this analysis, when the person has played one. Nullable
-    # and never required: every parcours runs identically with no voyage.
+    # and never required: an analysis runs identically with no voyage.
     # ondelete="SET NULL": erasing a voyage (DELETE /api/voyage, RGPD) must not
     # delete the analyses it fed -- those are the person's own reports and
     # their B2G traceability rows -- but the link must not dangle either.
@@ -55,9 +49,8 @@ class Analysis(db.Model):
     # The 8 input fields stored as JSON
     inputs = db.Column(db.JSON, nullable=True)
 
-    # Parsed AI output — dict keyed by section key, each a section object.
-    # Keys depend on the parcours: '1'..'11' (P1), 'A'..'G' (P2), 'I'..'VI' (P3).
-    # See services/section_registry.py.
+    # Parsed AI output — dict keyed by section key ('1'..'11', 'verdict'),
+    # each a section object. See services/section_registry.py.
     output = db.Column(db.JSON, nullable=True)
 
     # Raw text response from Claude, preserved for traceability
@@ -86,7 +79,7 @@ class Analysis(db.Model):
 
     @property
     def parcours(self) -> str:
-        """Registry id for this analysis, tolerant of legacy 'A'/'B' rows."""
+        """Registry id for this analysis. Legacy 'A' rows and retired ids read as parcours 1."""
         return registry.normalize((self.inputs or {}).get("_path"))
 
     def to_dict(self, audience: str = "candidate"):
@@ -108,8 +101,8 @@ class Analysis(db.Model):
         }
 
         # Render instructions for the client: ordered, with titles and render
-        # mode. The client must never sort output keys itself — letter and
-        # Roman keys don't sort numerically or lexicographically.
+        # mode. The client must never sort output keys itself — "verdict" sits
+        # between "3" and "4", and a string sort puts "10" before "2".
         meta = registry.sections_meta(parcours)
         counselor = list(registry.counselor_keys(parcours))
         if audience == "counselor":

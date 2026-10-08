@@ -40,7 +40,7 @@ jobs:
             set -e
             cd /srv/neoori
             if [ "$SEED_SET" = "all" ]; then
-              SCRIPTS="seed_prompt_v18.py seed_prompt_v11_p3.py seed_prompt_v10_p2.py \
+              SCRIPTS="seed_prompt_v18.py \
                        seed_prompt_v10_voyage_micro.py seed_prompt_v10_voyage_portrait.py"
             else
               SCRIPTS="seed_prompt_v10_voyage_micro.py seed_prompt_v10_voyage_portrait.py"

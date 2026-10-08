@@ -253,11 +253,9 @@ def _extract_json_candidate(raw: str) -> str:
 def _md_section_re(keys: list[str]) -> re.Pattern:
     """Heading matcher for a parcours' key set.
 
-    Matches "## §1 Titre", "### Section A : Titre", "**§IV — Titre**".
+    Matches "## §1 Titre", "### Section 4 : Titre", "**§10 — Titre**".
     The alternation is built from the actual keys rather than a generic
-    character class, so "VI" can't be read as "V" and parcours 2's letter
-    keys can't collide with parcours 3's Roman numerals. Longest-first
-    ordering is what makes that work.
+    character class, longest first, so "10" and "11" are never read as "1".
     """
     alt = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
     return re.compile(
@@ -349,7 +347,7 @@ def _section_open_re(keys: list[str]) -> re.Pattern:
 
     The negative lookbehind drops `\\"4\\": {` written *inside* a body string —
     escaped there, plain here — so prose quoting a section can't advance the
-    bar. Longest-first, like _md_section_re, so "VI" is never read as "V".
+    bar. Longest-first, like _md_section_re, so "10" is never read as "1".
     """
     alt = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
     return re.compile(rf'(?<!\\)"({alt})"\s*:\s*\{{')
