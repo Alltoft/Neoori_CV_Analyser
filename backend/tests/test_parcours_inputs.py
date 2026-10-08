@@ -213,6 +213,27 @@ def test_a_stale_parcours_3_form_gets_the_parcours_1_errors(app, client, candida
     start.assert_not_called()
 
 
+def test_a_stale_parcours_2_form_gets_the_parcours_1_error(app, client, candidate_headers):
+    """Review Focus 1, the other retired page. The old P2 form did post a CV,
+    so only the target is missing: parcours 1's validation answers with that
+    one error — a 400 in French, no run, never a 500."""
+    from unittest.mock import patch
+
+    with patch("app.routes.analyses.start_analysis") as start:
+        res = client.post("/api/analyses/", json={"inputs": {
+            "_path": "2",
+            "cv_text": "c" * 300,
+            "satisfaction": "les projets menés de bout en bout",
+            "refus": "les tâches purement administratives",
+            "raison_changement": "une évolution de mon secteur",
+        }}, headers=candidate_headers)
+    assert res.status_code == 400
+    assert json.loads(res.data)["errors"] == [
+        "Cible visée trop courte (minimum 50 caractères).",
+    ]
+    start.assert_not_called()
+
+
 @pytest.mark.parametrize("posted", ["2", "3", "B"])
 def test_a_draft_carrying_a_retired_parcours_is_stamped_1(posted, app, client, candidate_headers):
     res = client.post("/api/analyses/draft", json={"inputs": {"_path": posted, "cv_text": "x"}},

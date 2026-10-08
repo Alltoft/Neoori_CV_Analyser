@@ -86,7 +86,7 @@ def test_to_dict_carries_the_voyage_that_fed_the_analysis():
 
 
 def test_voyage_id_is_null_rather_than_absent_when_there_is_no_voyage():
-    """The voyage is never required — every parcours runs identically without
+    """The voyage is never required — an analysis runs identically without
     one, and the key must still be there so the client need not branch."""
     payload = _analysis("1").to_dict()
     assert "voyage_id" in payload

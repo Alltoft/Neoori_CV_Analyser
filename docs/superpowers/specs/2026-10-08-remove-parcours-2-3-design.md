@@ -142,8 +142,9 @@ nothing and deletes nothing.
    cd /srv/neoori
    docker compose -f docker-compose.prod.yml exec -T backend python purge_retired_parcours.py
    ```
-4. Fresh dump: `/usr/local/bin/neoori-backup.sh` (replaces the day's
-   `/backups/neoori-<date>.sql.gz`; 7-day rotation).
+4. Fresh dump, kept aside from the nightly rotation's same-day overwrite:
+   `/usr/local/bin/neoori-backup.sh && cp /backups/neoori-$(date +%F).sql.gz /backups/neoori-prepurge-$(date +%F).sql.gz`
+   (the `neoori-` prefix keeps it inside the script's 7-day retention).
 5. `docker compose -f docker-compose.prod.yml exec -T backend python purge_retired_parcours.py --apply`
 6. Dry-run again: everything at zero.
 

@@ -4,7 +4,7 @@
 # seeds do not: a fresh slot has no PromptVersion row until one is seeded, and
 # the surface that needs it fails with "Aucun prompt actif pour le slot ...".
 # deploy.yml deliberately does not run these — seeding is not part of every
-# push — so this is the dispatchable half of the runbook in DOCKER.md:55-60.
+# push — so this is the dispatchable half of the runbook in DOCKER.md:55-59.
 #
 # Every script is idempotent: re-running does not duplicate a version.
 # Uses the same VPS_HOST / VPS_USER / VPS_SSH_KEY secrets as deploy.yml.

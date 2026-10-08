@@ -182,7 +182,7 @@ python seed_prompt_v10_voyage_portrait.py
 ```
 
 Both scripts are idempotent — re-running does not duplicate a version.
-DOCKER.md's deploy runbook (`DOCKER.md:55-60`) runs the two seed scripts —
+DOCKER.md's deploy runbook (`DOCKER.md:55-59`) runs the two seed scripts —
 not the migration: the production container applies migrations on its own
 at startup (`backend/entrypoint.sh:24`). This section is here so a local
 database, or a fresh VPS one, is not the first place someone rediscovers
