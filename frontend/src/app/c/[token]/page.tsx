@@ -13,7 +13,6 @@ import { useAuth } from "@/lib/auth"
 import type { Analysis, CounselorNote } from "@/types"
 import { Printer, ArrowLeft, Check } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
-import { normalizeParcours } from "@/types"
 
 export default function CounselorPage() {
   const { token } = useParams<{ token: string }>()
@@ -55,9 +54,8 @@ export default function CounselorPage() {
   }
 
   const output = analysis?.output ?? {}
-  const path = normalizeParcours(analysis?.inputs?._path)
-  // The backend already filtered this response to the counselor set for this
-  // parcours (audience=counselor) and shipped it in registry order.
+  // The backend already filtered this response to the counselor set
+  // (audience=counselor: §1, §4, §5) and shipped it in registry order.
   const counselorSections = analysis?.sections_meta ?? []
   const name = analysis?.inputs?.prenom ?? analysis?.inputs?.nom ?? "—"
 
@@ -120,20 +118,12 @@ export default function CounselorPage() {
               </div>
             ) : analysis?.inputs ? (
               <div className="mb-7 grid grid-cols-1 gap-3 rounded-lg bg-secondary p-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                {(path === "3"
-                  ? [
-                      ["Sous-profil", analysis.inputs._sub_profile?.toUpperCase() ?? "—"],
-                      ["Aime", (analysis.inputs.aime ?? []).join(", ").slice(0, 60) || "—"],
-                      ["Refus", (analysis.inputs.refuse ?? []).join(", ").slice(0, 60) || "—"],
-                      ["Accompagnement", analysis.inputs.accompagnement ?? "—"],
-                    ]
-                  : [
-                      ["Cible visée", analysis.inputs.cible_visee?.slice(0, 50)],
-                      ["Mobilité", Array.isArray(analysis.inputs.type_mobilite) ? analysis.inputs.type_mobilite.join(" + ") : analysis.inputs.type_mobilite],
-                      ["Posture actuelle", analysis.inputs.situation_actuelle],
-                      ["Points sensibles", analysis.inputs.notes_specifiques || "—"],
-                    ]
-                ).map(([k, v]) => (
+                {[
+                  ["Cible visée", analysis.inputs.cible_visee?.slice(0, 50)],
+                  ["Mobilité", Array.isArray(analysis.inputs.type_mobilite) ? analysis.inputs.type_mobilite.join(" + ") : analysis.inputs.type_mobilite],
+                  ["Posture actuelle", analysis.inputs.situation_actuelle],
+                  ["Points sensibles", analysis.inputs.notes_specifiques || "—"],
+                ].map(([k, v]) => (
                   <div key={k}>
                     <p className="eyebrow text-muted-foreground">{k}</p>
                     <p className="mt-1 font-semibold text-navy">{v}</p>

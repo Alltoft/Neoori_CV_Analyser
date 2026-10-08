@@ -9,11 +9,10 @@ export interface User {
   created_at: string
 }
 
-/** Parcours id. Legacy rows carry "A"/"B"; the backend normalises them. */
-export type Parcours = "1" | "2" | "3"
-
-/** Superset accepted on the wire, so legacy analyses still type-check. */
-export type AnalysisPath = Parcours | "A" | "B"
+/** The parcours id an analysis carries. Parcours 1 is the only one left
+ *  (2 and 3 were retired on 2026-10-08); rows written before the v1.2
+ *  migration carry "A", which the backend reads as "1". */
+export type AnalysisPath = "1" | "A"
 
 /**
  * Everything PromptVersion.path may hold: parcours 1 plus the two voyage
@@ -24,22 +23,9 @@ export type AnalysisPath = Parcours | "A" | "B"
 export type PromptSlot = "1" | "voyage_micro" | "voyage_portrait"
 
 /**
- * Coerce a stored `_path` to a parcours id. Analyses written before the v1.2
- * migration carry "A"/"B"; the backend normalises the same way on read.
- */
-export function normalizeParcours(raw: string | undefined | null): Parcours {
-  if (raw === "A") return "1"
-  if (raw === "B") return "3"
-  return raw === "1" || raw === "2" || raw === "3" ? raw : "1"
-}
-
-export type SubProfile = "b1" | "b2" | "b3"
-
-/**
  * Render instructions for one report section, supplied by the backend in
- * registry order. The client must never sort output keys itself — parcours 2
- * uses letter keys and parcours 3 Roman numerals, and `Number("A")` is NaN,
- * which leaves Array.sort in insertion order without raising.
+ * registry order. The client must never sort output keys itself — "verdict"
+ * sits between "3" and "4", and a string sort puts "10" and "11" before "2".
  */
 export interface SectionMeta {
   key: string
@@ -49,30 +35,19 @@ export interface SectionMeta {
 }
 
 export interface AnalysisInputs {
-  // Chemin A
   cv_text?: string
   cible_visee?: string
   prenom?: string
+  nom?: string
   tranche_age?: string
   localisation?: string
   situation_actuelle?: string
   type_mobilite?: string | string[]
   notes_specifiques?: string
-  // Chemin B
-  nom?: string
-  aime?: string[]
-  competent?: string[]
-  refuse?: string[]
-  pause_activite?: string
-  contraintes_pratiques?: string[]
-  contraintes_b3?: string[]
-  accompagnement?: string
-  cv_b3?: string
   // Discriminators (echoed from backend)
   _path?: AnalysisPath
-  _sub_profile?: SubProfile
-  /** Parcours 1 only: "A" the employer's job ad, "B" the person's own
-   *  description of a target. Absent on rows written before the split. */
+  /** "A" the employer's job ad, "B" the person's own description of a
+   *  target. Absent on rows written before the split. */
   _chemin?: "A" | "B"
   /** Plan the analysis was generated on. "haiku"/"sonnet" on rows written
    *  before the plan-name migration — see backend services/tiers.py. */
@@ -83,23 +58,9 @@ export interface AnalysisInputs {
    *  /c/<token> renders it, and neither should anything added later. */
   _voyage?: string[]
   /** Which voyage the lines above were reduced from. Mirrored onto
-   *  Analysis.voyage_id. Absent when the person has no voyage — every
-   *  parcours runs identically without one. */
+   *  Analysis.voyage_id. Absent when the person has no voyage — an
+   *  analysis runs identically without one. */
   _voyage_id?: string
-}
-
-export interface AnalysisInputsB {
-  _path: "B"
-  _sub_profile: SubProfile
-  nom: string
-  aime: string[]
-  competent: string[]
-  refuse?: string[]
-  pause_activite?: string
-  contraintes_pratiques?: string[]
-  contraintes_b3?: string[]
-  accompagnement?: string
-  cv_b3?: string
 }
 
 export interface AnalysisSection {
@@ -127,7 +88,7 @@ export interface Analysis {
   output: AnalysisOutput | null
   /** Ordered render instructions. Absent on responses from an older backend. */
   sections_meta?: SectionMeta[]
-  /** Section keys the counselor synthesis shows, for this parcours. */
+  /** Section keys the counselor synthesis shows (§1, §4, §5). */
   counselor_keys?: string[]
   /** "code" | "payment" once unlocked, null while on the free tier. */
   unlock_method?: string | null
@@ -163,11 +124,6 @@ export interface CounselorNote {
   body: string | null
   updated_at: string
 }
-
-// Section membership now comes from `Analysis.sections_meta` (backend
-// registry order). The constants below survive only for the parcours-1
-// pricing copy on /debloquer, which Phase 3 rebuilds around the 3 tiers.
-export const PAID_SECTIONS = ["5", "6", "7", "8", "9"] as const
 
 export const SECTION_TITLES: Record<string, string> = {
   "1": "Lecture stratégique du parcours",

@@ -14,7 +14,6 @@ import { CheckCircle2, Circle, ArrowLeft, ArrowRight, ShieldCheck } from "lucide
 import { api, ApiError } from "@/lib/api"
 import { SECTION_TITLES } from "@/types"
 import type { Analysis } from "@/types"
-import { normalizeParcours } from "@/types"
 
 const FREE = ["1", "2", "3"]
 const PAID = ["4", "5", "6", "7", "8", "9"]
@@ -137,15 +136,13 @@ function DebloquerContent() {
     )
   }
 
-  const path = normalizeParcours(analysis?.inputs?._path)
   // Same rule as the report: complete means the paid sections exist, however
   // they came to exist — otherwise this page offers to sell a report the user
   // is already holding.
   const paidSectionsPresent = (analysis?.sections_meta ?? []).some(
     (m) => !m.tiers.includes("free") && m.key in (analysis?.output ?? {}),
   )
-  const alreadyComplete =
-    path === "3" || analysis?.unlock_method != null || paidSectionsPresent
+  const alreadyComplete = analysis?.unlock_method != null || paidSectionsPresent
 
   // ── Nothing to unlock ──
   if (alreadyComplete) {
@@ -165,7 +162,7 @@ function DebloquerContent() {
     )
   }
 
-  // ── Unlock UI (Chemin A, not yet paid) ──
+  // ── Unlock UI (not yet paid) ──
   return (
     <Shell>
       <div className="mx-auto max-w-4xl py-8">

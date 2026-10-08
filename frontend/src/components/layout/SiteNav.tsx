@@ -9,7 +9,6 @@ import { Menu, X, ArrowRight } from "lucide-react"
 
 const LINKS = [
   { href: "/#voyage", label: "Le voyage" },
-  { href: "/#parcours", label: "Parcours" },
   { href: "/#rapport", label: "Le rapport" },
   { href: "/#pour-qui", label: "Pour qui" },
   { href: "/#tarifs", label: "Tarifs" },

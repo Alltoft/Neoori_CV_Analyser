@@ -9,15 +9,11 @@ that doesn't match, note the URL and what you saw.
 
 ## Read this before you start
 
-**Two things will fail until the PM acts, and that's expected — not a bug:**
+**One thing will fail until the PM acts, and that's expected — not a bug:**
 
 | What | Why | Symptom |
 |---|---|---|
-| Parcours 2 and 3 generation | No prompt exists for them yet | Analysis goes to `erreur` with "Aucun prompt actif pour le chemin 2" (or 3) |
 | Free-tier "verdict" quality | The current P1 prompt predates the verdict section | The section will exist and be filled, but the wording may be off — the schema forces the key, the prompt never described what belongs in it |
-
-The **forms** for parcours 2 and 3 are fully testable (validation, upload,
-navigation) — only the generation step is blocked.
 
 **Every analysis currently runs the PAID tier.** While the PM judges report
 *content*, the free tier's three sections aren't what needs reviewing, so the
@@ -42,7 +38,7 @@ Everything else below should work end to end.
 | # | Do | Expect |
 |---|---|---|
 | 1.1 | Open the landing page | Colours have changed: orange is deeper (`#EA5624`, was a brighter coral), navy is lighter/bluer (`#1C3561`), backgrounds have a faint green tint instead of blue |
-| 1.2 | Click any "Lancer mon analyse" / "Démarrer" CTA | Lands on **`/analyse`** — a 3-card chooser, *not* the form directly. This is new; there were 12 CTAs that all went straight to the parcours-1 form |
+| 1.2 | Click any "Lancer mon analyse" / "Démarrer" CTA | Lands on the parcours 1 form **`/analyse/nouveau`** (`/analyse` redirects there since parcours 2 and 3 were retired) |
 | 1.3 | Check the landing report preview | Shows §1, §2, §3 only. The locked strip below now starts at **§4** |
 | 1.4 | Landing FAQ + pricing card | Say "sections 1 à 3 et le verdict de diagnostic", not "1 à 4" |
 | 1.5 | Read the CGV (`/cgv`) | Section 2 says free = sections 1 à 3 + verdict, and lists "les points à renforcer" in the paid offer |
@@ -50,14 +46,14 @@ Everything else below should work end to end.
 
 ---
 
-## 2 · The chooser
+## 2 · `/analyse`
+
+Parcours 2 and 3 were retired on 2026-10-08; the chooser went with them.
 
 | # | Do | Expect |
 |---|---|---|
-| 2.1 | Open `/analyse` | Three cards: "J'ai une cible", "Je cherche ma direction", "Je pars de zéro" |
-| 2.2 | Read the badges | Cards 1 and 2 say "CV requis", card 3 says "Aucun CV nécessaire" |
-| 2.3 | Click each card | → `/analyse/nouveau`, `/analyse/direction`, `/analyse/depart` |
-| 2.4 | Check the footer line | Links to `/voyage` (where the questions are asked) and to `/profil` as "mes informations" (where they are re-read). Nothing says "compléter mon profil" any more |
+| 2.1 | Open `/analyse` | Redirected to `/analyse/nouveau` |
+| 2.2 | Open `/analyse/direction`, then `/analyse/depart` | The 404 page, both times |
 
 ---
 
@@ -136,28 +132,9 @@ it. Untick it and save: the matrix is simply not written, and nothing errors.
 
 ---
 
-## 5 · Parcours 2 — `/analyse/direction`
+## 5–6 · Parcours 2 and 3
 
-Generation is blocked (no prompt). Test the form itself.
-
-| # | Do | Expect |
-|---|---|---|
-| 5.1 | Open the page | CV drop zone + paste area, then **three** questions: satisfaction / ce que vous ne voulez plus / raison du changement |
-| 5.2 | Submit with everything empty | Four inline errors in French |
-| 5.3 | Type 5 characters in a question | Still errors — 20-character minimum |
-| 5.4 | Upload a PDF CV | Filename shows, drop zone turns green |
-| 5.5 | Fill everything and submit | Reaches the generation screen, then fails with "Aucun prompt actif pour le chemin 2" — **expected until the prompt exists** |
-
----
-
-## 6 · Parcours 3 — `/analyse/depart`
-
-| # | Do | Expect |
-|---|---|---|
-| 6.1 | Open the page | **Five** questions, **no CV upload anywhere** |
-| 6.2 | Read question 1 | Mentions jobs, petits boulots, bénévolat, sport, garde d'un proche — "Rien n'est trop petit" |
-| 6.3 | Type 12 characters in each | **Accepted.** Deliberately lower than parcours 2 — this parcours exists for people without a CV |
-| 6.4 | Submit | Same expected prompt error as 5.5 |
+Retired on 2026-10-08 (`docs/superpowers/specs/2026-10-08-remove-parcours-2-3-design.md`). The section numbers stay so the references in this plan still hold.
 
 ---
 
@@ -182,7 +159,7 @@ Generation is blocked (no prompt). Test the form itself.
 | # | Do | Expect |
 |---|---|---|
 | 8.1 | On a report, click "Partager au conseiller", open the copied link | Opens `/c/<token>` with a VERSION CONSEILLER badge |
-| 8.2 | Check the sections | Shows the counselor set only, **and every section has content** — previously a Chemin B share link rendered three empty grey skeletons |
+| 8.2 | Check the sections | Shows the counselor set only (§1, §4, §5), **and every section has content** |
 | 8.3 | Switch to "Vue conseiller" on the report page itself | Same section set |
 
 ---
@@ -191,7 +168,7 @@ Generation is blocked (no prompt). Test the form itself.
 
 | # | Do | Expect |
 |---|---|---|
-| 9.1 | `/admin/prompts` | The selector shows **five** prompts, in this order: Parcours 1 · J'ai une cible / Parcours 2 · Je cherche ma direction / Parcours 3 · Je pars de zéro / Voyage · phrase (S0) / Voyage · portrait (was three parcours, and before that "Chemin A / Chemin B") |
+| 9.1 | `/admin/prompts` | The selector shows **three** prompts, in this order: Parcours 1 · J'ai une cible / Voyage · phrase (S0) / Voyage · portrait |
 | 9.2 | Switch between them | Each has its own version history. A prompt with no version yet says « Aucune version pour … » followed by that prompt's name |
 | 9.3 | **Paste and publish the P1 prompt** | New version appears, labelled with a `-P1` suffix |
 | 9.4 | `/admin/couts` | **Three** token columns (Gratuit / Payant / Premium) instead of two, and each shows the model name it bills |
@@ -241,9 +218,9 @@ banners, error messages — says *vous*.
 
 | # | Do | Expect |
 |---|---|---|
-| 12.1.1 | Open the landing page and scroll past the hero | A navy band, eyebrow "Le voyage", heading « Avant de parler de poste, parlons de vous. », **above** the three scenario cards |
+| 12.1.1 | Open the landing page and scroll past the hero | A navy band, eyebrow "Le voyage", heading « Avant de parler de poste, parlons de vous. » |
 | 12.1.2 | Click « Commencer le voyage » while logged out | `/connexion?redirect=/voyage`, and after logging in you land on `/voyage` |
-| 12.1.3 | Open `/analyse` | A full-width navy card, "Le voyage" / « Mon cahier d'exploration », **above** the three parcours cards. The three cards themselves are unchanged |
+| 12.1.3 | Open `/analyse` | Redirected to the parcours 1 form; the voyage is reached from the landing, `/espace` and the account menu |
 | 12.1.4 | Open `/espace` with no voyage started | A navy strip at the very top offering to start, reading "Six sessions pour poser ce que vous savez déjà de vous." It never blocks the analyses below it |
 | 12.1.5 | Open the account dropdown in the top bar | « Mon espace », then **« Mon voyage »**, then « Déconnexion » (plus « Administration » if you are admin) |
 | 12.1.6 | Log out and open `/voyage` directly | Bounced to `/connexion?redirect=/voyage`. You should never see the consent form logged out |
@@ -332,7 +309,7 @@ banners, error messages — says *vous*.
 
 | # | Do | Expect |
 |---|---|---|
-| 12.9.1 | With an account that has no voyage, run any parcours analysis and open its response (`GET /api/analyses/<id>`) in the Network tab (F12 → Network) | Runs and completes exactly as before. `inputs` has **no** `_voyage` key and **no** `_voyage_id` key at all; `voyage_id` is `null`. The voyage is never required |
+| 12.9.1 | With an account that has no voyage, run an analysis and open its response (`GET /api/analyses/<id>`) in the Network tab (F12 → Network) | Runs and completes exactly as before. `inputs` has **no** `_voyage` key and **no** `_voyage_id` key at all; `voyage_id` is `null`. The voyage is never required |
 | 12.9.2 | Play session 0 to the end, wait for the phrase, then run a new analysis and look at `inputs._voyage` in the same response | A list of **exactly 2** lines: « Phrase révélée : … » and « Ce qui l'attire le plus dans dix ans : … ». `inputs._voyage_id` and the top-level `voyage_id` are the same id |
 | 12.9.3 | Have the counselor validate the portrait (§ 13.22), then run **another** new analysis and look at `inputs._voyage` | Up to **9** lines — the two from § 12.9.2 plus « Univers dominants », « Besoin dominant », « Ambivalences relevées », « Cadre où elle donne le meilleur », « Ce qui l'épuise », « Ce qui la met en colère », « Se sent vivant(e) quand » (a line is omitted, not left empty, when it has nothing to say). The § 12.9.2 analysis itself is untouched — still its own 2 lines |
 | 12.9.4 | Read every line in `inputs._voyage` carefully | The first line (« Phrase révélée : … ») is free text the model wrote from the person's own answers and may legitimately carry a digit — an age or a duration, e.g. a made-up « Après 17 ans d'usine… », is not a bug. **Every other line must never contain a digit**, and no line may contain a framework word: « score », « névrotisme », « RIASEC », « Big Five », « extraversion », « conscienciosité », « Élevé » / « Moyen » / « Faible ». If one does, stop and report it — it is the one bug in this section that matters |

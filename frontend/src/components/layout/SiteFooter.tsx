@@ -7,7 +7,6 @@ const COLS: { title: string; links: { href: string; label: string }[] }[] = [
     title: "Produit",
     links: [
       { href: "/#voyage", label: "Le voyage" },
-      { href: "/#parcours", label: "Les parcours" },
       { href: "/#module", label: "Comment ça marche" },
       { href: "/#rapport", label: "Le rapport" },
       { href: "/#tarifs", label: "Tarifs" },

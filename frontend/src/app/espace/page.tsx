@@ -19,11 +19,10 @@ import { getVoyage } from "@/lib/voyage"
 import type { Analysis } from "@/types"
 import type { Voyage } from "@/types/voyage"
 import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2, ArrowRight } from "lucide-react"
-import { normalizeParcours } from "@/types"
 
 function cardTitle(a: Analysis) {
   if (a.status === "draft") return "Brouillon"
-  return a.inputs?.cible_visee?.slice(0, 60) || (normalizeParcours(a.inputs?._path) === "3" ? "Portrait de potentiel" : "Analyse")
+  return a.inputs?.cible_visee?.slice(0, 60) || "Analyse"
 }
 
 export default function EspacePage() {
@@ -91,8 +90,8 @@ export default function EspacePage() {
           </Button>
         </div>
 
-        {/* Le voyage — the fourth scenario, on the charter's inverted surface so
-            it does not read as a fourth parcours card. */}
+        {/* Le voyage — on the charter's inverted surface, so it does not read
+            as one of the analysis cards below. */}
         {voyageLoaded && voyage && (
           <div className="mb-6 overflow-hidden rounded-2xl bg-navy shadow-card">
             <div className="voyage-rule" />
