@@ -32,6 +32,7 @@ def test_a_verification_link_round_trips(app):
 @pytest.mark.parametrize("bad", [
     "//evil.com", "/\\evil.com", "https://evil.com", "evil.com", "",
     "/ok\r\nSet-Cookie: x=1", "/" + "a" * 600, None, 42, ["/espace"],
+    "/a\ud800",
 ])
 def test_next_refuses_anything_but_a_local_path(bad):
     assert auth_links.safe_next(bad) is None

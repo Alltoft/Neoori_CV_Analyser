@@ -182,14 +182,14 @@ def prenom_of(user) -> str:
     return (profile.prenom or "").strip() if profile else ""
 
 
-def _deliver_link(user, subject: str, html: str, text: str, link: str) -> bool:
+def _deliver_link(to: str, subject: str, html: str, text: str, link: str) -> bool:
     """send(), except on a laptop with no key: the link goes to the log, so the
     local flow can be walked end to end. Debug only — never in production,
     where a token in a log line is a session for whoever reads the log."""
     if not current_app.config.get("RESEND_API_KEY") and current_app.debug:
-        current_app.logger.warning("DEV — no RESEND_API_KEY, link for %s: %s", user.email, link)
+        current_app.logger.warning("DEV — no RESEND_API_KEY, link for %s: %s", to, link)
         return True
-    return send(user.email, subject, html, text)
+    return send(to, subject, html, text)
 
 
 def send_verification(user, next_path=None) -> bool:
@@ -206,7 +206,7 @@ def send_verification(user, next_path=None) -> bool:
             small="Si vous n'avez pas créé de compte, ignorez ce message.",
         )
         return _deliver_link(
-            user, "Confirmez votre adresse email",
+            user.email, "Confirmez votre adresse email",
             _layout("Confirmez votre adresse", body), text, link,
         )
     except Exception:
@@ -228,11 +228,35 @@ def send_password_reset(user) -> bool:
             "votre mot de passe reste inchangé.",
         )
         return _deliver_link(
-            user, "Réinitialiser votre mot de passe",
+            user.email, "Réinitialiser votre mot de passe",
             _layout("Nouveau mot de passe", body), text, link,
         )
     except Exception:
         current_app.logger.exception("Could not build/send the reset mail.")
+        return False
+
+
+def send_login_link(to: str, prenom: str, token: str) -> bool:
+    """« Votre lien de connexion ». One wording whatever the address's account
+    state (social sign-in spec, decision 15): it goes to the inbox owner, and an
+    address with no account gets the same link, which signs it up. Fail-soft."""
+    try:
+        link = f"{_app_url()}/connexion/lien?token={token}"
+        body, text = _mail(
+            [
+                _greeting(prenom),
+                "Voici votre lien pour accéder à neoori. Il est valable 15 minutes "
+                "et ne sert qu'une fois.",
+            ],
+            button=("Accéder à neoori", link),
+            small="Si vous n'avez pas demandé ce lien, ignorez ce message.",
+        )
+        return _deliver_link(
+            to, "Votre lien de connexion",
+            _layout("Votre lien de connexion", body), text, link,
+        )
+    except Exception:
+        current_app.logger.exception("Could not build/send the sign-in link mail.")
         return False
 
 

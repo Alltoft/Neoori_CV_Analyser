@@ -16,12 +16,23 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthLayout } from "@/components/layout/AuthLayout"
 import { VerificationPending } from "@/components/auth/VerificationPending"
+import { SocialSignIn } from "@/components/auth/SocialSignIn"
 
 const schema = z.object({
   email: z.string().email("Email invalide."),
   password: z.string().min(1, "Mot de passe requis."),
 })
 type Fields = z.infer<typeof schema>
+
+/** What /api/auth/<provider>/callback reports when it sends someone back
+ *  here (social sign-in spec, decision 12). A Map, not an object literal:
+ *  "?erreur=constructor" must find nothing. */
+const OAUTH_ERRORS = new Map([
+  ["annule", "Connexion annulée."],
+  ["echec", "La connexion n’a pas abouti. Réessayez, ou utilisez « Recevoir un lien de connexion »."],
+  ["indisponible", "Ce mode de connexion n’est pas disponible pour le moment."],
+  ["email_non_verifie", "Ce compte ne confirme pas votre adresse email. Utilisez « Recevoir un lien de connexion »."],
+])
 
 function ConnexionForm() {
   const { login } = useAuth()
@@ -31,6 +42,7 @@ function ConnexionForm() {
   // Checked as given by safeRedirect: only a path on this site is followed or
   // passed on, anything else falls back to the role's home.
   const redirect = safeRedirect(params.get("redirect"))
+  const oauthError = OAUTH_ERRORS.get(params.get("erreur") ?? "") ?? null
   // Right password, unconfirmed address: the server says so only to someone
   // who knows the password (spec decision 9). Holds the address to resend to.
   const [unverified, setUnverified] = useState<string | null>(null)
@@ -80,7 +92,15 @@ function ConnexionForm() {
       <h1 className="font-display text-2xl font-bold text-navy">Se connecter</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">Retrouvez vos analyses, votre profil et votre voyage.</p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4">
+      {oauthError && (
+        <Alert variant="destructive" className="mt-6">
+          <AlertDescription>{oauthError}</AlertDescription>
+        </Alert>
+      )}
+
+      <SocialSignIn next={redirect} separator="ou" />
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

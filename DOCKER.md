@@ -127,13 +127,44 @@ The per-IP limits on the auth endpoints (`limit_req` in the nginx templates)
 key on the client address. Docker publishes 80/443 on `[::]` too, but the
 compose network is IPv4-only, so docker-proxy relays an IPv6 connection to
 nginx from the bridge gateway: every IPv6 visitor would appear as one client
-and share a single bucket (5/min for signup, resend, forgot and conseiller
-demande; 10/min for login, verify and reset), which locks everyone out at
+and share the same buckets (5/min for register, resend-verification,
+forgot-password, the email sign-in link request and the conseiller demande;
+10/min for login, verify-email, reset-password, the email link's check and
+consume, and the signup finalise step; 30/min for the Google / Microsoft
+start and callback), which locks everyone out at
 once. Verified 2026-10-01 on the VPS: a forced IPv6 request was logged by
 nginx as client `172.18.0.1`. `neoori.tech` has no AAAA record today, so all
 traffic arrives over IPv4 and the limits see real clients. Keep it that way
 until the compose network has IPv6 enabled (`enable_ipv6` + a subnet) and the
 templates `listen [::]:80` / `[::]:443`.
+
+## Google / Microsoft sign-in keys
+
+Four keys in `/srv/neoori/.env` (and `backend/.env` locally) configure the
+two providers: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`. Creating the two apps,
+click by click, is in
+`docs/superpowers/specs/2026-10-03-social-login-design.md`, appendices A and
+B. A provider's button appears only once both its keys are set. After
+editing `.env`:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate backend
+```
+
+### Microsoft secret renewal
+
+A Microsoft client secret lives 24 months at most. The day it expires,
+« Continuer avec Microsoft » answers « La connexion n'a pas abouti ». Its
+expiry date is the comment beside `MICROSOFT_CLIENT_SECRET` in
+`/srv/neoori/.env`. A month before it:
+
+1. In Entra, open the `neoori` app → Certificates & secrets → New client
+   secret (24 months). The old one keeps working meanwhile.
+2. Paste the new **Value** into `/srv/neoori/.env` and update the expiry
+   comment.
+3. Recreate the backend (command above), then sign in once with Microsoft.
+4. Delete the old secret in Entra.
 
 ## Data migration (TiDB Cloud → VPS MySQL, at cutover)
 

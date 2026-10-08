@@ -41,6 +41,7 @@ from app.extensions import db as _db
 from app.models.analysis import Analysis
 from app.models.profile import Profile
 from app.models.user import User
+from app.utils import auth_links
 
 # The real password behind rig["candidate_email"] -- see _user()'s docstring
 # on why the candidate (and only the candidate) needs a genuine bcrypt hash.
@@ -164,6 +165,15 @@ def rig(client, app, monkeypatch):
     _db.session.commit()
 
     analysis = _analysis(share_token="fuzz-share-token")
+
+    # POST /api/auth/signup reads its body only behind a live ticket. Every
+    # fuzzed call leaves at least one field invalid but one (consent=True),
+    # so the ticket survives until that last call.
+    client.set_cookie(
+        "signup_ticket",
+        auth_links.make_signup_ticket(method="email", sub=None, email="fuzz-signup@test.fr"),
+        path="/api/auth",
+    )
 
     return {
         "candidate_headers": _headers(candidate),
@@ -327,6 +337,38 @@ ROUTES = [
         headers=lambda rig: rig["counselor_headers"],
         base=lambda rig: {"body": "note de test"},
         fields=["body"],
+    ),
+    dict(
+        name="email_link",
+        method="post",
+        path=lambda rig: "/api/auth/email-link",
+        headers=lambda rig: {},
+        base=lambda rig: {"email": "fuzz-link@test.fr", "next": "/espace"},
+        fields=["email", "next"],
+    ),
+    dict(
+        name="email_link_check",
+        method="post",
+        path=lambda rig: "/api/auth/email-link/check",
+        headers=lambda rig: {},
+        base=lambda rig: {"token": "not-a-token"},
+        fields=["token"],
+    ),
+    dict(
+        name="email_link_consume",
+        method="post",
+        path=lambda rig: "/api/auth/email-link/consume",
+        headers=lambda rig: {},
+        base=lambda rig: {"token": "not-a-token"},
+        fields=["token"],
+    ),
+    dict(
+        name="signup",
+        method="post",
+        path=lambda rig: "/api/auth/signup",
+        headers=lambda rig: {},
+        base=lambda rig: {"prenom": "Rig", "tranche_age": "25_34", "consent": True},
+        fields=["prenom", "tranche_age", "consent"],
     ),
 ]
 

@@ -52,6 +52,12 @@ def app():
     # Same reason for the demande-mail recipients: a developer's .env naming
     # ADMIN_NOTIFY_EMAIL must not decide who the tests mail.
     application.config["ADMIN_NOTIFY_EMAILS"] = []
+    # And the sign-in providers: a developer's backend/.env carrying real
+    # Google or Microsoft keys must not switch the buttons on in the tests.
+    application.config.update(
+        GOOGLE_CLIENT_ID=None, GOOGLE_CLIENT_SECRET=None,
+        MICROSOFT_CLIENT_ID=None, MICROSOFT_CLIENT_SECRET=None,
+    )
     with application.app_context():
         _db.create_all()
         yield application
