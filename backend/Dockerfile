@@ -1,4 +1,7 @@
-FROM python:3.14-slim
+# Base image from AWS's public mirror of Docker's official images (same
+# digests as Docker Hub): Docker Hub rate-limits GitHub's shared CI runners
+# (429 Too Many Requests on every deploy attempt, 2026-10-09).
+FROM public.ecr.aws/docker/library/python:3.14-slim
 
 WORKDIR /app
 
