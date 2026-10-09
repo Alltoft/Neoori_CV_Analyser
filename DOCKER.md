@@ -103,7 +103,8 @@ certificate (« Adding cv. and voyage. », below). Steps kept for a re-issue or
 a second domain:
 
 ```bash
-# 1. DNS A record -> 186.240.157.26; set DOMAIN=... in /srv/neoori/.env (keep NGINX_MODE=http)
+# 1. DNS A records for the apex, www, cv and voyage -> 186.240.157.26;
+#    set DOMAIN=... in /srv/neoori/.env (keep NGINX_MODE=http)
 docker compose -f docker-compose.prod.yml up -d nginx
 
 # 2. Issue the certificate over the ACME webroot nginx already serves.
@@ -151,6 +152,15 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot 
 # then the same command without --dry-run, and:
 docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
 ```
+
+**Until the deploy has reloaded nginx, check the new names with `curl -sI`
+or `openssl s_client` only, never a browser.** The live nginx answers `cv.`
+and `voyage.` with a permanent redirect (301) to the apex. A browser keeps
+it, and after the deploy, when the apex sends the path back to `cv.` or
+`voyage.`, it loops between the two (`ERR_TOO_MANY_REDIRECTS`). The deploy
+has a few seconds of the same window, between `up -d` and the nginx reload,
+so push at a quiet hour. Anyone caught clears the browser's cache and site
+data for neoori.tech.
 
 After the deploy, delete `APP_URL` and `FRONTEND_URL` from
 `/srv/neoori/.env` and the GitHub repo variable `SITE_URL` — but only once
@@ -397,7 +407,7 @@ C="docker compose -f docker-compose.prod.yml exec -T backend"
 $C flask purge-expired --before-rollback          # 1. counts only
 $C flask purge-expired --before-rollback --apply  # 2. deletes
 $C flask db downgrade b0c1d2e3f4a5                # 3. the revision before c1d2e3f4a5b6
-IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d   # 4. FORCE_ANALYSIS_TIER first
+IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d   # 4. FORCE_ANALYSIS_TIER and FRONTEND_URL first
 ```
 
 (`<sha>` is the commit of the image you are going back to.)
@@ -438,7 +448,10 @@ IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d   # 4. FORCE_ANA
    at `fd2f47f`. With no line in `.env`, every new analysis runs on the paid
    tier again after the rollback. Write `FORCE_ANALYSIS_TIER=paid` only if
    that is what you want back; `FORCE_ANALYSIS_TIER=` (empty) gives the
-   normal tiers. `up -d` then starts the previous image with that setting,
+   normal tiers. Look at `FRONTEND_URL` too: this rollback also goes below
+   the subdomain split, so if `APP_URL` and `FRONTEND_URL` were deleted from
+   `.env` after it, write `FRONTEND_URL=https://neoori.tech` back first
+   (« CI/CD »). `up -d` then starts the previous image with those settings,
    and its `flask db upgrade` finds nothing to do. Check:
    `curl -s https://neoori.tech/api/health` prints `{"status":"ok"}` (plain
    `http://` only redirects while `NGINX_MODE=https`).

@@ -182,7 +182,7 @@ git add .
 git commit -m "..."
 git push        # GitHub Actions: build images → push GHCR → sync config + pull/up on the VPS
 ```
-Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` — except below the four-doors migration, which needs the purge and a downgrade first (see Les quatre portes).
+Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` — except below the four-doors migration, which needs the purge and a downgrade first (see Les quatre portes). Below the subdomain split, once `APP_URL` / `FRONTEND_URL` have been deleted from `/srv/neoori/.env`, put `FRONTEND_URL=https://neoori.tech` back first (DOCKER.md « CI/CD »).
 
 Local dev mirrors prod routing: `docker compose up -d` → http://neoori.localhost:8080 (the landing), http://cv.neoori.localhost:8080, http://voyage.neoori.localhost:8080 — in Chrome, which resolves `*.localhost` by itself.
 
@@ -416,7 +416,8 @@ refresh tokens (an access token already issued lives up to 1 h).
   limits) »).
 - The deploy re-renders and reloads nginx (`deploy.yml`): `up -d` alone never
   applied a template change.
-- The analysis form and the CV upload are open (Les quatre portes): `proxy.ts`
+- The analysis form and the CV upload are open (Les quatre portes): the
+  sign-in gate in `frontend/src/lib/sign-in-gate.ts`, which `proxy.ts` calls,
   leaves `/analyse`, `/analyse/nouveau` and `/analyse/envoyee` public. The rest
   of `/analyse/` — the report (`/analyse/<id>/rapport`), its unlock page
   (`/analyse/<id>/debloquer`) and the waiting page (`/analyse/en-cours/<id>`) —

@@ -220,8 +220,9 @@ swapped some day (see « Out of scope »).
     `https://cv.DOMAIN/api/auth/<provider>/callback` or the `voyage.`
     equivalent, both registered in both provider consoles. `/start` reached on
     any other host (only by typing the URL — the root has no sign-in page) is
-    redirected to cv's `/start` with the same query before any state is
-    written. The target is built from the settings, never from the Host header.
+    redirected to cv's `/start` with its `next` parameter (the only one
+    `/start` reads), re-encoded, before any state is written. The target is
+    built from the settings, never from the Host header.
 29. **`next` / `redirect` do not change**: local paths only, same checks. When
     sign-in returns to a path the other app owns, the frontend goes there with a
     full page load (decision 37's `go`), decision 11 hands it to the owner, and
@@ -465,12 +466,19 @@ Each step outside the repo waits for the developer's go.
    docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
    ```
 
-   The current site keeps working throughout.
+   The current site keeps working throughout. Until step 4's deploy has
+   reloaded nginx, check the new names with `curl -sI` or `openssl s_client`
+   only, never a browser: the live nginx answers them with a permanent
+   redirect to the apex, which a browser keeps and then loops on after the
+   deploy.
 3. **Provider consoles**, only if Google/Microsoft keys are live by then: add
    the two callback URLs for each provider. Prod has no provider keys today.
 4. **Push**, which deploys. What people notice: they are signed out once; the
    root shows the landing and every other page moves to `cv.` or `voyage.`;
-   links in mails already sent keep working through the redirects.
+   links in mails already sent keep working through the redirects. Push at a
+   quiet hour: the deploy has a few seconds of the same permanent redirect,
+   between its `up -d` and the nginx reload; anyone caught clears the
+   browser's cache and site data for the domain.
 5. **Afterwards, once no rollback below this deploy is expected:** delete
    `APP_URL` and `FRONTEND_URL` from `/srv/neoori/.env`, and the GitHub
    variable `SITE_URL`.
@@ -572,6 +580,11 @@ Found by the whole-branch review; each is folded into what it touches:
 - 27 — `neoori_hold` carries `Domain=DOMAIN` like the session cookies, so a
   sign-out on any host drops the held draft (four doors' shared-computer
   rule); two cookies stay on one host.
+- 28 — wording: `/start` on another host hands over its `next` parameter,
+  re-encoded, not « the same query » (what the code always did).
+- « Rollout » — until the deploy has reloaded nginx, the new names are
+  checked with `curl` or `openssl` only: the live nginx answers them with a
+  permanent redirect to the apex, which a browser keeps and loops on.
 
 ## Claude's calls
 
