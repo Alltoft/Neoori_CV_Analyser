@@ -497,7 +497,7 @@ candidate-facing routes (`GET /<id>`, `GET /by-token`, `DELETE`,
 | `services/anthropic_service.py` | Set `started_at` with `running`. `_notify_outcome`: an `advisor` row mails its counselor (verified address only); an ownerless row mails nobody. |
 | `app/__init__.py` | `reap_stale_running` keys on `started_at`, falling back to `created_at` (decision 47). |
 | `services/email_service.py` | `send_counselor_analysis_ready` / `send_counselor_analysis_failed`, through `_mail`, no name, link to `/conseiller`. |
-| `services/purge.py` + `cli.py` (new) | `flask purge-expired [--dry-run]`: in one transaction and FK order (notes, price feedback, then rows), deletes held drafts unclaimed after 48 h, unclaimed `anonymous` reports after 30 days, `advisor` reports after 365 days, and `run_log` rows after 2 days. Prints counts per kind. Never selects `legacy`, owned or claimed rows. `flask purge-expired --before-rollback [--apply]` deletes **every** `advisor` and `anonymous` row and every held draft, whatever its age (« Errors and edge cases »). |
+| `services/purge.py` + `cli.py` (new) | `flask purge-expired [--dry-run]`: in one transaction and FK order (notes, price feedback, then rows), deletes held drafts unclaimed after 48 h, unclaimed `anonymous` reports after 30 days, `advisor` reports after 365 days, and `run_log` rows after 2 days. Prints counts per kind. Never selects `legacy`, owned or claimed rows. `flask purge-expired --before-rollback [--apply]` takes **every** `advisor` row, every **unclaimed** `anonymous` row (no owner) and every held draft, whatever its age, and deletes them only with `--apply` (without it, it counts). A claimed `anonymous` row has an owner and stays (« Errors and edge cases »). |
 | `config.py` | `ANONYMOUS_RUNS_PER_DAY` (200), `FREE_RUNS_PER_ACCOUNT_PER_DAY` (5), `ANONYMOUS_RETENTION_DAYS` (30), `ADVISOR_RETENTION_DAYS` (365), `HELD_DRAFT_RETENTION_HOURS` (48), `CV_TEXT_MAX` (40 000), `CIBLE_MAX` (10 000). |
 | `nginx/templates-http`, `templates-https`, `dev.conf` | The `analyses` and `codes` zones (decision 39). The path-only `log_format` (decision 42). |
 | `backend/entrypoint.sh` | gunicorn `--access-logformat` (decision 42). |
@@ -574,6 +574,25 @@ means the text as that spec leaves it.
 | `/conseiller` | Column « Analyse », link « Voir l’analyse »; the codes hint gains « 1 analyse et 1 voyage par place. » |
 | Counselor mails | Button « Ouvrir mon espace conseiller » |
 | Admin « Codes promo » panel | « Un code promo donne le rapport complet, une fois par compte. Un champ vide signifie « illimité ». », « Libellé », « Utilisations », « Validité (jours) », « Créer le code », « Limites », « Révoquer », « Révoquer ce code ? », « illimité », « inchangé », « Aucun code pour le moment. » |
+
+**Added during the build (2026-10-09), awaiting PM copy approval**
+
+Strings the code of this build added to a new or changed screen that neither
+the two tables above nor the rows below list. Found by diffing the branch's
+French strings against this section and against `initial`; a few reuse words
+the app already had elsewhere, listed because they now sit on a screen this
+spec introduces. Same status as the rest: provisional, PM.
+
+| Where | Text |
+|---|---|
+| `/analyse/nouveau`, signed in, under « Enregistrer le brouillon », when the save answers `held` (the session lapsed; the draft stays in this browser) | « Votre session a expiré : ce brouillon est gardé dans ce navigateur. Connectez-vous pour l’enregistrer dans votre espace. » — shown in place of « Brouillon enregistré »; « Connectez-vous » is the link |
+| `/analyse/nouveau`, line under the title | Signed out: « Votre CV et la cible que vous visez. » Signed in, as before: « Votre CV et la cible que vous visez. Le reste vient de votre profil. » |
+| `/rapport`, signed in | « Garder dans mon espace » in place of « Créer un compte pour le garder »; the offer « Créez un compte pour débloquer le rapport complet » is not shown to them. Browser tab title, for everyone: « Votre rapport » |
+| `/conseiller/analyses/<id>`, private note | « Les notes n’ont pas pu être chargées. » beside « Réessayer », when the note cannot be read; the box and « Enregistrer » stay disabled meanwhile, so an empty box is never saved over the real note |
+| Counselor notes refusal (`PUT /api/counselor/analyses/<id>/notes`) | « Note invalide. » (400) for a body with no string `note`. The sentence already exists on the voyage's notes and on the retired `/api/c` route |
+| `/conseiller`, codes table, « Statut » cell | Beside the badge, uses per kind: « 1 analyse · 0 voyage », « 2 analyses · 1 voyage » (plural from two up; zero stays singular) |
+| Admin « Codes promo » panel | Column headers « Code », « Type », « Analyses », « Voyages », « Limite », « Expire le », « Statut » (« Libellé » is above). Type badges « Promo », « Conseiller ». Statuses « Actif », « Expiré », « Révoqué ». Buttons « Enregistrer » and « Annuler » (the limits editor; the revoke question). « Copier le code » (the label of the copy button). The label placeholder « Salon, partenaire, relecture PM… ». Fallbacks « Erreur de chargement » (the list did not load) and « Erreur inattendue. » |
+| Stripe checkout, 9 € line item | « Déblocage du rapport complet », where it read « Déblocage du rapport complet + export conseiller » (the export is gone, changed string 7) |
 
 **Changed strings**
 
@@ -696,8 +715,9 @@ The last sentence of row 13 is the line the conseiller spec promised for
     `run_log` rows;
   - it never selects a `legacy`, owned, claimed or fresh row;
   - `--dry-run` changes nothing; a second run deletes nothing;
-  - `--before-rollback` takes every `advisor` and `anonymous` row and every
-    held draft.
+  - `--before-rollback` takes every `advisor` row, every unclaimed `anonymous`
+    row and every held draft, and leaves a claimed `anonymous` row; without
+    `--apply` it only counts.
 - Migration: chain test; the upgrade marks ownerless rows `legacy` and
   back-fills `slot`; the downgrade runs.
 
@@ -811,6 +831,58 @@ On the developer's go, each step:
 7. **CGV change for existing accounts**: v1.3 is recorded for new consents
    only. Whether existing account holders must be told of the change (mail,
    banner) is a PM / legal call.
+8. **A paid unlock orphaned by a deploy** (raised during the build,
+   2026-10-09) ends `error` with no mail, and a second unlock is refused
+   (`unlock_service.refusal()` refuses a row that is not `success`). The
+   lazy reap (`reap_if_orphaned()`, which takes a stuck row when it is
+   read) and the startup sweep both send no mail, by the rule that already
+   held, so the person who paid, or spent a code, is left on a failed report
+   with nothing to click. Send the unlock-failure mail when the reaper takes
+   such a row?
+9. **Payment window** (raised during the build, 2026-10-09). A promo code
+   redeemed on a report between the creation of its Stripe session and the
+   payment unlocks it; when the payment then completes, the webhook's unlock
+   is refused (the report is already unlocked), the webhook discards that
+   refusal, and nothing records it or refunds: the charge stands with no
+   unlock. The webhook is unchanged by this spec (decision 41). Refund by
+   hand when it happens, or have the webhook record the refusal?
+10. **Revoking a partly used conseiller code** (raised during the build,
+    2026-10-09). `DELETE /api/counselor/codes/<id>` answers 409 « Ce code a
+    déjà été utilisé. » as soon as any use exists, and counting per kind
+    makes a single-place code with one kind spent read « actif ». `/conseiller`
+    therefore hides « Révoquer » once any use exists, as the server already
+    rules. May a counselor revoke a code that still has a use left?
+11. **« Bénéficiaires » counts one person twice** (raised during the build,
+    2026-10-09) when one code serves both their analysis and their voyage:
+    the tile adds the redemptions of both kinds. Count people, or keep
+    redemptions and rename the tile?
+12. **« Crédits restants »** (raised during the build, 2026-10-09) reads
+    `credits_remaining`, a counter nothing decrements. Already named under
+    « Out of scope »; listed here so that someone decides: remove the card
+    from `/espace`?
+13. **Copy the build could not settle** (raised during the build,
+    2026-10-09; PM). The landing FAQ « Quelle différence entre le rapport
+    candidat et la synthèse conseiller ? » still describes the retired
+    counselor synthesis, and no copy row covers it. The admin page lead,
+    « Demandes de comptes conseiller, comptes actifs, et codes d’accès créés
+    directement. », predates « Codes promo ». The panel shows the server's
+    raw-key sentences (« max_uses doit être supérieur à zéro. ») under
+    « Utilisations ». The « Prénom » header of `/conseiller`'s bénéficiaires
+    table now sits over prénom and nom. A deleted advisor report leaves its
+    row reading « — » and « Bénéficiaire anonyme », because the redemption is
+    kept on purpose (a delete never lowers a count).
+14. **Back from `/inscription`** (raised during the build, 2026-10-09) shows a
+    blank form: the held draft comes back only through `?reprendre=…`.
+    Restoring it on a plain visit would show it to the next person on a shared
+    browser. Keep it so, or restore it on a plain visit when the cookie
+    holds one?
+15. **Printing a no-login report** (raised during the build, 2026-10-09).
+    The page takes the key out of the address for the time of the print
+    (`beforeprint` / `afterprint`), so the browser's header and footer do not
+    carry it. Still to check by hand: one real Chrome print with « Headers
+    and footers » on, and one Safari print (TEST-PLAN § 8.5.5). The handler
+    relies on Next's patched `history.replaceState`; check it again on a Next
+    upgrade.
 
 ## Claude's calls
 

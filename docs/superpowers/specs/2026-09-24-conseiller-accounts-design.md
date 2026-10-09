@@ -51,6 +51,11 @@ conseiller. That endpoint stays — approval now drives it internally.
 | 7 | Every redemption is logged in a **new table `code_redemptions`** (code, user, target, timestamp). `uses_count` stays updated for the existing admin page. | `uses_count` cannot answer "by who, when", and an analysis unlock records *that* a code was used (`Analysis.unlock_method`) but never *which*. The dashboard the developer asked for is not derivable from what is stored today. |
 | 8 | Limits are enforced **at redemption and at minting**, both against `COUNT(code_redemptions)` — one source of truth. | `uses_count` is an increment that can drift; a count cannot. |
 | 9 | The dashboard shows bénéficiaires **identified (prénom, email, date), never their content**. No link to their voyage or analysis. | Developer ruling. Reaching a voyage still requires the candidate to hand over their token, exactly as today. Keeps « mes bénéficiaires » and « leurs données » on opposite sides of a line. |
+
+> Reversed on 2026-10-08 by the four-doors spec (ruling 2): an analysis run through the advisor door goes to the counselor, in full, and only to them.
+
+| # | Decision | Why |
+|---|---|---|
 | 10 | « Accompagnements » = **portraits this conseiller validated** (`Voyage.validated_by_id`). | Already recorded, attributable, and it is real work. Shown beside « Bénéficiaires » (codes used) so handing out a code is never counted as doing the work. |
 | 11 | New guard `approved_counselor_required`: JWT claim **and** a DB check that `counselor_profiles.status == 'approved'`. | Revocation must bite immediately. A claim-only guard leaves a revoked conseiller working for up to an hour. |
 | 12 | Rejection is **terminal** — no re-apply flow in v1. `rejected` (never approved) and `revoked` (was approved, removed afterwards) are **separate statuses**. | Developer chose "logged in, waiting screen" over the re-apply variant. A rejected person who should not have been can be fixed by the admin flipping the row. The two end states are kept apart because they are not the same fact: one is a demande that failed review, the other is a conseiller who worked and whose access was withdrawn — different message on screen, different line in any report. |

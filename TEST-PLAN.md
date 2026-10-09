@@ -15,19 +15,19 @@ that doesn't match, note the URL and what you saw.
 |---|---|---|
 | Free-tier "verdict" quality | The current P1 prompt predates the verdict section | The section will exist and be filled, but the wording may be off — the schema forces the key, the prompt never described what belongs in it |
 
-**Every analysis currently runs the PAID tier.** While the PM judges report
-*content*, the free tier's three sections aren't what needs reviewing, so the
-tier selection is overridden. Practical effects:
+**The tier of a run is its door's.** The switch that used to force every run to
+the paid tier while the PM judged report *content* (`FORCE_ANALYSIS_TIER`) no
+longer exists, and nothing the browser sends picks a model. Practical effects:
 
-- Every new report comes back with all 9 sections, no lock icons.
-- The free-tier **verdict** section and the **willingness-to-pay probe** won't
-  appear — they're free-tier only. Skip **§ 7.1–7.3** and the free-tier half of
-  **§ 4.2** for now.
-- `/debloquer` will say "Cette analyse est déjà complète" for new analyses,
-  because they are. To see the paywall and the Premium card (**§ 7.4–7.6**),
-  open an analysis created *before* today.
-
-Reverting is one env var: `FORCE_ANALYSIS_TIER=""` in `/srv/neoori/.env` on the VPS.
+- A run through « Avec mon compte » or « Sans compte » is the **free tier**:
+  §1–§3 and the verdict, lock icons below, and the **willingness-to-pay probe**
+  under the report. **§ 4.2** and **§ 7** need such a report.
+- A run through « J'ai un code promo » or « J'ai un code conseiller » is
+  **Complet**: all 9 sections, no lock icons, and `/debloquer` says
+  "Cette analyse est déjà complète" for it.
+- To see the paywall and the Premium card (**§ 7.4–7.6**), open a *free* report:
+  run one through « Avec mon compte ».
+- Each door has its own checks in **§ 8**.
 
 Everything else below should work end to end.
 
@@ -125,7 +125,7 @@ it. Untick it and save: the matrix is simply not written, and nothing errors.
 
 | # | Do | Expect |
 |---|---|---|
-| 4.1 | Fill and submit a real CV + target | Analysis runs, lands on the report |
+| 4.1 | Signed in, fill a real CV + target, click « Générer mon analyse », choose « Avec mon compte » and « Lancer la version gratuite » | The doors panel opens under the button (the doors themselves are § 8). The analysis runs, then lands on the report |
 | 4.2 | Count the sections on a **free** report | **§1, §2, §3 + a "Verdict" section.** §4 is no longer free |
 | 4.3 | Check section §3 | Renders as a tag cloud, not paragraphs |
 | 4.4 | Check the CTA banner | "Débloquez les **6** sections restantes" (was 5) |
@@ -154,13 +154,130 @@ Retired on 2026-10-08 (`docs/superpowers/specs/2026-10-08-remove-parcours-2-3-de
 
 ---
 
-## 8 · Counselor view
+## 8 · Les quatre portes
+
+The form at `/analyse/nouveau` is open to everyone, and « Générer mon analyse »
+leads to four doors. The server decides each door's tier and who gets the
+report (CLAUDE.md, « Les quatre portes »). This replaces the old counselor-view
+checks: the `/c/<token>` share link, the « Vue conseiller » tab and the
+`VERSION CONSEILLER` badge on the report no longer exist (§ 8.6). Everything
+here goes through nginx, http://localhost:8080.
+
+**Set up once**
+
+- A verified candidate account, and a second browser profile (or a private
+  window) for the rows that say "profile 2".
+- An approved counselor account with one **single-use** conseiller code: mint
+  it in `/conseiller` with « Places » = 1. A promo code with **two** uses: mint
+  it in `/admin/conseillers`, « Codes promo », « Utilisations » = 2. Two, so
+  that the once-per-account rule (8.1.6) is reached: a one-use code is already
+  exhausted by then and answers « Ce code a atteint sa limite d'utilisation. »
+- Locally there is no Resend key, so a mail is a line in
+  `docker compose logs backend`, and so are the verification and sign-in links
+  (`DEV — no RESEND_API_KEY, link for <address>: <link>`).
+- A free-tier run costs about 0.06 $ and a Complet run about 0.2 $. Where a row
+  only needs a finished report to look at, reuse one.
+
+### 8.1 Each door, signed out
+
+Open `/analyse/nouveau` with no session. Paste a CV of at least 200 characters
+and a target of at least 50.
 
 | # | Do | Expect |
 |---|---|---|
-| 8.1 | On a report, click "Partager au conseiller", open the copied link | Opens `/c/<token>` with a VERSION CONSEILLER badge |
-| 8.2 | Check the sections | Shows the counselor set only (§1, §4, §5), **and every section has content** |
-| 8.3 | Switch to "Vue conseiller" on the report page itself | Same section set |
+| 8.1.1 | Click « Générer mon analyse » | Nothing starts. A panel « Comment voulez-vous continuer ? » opens under the button with four doors, in this order: « Avec mon compte », « J'ai un code conseiller », « J'ai un code promo », « Sans compte ». One door is open at a time |
+| 8.1.2 | « Sans compte »: tick « J’accepte les CGV et la politique de confidentialité. », click « Lancer sans compte » | The address becomes `/rapport#<long key>`: the waiting screen, then the free report (§1–§3 + verdict). The bar above it reads « Ce rapport n'est accessible que par ce lien, jusqu'au <date, 30 days ahead>. » with « Copier le lien », « Créer un compte pour le garder », « PDF » and « Supprimer ce rapport ». The waiting screen promises no mail: « Le rapport s’affiche ici automatiquement. Gardez ce lien pour le retrouver. » |
+| 8.1.3 | « J'ai un code conseiller »: prénom, nom, the single-use code, tick the box, click « Envoyer à mon conseiller » | The notice « Le rapport complet sera envoyé à votre conseiller, pas à vous : vous n'en recevrez pas de copie. Votre conseiller pourra vous le présenter ou vous le transmettre. » sits above the box. After the click you are on `/analyse/envoyee`: « C’est envoyé. », with no link, no id and no report text anywhere |
+| 8.1.4 | Use the same code at the same door again | Refused inside the panel: « Ce code a atteint sa limite d'utilisation. » (The same code's voyage use is counted apart, and is still free.) |
+| 8.1.5 | « J'ai un code promo »: type the promo code, click « Continuer » | Taken to `/inscription` (sign up first). Sign in (a new account needs its verification link first, in the backend log): you come back on `/analyse/nouveau` with the form refilled and the panel open at « J'ai un code promo ». Nothing has started |
+| 8.1.6 | Click « Lancer l’analyse complète » (the code is pre-filled in the same browser for two hours; otherwise retype it) | The waiting screen, then a report with all 9 sections and no unlock offer. Use the same code again with the same account: « Vous avez déjà utilisé ce code. » |
+| 8.1.7 | Start again. « Avec mon compte »: click « Créer un compte ou me connecter » | The same round trip as 8.1.5, back on the form with the panel open at « Avec mon compte ». « Lancer la version gratuite » runs the free tier, and the report is saved in `/espace` |
+| 8.1.8 | Type a conseiller code at « J'ai un code promo » and click « Continuer » | The panel moves to « J'ai un code conseiller » with the code kept in its field, and shows « Ce code est un code conseiller : choisissez « J'ai un code conseiller ». » A promo code typed at the advisor door moves the other way, with « Ce code est un code promo : choisissez « J'ai un code promo ». » |
+
+### 8.2 Each door, signed in; an expired session
+
+| # | Do | Expect |
+|---|---|---|
+| 8.2.1 | Signed in, open the form and click « Générer mon analyse » | Three doors: « Sans compte » is hidden, since « Avec mon compte » gives the same tier and keeps the report |
+| 8.2.2 | « Avec mon compte » → « Lancer la version gratuite » (skip if 8.1.7 just did it) | A free report, saved in `/espace` |
+| 8.2.3 | « J'ai un code promo » with a promo code this account has not used (a second code, or the code of 8.1.6 from a second account) → « Lancer l’analyse complète » | A Complet report in `/espace` |
+| 8.2.4 | « J'ai un code conseiller » as a signed-in candidate | Behaves exactly as signed out (8.1.3): the report goes to the counselor, and nothing new appears in the candidate's `/espace` |
+| 8.2.5 | Signed in, on the form: make the access cookie expire. Wait past `JWT_ACCESS_TOKEN_EXPIRES` (1 h), or replace `access_token_cookie` with an expired token in the browser's cookie editor (keep one expired token to paste back for the next rows). **Do not reload.** Click « Enregistrer le brouillon » | « Votre session a expiré : ce brouillon est gardé dans ce navigateur. Connectez-vous pour l’enregistrer dans votre espace. » instead of « Brouillon enregistré » |
+| 8.2.6 | Cookie expired as in 8.2.5, form not reloaded: click « Générer mon analyse », choose « Avec mon compte » and click « Lancer la version gratuite » (then, separately, the same with « J'ai un code promo » and a valid code) | The server answers 401 and the panel sends you through the sign-in round trip **once**, to `/inscription`: no loop. After signing in you are back on the form with the panel open at that door |
+| 8.2.7 | Cookie expired as in 8.2.5, form not reloaded: « J'ai un code conseiller » with a code that has a free place | It works as in 8.1.3: the advisor door ignores the session |
+| 8.2.8 | Cookie expired, then reload the form | You are a signed-out visitor: four doors, and « Sans compte » works |
+
+### 8.3 Signing in mid-flow
+
+| # | Do | Expect |
+|---|---|---|
+| 8.3.1 | In profile 1, fill the form, choose « Avec mon compte » → « Créer un compte ou me connecter » and sign up with a new address and password. Take the verification link from the backend log, open it in **profile 2** and enter the signup password | Signed in on profile 2, on `/analyse/nouveau`, with the form refilled from what profile 1 held and the panel open at « Avec mon compte ». Nothing has started |
+| 8.3.2 | Same start, but on the sign-in page ask for « Recevoir un lien de connexion » with an existing account that has **no draft**. Open the link in profile 2 and click « Continuer » | Signed in on profile 2 with an empty form and the sentence « Votre formulaire est resté sur l’appareil où vous l’avez rempli : connectez-vous depuis celui-ci pour le retrouver. » The draft stayed in profile 1 |
+| 8.3.3 | Only if `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set locally: same start, « Continuer avec Google », in the same browser | Back on the form, refilled, the panel open at « Avec mon compte ». Without both keys the button does not show: skip this row and say so |
+
+### 8.4 The counselor's side
+
+Use the advisor run of 8.1.3, or mint another single-use code and make a new one.
+
+| # | Do | Expect |
+|---|---|---|
+| 8.4.1 | When the advisor run ends, read `docker compose logs backend` | A line `RESEND_API_KEY missing — mail to <the counselor's address> not sent.` That is the mail « Une analyse est prête », for the counselor and nobody else: the candidate gets none |
+| 8.4.2 | Sign in as the counselor and open `/conseiller` | « Mes bénéficiaires » lists the person as prénom + nom, with « Voir l’analyse » in the « Analyse » column. The code's row shows « 1 analyse · 0 voyage » beside its status, and no « Révoquer » (a code that has been used cannot be revoked) |
+| 8.4.3 | Click « Voir l’analyse » | `/conseiller/analyses/<id>`, headed « Prénom NOM · code « <label> » · <date> ». While the run goes: « Analyse en cours… La page se met à jour toute seule. » Then the complete report, 9 sections, with no unlock offer and no price probe |
+| 8.4.4 | Click « PDF » | A print preview of the report alone: no top bar, no buttons, no « Notes privées » |
+| 8.4.5 | Type in « Notes privées », click « Enregistrer », reload | « Enregistré. », and the note is back after the reload. Another counselor opening the same URL sees « Analyse introuvable. » |
+| 8.4.6 | As any signed-in user, and signed out, open `/api/analyses/<id>` with the id from the URL above | `403` « Accès non autorisé. » both times: an advisor report is never served on a candidate route |
+| 8.4.7 | Make the run fail: `UPDATE analyses SET status = 'error' WHERE id = '<id>';` (mysql command in § 8.7), then reload the page | « L’analyse n’a pas abouti. Vous pouvez la relancer. » and a « Relancer » button. Click it: the same row runs again (a real Complet run), the page goes back to « Analyse en cours… » and ends on the report. The code still counts 1 analyse |
+| 8.4.8 | Click « Supprimer l’analyse » | An in-page question « Supprimer définitivement cette analyse ? » with « Supprimer » and « Annuler » — never a browser dialog. « Supprimer » returns to `/conseiller`: the report and its note are gone, the code still counts its use |
+
+### 8.5 Keeping a no-login report
+
+| # | Do | Expect |
+|---|---|---|
+| 8.5.1 | On the report of 8.1.2 click « Créer un compte pour le garder » and sign in to an **existing** account | `/espace?garder=1`: « Le rapport est maintenant dans votre espace. » and the report comes first in the list. The old `/rapport#…` link now says « Ce lien n'est plus valide. » |
+| 8.5.2 | Repeat with a new no-login report and a **password signup**; open the verification link and enter the password | The report is in `/espace`, with no sentence: the verification link attached it. The old link is dead too |
+| 8.5.3 | While signed in, open a still-valid `/rapport#…` link | The button reads « Garder dans mon espace » and goes straight to `/espace`. The offer « Créez un compte pour débloquer le rapport complet » is not shown |
+| 8.5.4 | On a no-login report click « Supprimer ce rapport », then « Supprimer » | « Supprimer définitivement ce rapport ? » first, in the page, then « Rapport supprimé. » with « Nouvelle analyse ». The link is dead |
+| 8.5.5 | **A real print, once, by hand.** On a no-login report in Chrome press Ctrl/Cmd+P with « Headers and footers » ticked; repeat once in Safari | The URL in the header or footer of the preview has no `#…`: the page removes the key for the print and puts it back afterwards. Close the preview: the address bar has its `#<key>` again |
+
+### 8.6 Limits, logs and retired pages
+
+Commands for this section:
+
+```bash
+# 8.6.1: sixty POSTs the server refuses before any run starts (no cost)
+for i in $(seq 1 60); do curl -s -o /dev/null -w '%{http_code} ' -X POST http://localhost:8080/api/analyses/ -H 'Content-Type: application/json' -d '{"door":"anonymous"}'; done; echo
+
+# 8.6.3: a probe in the query string and in the Referer, then look for it
+curl -s -o /dev/null 'http://localhost:8080/api/health?probe=PROBE123' -H 'Referer: http://localhost:8080/x?probe=PROBE123'
+docker compose logs nginx | grep -c PROBE123
+docker compose logs nginx | tail -3
+```
+
+| # | Do | Expect |
+|---|---|---|
+| 8.6.1 | Run the burst command | About 41 `400` (the empty form is refused) and then `429` from nginx, once the burst of 40 is used |
+| 8.6.2 | Within a few seconds of the burst, use a door in the UI with a valid form (« Sans compte », box ticked, « Lancer sans compte ») | The panel shows « Trop de tentatives — réessayez dans une minute. » and no run starts |
+| 8.6.3 | Run the probe commands | `0` for the count. The last lines have the shape `<address> [<time>] "GET /api/health" <status> <bytes> <seconds>`: nothing after the path, no Referer. Locally this covers nginx only: the dev backend (`flask run`) logs query strings, and the gunicorn format ships with the production image (check it on the VPS: DOCKER.md, « Access logs record the path only ») |
+| 8.6.4 | Open `/c/anything` | The static page « Ce lien n’est plus actif. » with « Retour à l’accueil ». `curl -i http://localhost:8080/api/c/anything` answers 404 |
+| 8.6.5 | `docker compose exec backend flask purge-expired --dry-run` | Four counts — `held_drafts`, `anonymous`, `advisor`, `run_log` — then `dry run — nothing deleted` |
+
+### 8.7 On real MySQL
+
+The two checks SQLite cannot reproduce. The local database:
+`docker compose exec db mysql -uroot -pneoori_dev neoori`.
+
+```bash
+# 8.7.1: put the single-use code in <CODE>, then ten advisor submits at once
+BODY='{"door":"advisor","code":"<CODE>","prenom":"Test","nom":"Course","consent":true,"inputs":{"cv_text":"'"$(printf 'c%.0s' $(seq 1 300))"'","cible_visee":"Chauffeur livreur PL dans une entreprise de transport régional"}}'
+seq 1 10 | xargs -P 10 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST http://localhost:8080/api/analyses/ -H 'Content-Type: application/json' -d "$BODY" | sort | uniq -c
+```
+
+| # | Do | Expect |
+|---|---|---|
+| 8.7.1 | The race. Mint a single-use code for the test counselor (`/conseiller`, « Places » = 1), run the command above, then count in MySQL: `SELECT COUNT(*) FROM code_redemptions WHERE code_id = '<id of that code>';` | Exactly one `201`; the other nine `400` (« Ce code a atteint sa limite d'utilisation. ») or `409`. The count is `1`. Ten requests fit the `analyses` burst of 40, and only the one run costs anything |
+| 8.7.2 | A run a restart orphaned. Take an advisor report and make it look stuck: `UPDATE analyses SET status = 'running', started_at = UTC_TIMESTAMP() - INTERVAL 20 MINUTE WHERE id = '<id>';` then open `/conseiller/analyses/<id>` | « L’analyse n’a pas abouti. Vous pouvez la relancer. » with « Relancer », and the row is now `error` in MySQL. Use `UTC_TIMESTAMP()`, not `NOW()`: the app writes UTC. A row started less than 15 minutes ago stays `running`, and a `queued` row is never touched |
 
 ---
 
@@ -307,13 +424,17 @@ banners, error messages — says *vous*.
 
 ### 12.9 Ce que le voyage change dans une analyse
 
+Run these analyses through « Avec mon compte » or « J'ai un code promo »: the
+advisor and no-login doors fold in no profile and no voyage (§ 8), so
+`inputs` never carries a `_voyage` line there.
+
 | # | Do | Expect |
 |---|---|---|
 | 12.9.1 | With an account that has no voyage, run an analysis and open its response (`GET /api/analyses/<id>`) in the Network tab (F12 → Network) | Runs and completes exactly as before. `inputs` has **no** `_voyage` key and **no** `_voyage_id` key at all; `voyage_id` is `null`. The voyage is never required |
 | 12.9.2 | Play session 0 to the end, wait for the phrase, then run a new analysis and look at `inputs._voyage` in the same response | A list of **exactly 2** lines: « Phrase révélée : … » and « Ce qui l'attire le plus dans dix ans : … ». `inputs._voyage_id` and the top-level `voyage_id` are the same id |
 | 12.9.3 | Have the counselor validate the portrait (§ 13.22), then run **another** new analysis and look at `inputs._voyage` | Up to **9** lines — the two from § 12.9.2 plus « Univers dominants », « Besoin dominant », « Ambivalences relevées », « Cadre où elle donne le meilleur », « Ce qui l'épuise », « Ce qui la met en colère », « Se sent vivant(e) quand » (a line is omitted, not left empty, when it has nothing to say). The § 12.9.2 analysis itself is untouched — still its own 2 lines |
 | 12.9.4 | Read every line in `inputs._voyage` carefully | The first line (« Phrase révélée : … ») is free text the model wrote from the person's own answers and may legitimately carry a digit — an age or a duration, e.g. a made-up « Après 17 ans d'usine… », is not a bug. **Every other line must never contain a digit**, and no line may contain a framework word: « score », « névrotisme », « RIASEC », « Big Five », « extraversion », « conscienciosité », « Élevé » / « Moyen » / « Faible ». If one does, stop and report it — it is the one bug in this section that matters |
-| 12.9.5 | On an analysis carrying a voyage, open the report itself, its « Vue conseiller » tab (§ 8.3), and its `/c/<token>` link (§ 8.1) | The voyage lines are rendered on **none** of the three — they exist only in the raw `inputs` payload read directly, as in the rows above. Model-facing only, never on a page or a share link |
+| 12.9.5 | On an analysis carrying a voyage, open the report itself, and print it to PDF | The voyage lines are rendered on **neither** the page nor the printout — they exist only in the raw `inputs` payload read directly, as in the rows above. Model-facing only, never on a page. (The old « Vue conseiller » tab and the `/c/<token>` share link are gone, § 8.6.) |
 | 12.9.6 | With that same analysis still around, open `/voyage`, click « Supprimer mon voyage » (§ 12.7.1) and confirm, then re-open the analysis's response | `inputs` no longer has `_voyage` or `_voyage_id`, and the top-level `voyage_id` is `null`. The analysis and its delivered report text are untouched — only the copied voyage lines are gone |
 
 > The rule the PM cares about here: **the person never sees a score, a trait

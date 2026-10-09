@@ -6,9 +6,10 @@ Two audiences, two access rules, one blueprint:
     voyage and never take an id from the client, so there is nothing to
     enumerate and no ownership check to forget.
   * counselor handlers need the counselor/admin role **and** the share token.
-    That is deliberately stricter than /api/c/<token> for analyses: the
-    synthesis sheet is a psychometric read-out, so a leaked link alone must
-    not open it (spec § Security).
+    That was deliberately stricter than /api/c/<token> for analyses, a public
+    link the four-doors spec retired (decision 43): the synthesis sheet is a
+    psychometric read-out, so a leaked link alone must not open it (spec
+    § Security).
 
 Session locking is enforced here and not only in the UI — see
 models.voyage.session_lock: S0 needs the voyage to exist, S1-S5 need a
@@ -532,9 +533,10 @@ def get_portrait():
 
 
 # ── counselor ────────────────────────────────────────────────────────────────
-# Role AND token. /api/c/<token> for an analysis is public by design — a
-# counselor opens the link without an account. The synthesis sheet is a
-# psychometric read-out, so a leaked link alone must not open it.
+# Role AND token. /api/c/<token> for an analysis was public by design — a
+# counselor opened the link without an account — until the four-doors spec
+# retired it (decision 43). The synthesis sheet is a psychometric read-out,
+# so a leaked link alone must not open it.
 
 NOT_FOUND = "Voyage introuvable."
 
