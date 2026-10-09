@@ -7,12 +7,18 @@ internal compose network — no published ports, so nothing bypasses ufw.
 ## Local development
 
 ```bash
-docker compose up -d          # first run builds images (a few minutes)
-open http://localhost:8080    # nginx: / -> Next.js, /api -> Flask
+docker compose up -d                       # first run builds images (a few minutes)
+open http://neoori.localhost:8080          # the landing; nginx: / -> Next.js, /api -> Flask
+open http://cv.neoori.localhost:8080       # « J'ai une cible »
+open http://voyage.neoori.localhost:8080   # le voyage
 ```
 
 - `backend/.env` must exist (it already does; template: `backend/.env.example`).
 - Port 80 is left to the TaifOr dev stack; neoori dev uses **8080**.
+- The three dev hosts work in Chrome, which resolves `*.localhost` to the
+  loopback by itself (Safari does not). One sign-in covers the three: the
+  session cookie is set on `neoori.localhost`. Plain `http://localhost:8080`
+  shows the landing too, and its links lead to the three names.
 - Direct ports (loopback only): frontend `:3001`, backend `:5001`, MySQL `:3306`.
 - Dev MySQL reuses the old `backend_neoori_mysql_data` volume — existing local
   data carries over. Fresh machine? Seed the prompts (see below), prefixed with
@@ -81,11 +87,20 @@ GitHub repo → Settings → Secrets → Actions:
 Rollback to any commit: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` on the VPS.
 Not to a commit below the four-doors migration, though: that takes four commands in a fixed order, see « Rolling back below the four-doors migration » under Purge.
 
+Rolling back below the subdomain split works the same way, with one
+condition: if `APP_URL` and `FRONTEND_URL` were already deleted from
+`/srv/neoori/.env`, put `FRONTEND_URL=https://neoori.tech` back first — the
+earlier image builds Stripe's return URL from it, and its fallback is
+`http://localhost:3000`. Everyone signs in once more (the earlier image reads
+the old cookie names).
+
 ## TLS
 
 **Done 23/08** — `neoori.tech` + `www.neoori.tech`, cert expires 21/11/2026.
 The site is live at https://neoori.tech; www 301s to the apex; plain http 301s
-to https. Steps kept for a re-issue or a second domain:
+to https. The subdomain split adds `cv.` and `voyage.` to the same
+certificate (« Adding cv. and voyage. », below). Steps kept for a re-issue or
+a second domain:
 
 ```bash
 # 1. DNS A record -> 186.240.157.26; set DOMAIN=... in /srv/neoori/.env (keep NGINX_MODE=http)
@@ -97,18 +112,38 @@ docker compose -f docker-compose.prod.yml up -d nginx
 #    and the container hangs forever instead of issuing anything.
 #    Add --dry-run first — Let's Encrypt rate-limits failures.
 docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot certonly \
-  --webroot -w /var/www/certbot -d neoori.tech -d www.neoori.tech \
+  --webroot -w /var/www/certbot \
+  -d neoori.tech -d www.neoori.tech -d cv.neoori.tech -d voyage.neoori.tech \
   --email nneoori@proton.me --agree-tos --no-eff-email
 
-# 3. Switch nginx to the TLS template (and point FRONTEND_URL at the domain —
-#    it drives the backend CORS allow-list and Stripe return URLs)
-sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=https://neoori.tech|; s/^NGINX_MODE=.*/NGINX_MODE=https/' .env
+# 3. Switch nginx to the TLS template
+sed -i 's/^NGINX_MODE=.*/NGINX_MODE=https/' .env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-The GitHub repo **variable** `SITE_URL=https://neoori.tech` is set; it bakes
-into the frontend image as `NEXT_PUBLIC_SITE_URL` (metadata/OG URLs), so it
-only takes effect on the next image build.
+### Adding cv. and voyage. (the subdomain split)
+
+Done once, **before** the deploy that ships the split: without it `cv.` and
+`voyage.` show a certificate warning.
+
+```bash
+# 1. DNS: A records cv and voyage -> 186.240.157.26. No AAAA (below). Wait
+#    until both resolve: dig +short cv.neoori.tech voyage.neoori.tech
+# 2. Expand the certificate. It keeps its name (--cert-name), so the
+#    template's paths and the renew loop do not change. Today's port-80
+#    server is the only one, so it answers the challenge for the new names.
+#    --dry-run first: Let's Encrypt rate-limits failures.
+docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot certonly \
+  --webroot -w /var/www/certbot --cert-name neoori.tech --expand \
+  -d neoori.tech -d www.neoori.tech -d cv.neoori.tech -d voyage.neoori.tech \
+  --email nneoori@proton.me --agree-tos --no-eff-email --dry-run
+# then the same command without --dry-run, and:
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+```
+
+After the deploy, delete `APP_URL` and `FRONTEND_URL` from
+`/srv/neoori/.env` and the GitHub repo variable `SITE_URL` — but only once
+no rollback below the split is expected (« CI/CD », rollback).
 
 The `certbot` container renews automatically every 12 h, but renewing does not
 reach nginx — it holds the old certificate in memory until reloaded. A deploy
@@ -149,12 +184,24 @@ minutes. Both zones key on the client address like the auth ones, so the
 warning above applies to them too: behind a shared IPv6 address every visitor
 would draw on one 10 r/min bucket.
 
+### No subdomain may point anywhere else
+
+The session cookies carry `Domain=neoori.tech`: one sign-in for the landing,
+`cv.` and `voyage.`, so every host under the domain receives them. A
+subdomain served by anything but this stack — a blog, a status page, a Resend
+click-tracking domain, any CNAME to an outside service, a staging copy of the
+app — would receive every visitor's session. And because `cv.` and `voyage.`
+count as one site to a browser, `SameSite=Lax` would not stop such a host from
+sending signed-in requests either (CSRF protection is off). The zone holds the
+apex, `www`, `cv`, `voyage` and the mail records Resend needs, and nothing else
+that serves HTTP. A staging stack gets a domain of its own.
+
 ### Access logs record the path only
 
 nginx and gunicorn log the path only (`log_format neoori_paths` in the nginx
 templates, `--access-logformat` in `backend/entrypoint.sh`): sign-in links,
 `next` paths and Stripe session ids travel in query strings, and the Referer
-repeats them. An access line carries the address, the time, the method, the
+repeats them. An access line carries the address, the time, the host, the method, the
 path, the status, the size and the duration, nothing more. To check on the VPS
 after a deploy and a few requests:
 
@@ -174,6 +221,32 @@ the Referer it records beside it now carries only the origin
 (`Referrer-Policy "strict-origin"` in the https template): a token page's own
 requests no longer repeat its token there.
 
+## Swapping the domain later
+
+The domain is written in one place: `DOMAIN` in `/srv/neoori/.env` (nginx,
+the backend and the frontend read it when their containers start). Each time
+it changes:
+
+1. DNS for the new domain: A records for the apex, `www`, `cv` and `voyage`
+   → 186.240.157.26. No AAAA.
+2. A certificate for the new domain's four names: the command in « TLS »
+   with the new names and `--cert-name <new domain>`. nginx's port-80 default
+   server answers the challenge for names it does not serve yet.
+3. `DOMAIN=<new domain>` in `/srv/neoori/.env`, then
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --force-recreate backend frontend nginx
+   ```
+   nginx re-renders its template; nothing is rebuilt.
+4. Google and Microsoft: add `https://cv.<new>/api/auth/<provider>/callback`
+   and `https://voyage.<new>/api/auth/<provider>/callback`.
+5. Stripe: the webhook URL, `https://<new>/api/payments/webhook`.
+6. Resend: verify the new domain, then change `MAIL_FROM`. Until then mails
+   leave from the old address and link to the new domain — never the other
+   way round: an unverified sender is refused, silently.
+
+Links to the old domain (mails already sent, bookmarks) stop working once its
+DNS moves away.
+
 ## Google / Microsoft sign-in keys
 
 Four keys in `/srv/neoori/.env` (and `backend/.env` locally) configure the
@@ -187,6 +260,12 @@ editing `.env`:
 ```bash
 docker compose -f docker-compose.prod.yml up -d --force-recreate backend
 ```
+
+Each provider registers two redirect URIs, one per subdomain, because a
+sign-in ends on the host it started on:
+`https://cv.neoori.tech/api/auth/<provider>/callback` and
+`https://voyage.neoori.tech/api/auth/<provider>/callback`. The spec's
+appendices A and B predate the split and name the root's; use these two.
 
 ### Microsoft secret renewal
 

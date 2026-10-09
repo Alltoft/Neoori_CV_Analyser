@@ -7,7 +7,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4). French-only UI — see the root
 
 ```bash
 # full stack (recommended): from the repo root
-docker compose up -d          # http://localhost:8080
+docker compose up -d          # http://neoori.localhost:8080 (+ cv. and voyage.)
 
 # frontend alone (needs the backend running on :5001)
 npm run dev                   # http://localhost:3001

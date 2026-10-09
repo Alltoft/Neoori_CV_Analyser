@@ -114,7 +114,7 @@ decides each door's tier and recipient — the browser never chooses a tier, and
   serves by id. The commands, in order: DOCKER.md, « Rolling back below the
   four-doors migration ».
 - Access logs (nginx, gunicorn) record the path only — no query string, no
-  Referer.
+  Referer; nginx's line also carries the host.
 
 ## AI call spec
 
@@ -161,7 +161,7 @@ Yes: factual, sober, professional, direct
 
 ## Live deployment (VPS)
 
-Live at **https://neoori.tech** (www redirects to the apex). Everything runs as Docker containers on one Hostinger VPS (KVM 2, Ubuntu 24.04, IP `186.240.157.26`). Full runbook: `DOCKER.md`.
+Live at **https://neoori.tech** (the landing), **https://cv.neoori.tech** (« J'ai une cible ») and **https://voyage.neoori.tech** (le voyage); www redirects to the apex. The domain is one setting, `DOMAIN` (see « Sous-domaines »). Everything runs as Docker containers on one Hostinger VPS (KVM 2, Ubuntu 24.04, IP `186.240.157.26`). Full runbook: `DOCKER.md`.
 
 | Container | Role | Image |
 |---|---|---|
@@ -173,7 +173,7 @@ Live at **https://neoori.tech** (www redirects to the apex). Everything runs as 
 ### Architecture
 Browser → nginx (`/` → Next.js, `/api/*` → Flask) → MySQL (internal network)
 
-nginx serves both apps from one origin, so everything stays same-origin from the browser's perspective. JWT cookies are `SameSite=Lax` because of this.
+nginx serves both apps on each host, so every page's API calls stay same-origin. The session cookies are `SameSite=Lax` and span the whole domain (`Domain=DOMAIN`): one sign-in for the landing, `cv.` and `voyage.` (« Sous-domaines »).
 
 ### Deploy workflow
 ```
@@ -184,13 +184,51 @@ git push        # GitHub Actions: build images → push GHCR → sync config + p
 ```
 Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` — except below the four-doors migration, which needs the purge and a downgrade first (see Les quatre portes).
 
-Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
+Local dev mirrors prod routing: `docker compose up -d` → http://neoori.localhost:8080 (the landing), http://cv.neoori.localhost:8080, http://voyage.neoori.localhost:8080 — in Chrome, which resolves `*.localhost` by itself.
 
 ### Known gotchas
 - `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Now `https` — login only works in that phase, JWT cookies are `Secure`-only in production.
 - Flask `strict_slashes=False` stays global — the proxies strip trailing slashes before forwarding.
-- Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
+- The frontend reads `DOMAIN` at request time (`environment:` in both compose files): no site URL is baked into the image. `NEXT_PUBLIC_API_URL`, unset everywhere, is the one build-time value left, and like any `NEXT_PUBLIC_*` value it would need a rebuild.
 - The four-doors caps and retentions are optional env settings read in `config.py` (defaults in parentheses): `ANONYMOUS_RUNS_PER_DAY` (200), `FREE_RUNS_PER_ACCOUNT_PER_DAY` (5), `CV_TEXT_MAX` (40000), `CIBLE_MAX` (10000), `ANONYMOUS_RETENTION_DAYS` (30), `ADVISOR_RETENTION_DAYS` (365), `HELD_DRAFT_RETENTION_HOURS` (48), `HELD_DRAFTS_MAX` (2000). `FORCE_ANALYSIS_TIER` no longer exists: a leftover line in `/srv/neoori/.env` does nothing.
+
+## Sous-domaines
+
+One Next.js app, one backend, one database and one sign-in, on three hosts
+built from one setting, `DOMAIN` (`/srv/neoori/.env`, read when the containers
+start: changing it needs no rebuild).
+
+| Host | Serves |
+|---|---|
+| `DOMAIN` | today's landing at `/`, nothing else: every other path redirects (307) to the host that serves it |
+| `cv.DOMAIN` | « J'ai une cible »: `/analyse/*`, `/rapport`, `/espace`; `/` → `/analyse/nouveau` until its landing exists |
+| `voyage.DOMAIN` | le voyage: `/voyage/*`; `/` → `/voyage` |
+
+Every other page — the sign-in pages, `/profil`, `/conseiller`, `/admin`, the
+legal pages — is shared: served on cv and voyage, and sent from the root to
+cv. The table lives in `frontend/src/lib/site.ts`: **a new page that belongs
+to one app needs a row there**, or it is shared. A link that may cross hosts
+uses `AppLink`, `useSite().href` or `go()` (`lib/site-context.tsx`).
+
+- **One sign-in.** The session cookies are `neoori_access` / `neoori_refresh`
+  with `Domain=DOMAIN` (`config.py`, `app/__init__.py`). The Google/Microsoft
+  state, the signup ticket and `neoori_hold` stay on one host: each of their
+  round trips starts and ends there.
+- **Absolute URLs come from `DOMAIN`, never from the Host header**
+  (`backend/app/utils/site.py`). An account mail links to the host it was
+  asked from — cv when that is any other name — and every other mail to cv;
+  the Google/Microsoft callback is on the host the sign-in started on (both
+  are registered with each provider); Stripe returns to cv.
+- **No subdomain of `DOMAIN` may be served by anything but this stack** — no
+  blog, status page, click-tracking domain, staging copy or CNAME to an
+  outside service. It would receive every session cookie, and `SameSite=Lax`
+  does not stop a sibling subdomain from sending signed-in requests (CSRF
+  protection is off). DOCKER.md, « No subdomain may point anywhere else ».
+- `MAIL_FROM` is deliberately separate from `DOMAIN`: Resend silently refuses
+  an unverified sender. The order for a domain swap is in DOCKER.md,
+  « Swapping the domain later ».
+
+Spec: `docs/superpowers/specs/2026-10-09-subdomain-split-design.md`
 
 ## Le voyage
 
@@ -365,8 +403,9 @@ the same signed links (`utils/auth_links.py`, itsdangerous, no table); a reset
 ends every older session at its next refresh, through the `pwv` claim on
 refresh tokens (an access token already issued lives up to 1 h).
 
-- Mail: Resend, From `MAIL_FROM`, links from `APP_URL`. With no key in dev the
-  link is printed in the backend log.
+- Mail: Resend, From `MAIL_FROM`, links built from `DOMAIN` (`utils/site.py`):
+  an account mail names the host it was asked from, every other mail cv. With
+  no key in dev the link is printed in the backend log.
 - One account mail a minute per address (`users.auth_mail_sent_at`), plus
   per-IP nginx `limit_req` on the auth endpoints.
 - The auth rate limits key on the client address, and IPv6 clients reach nginx

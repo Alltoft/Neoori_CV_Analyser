@@ -27,7 +27,7 @@ Scope: new prompt in DB, new form route, new analysis flow, partial rapport view
 | Prompt storage | DB table `prompt_versions`, edited via `/admin/prompts` UI, never in code | `backend/app/models/prompt_version.py` |
 
 Live URLs:
-- Dev (docker): `http://localhost:8080` — nginx routes `/` → Next.js, `/api/*` → Flask
+- Dev (docker): `http://neoori.localhost:8080` (the landing), `http://cv.neoori.localhost:8080`, `http://voyage.neoori.localhost:8080`, in Chrome — nginx routes `/` → Next.js, `/api/*` → Flask
 - Prod: Hostinger VPS `186.240.157.26`, four containers via `docker-compose.prod.yml` (runbook: `DOCKER.md`)
 - Browser → nginx → both apps, same-origin. JWT cookies are `SameSite=Lax`.
 
