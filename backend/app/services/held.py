@@ -9,8 +9,9 @@ still reachable by its own link — « Garder » never clears its key.
 
 Nothing here attaches a row to an account before the signup password has
 proven its address (decision 36): signup only marks the row
-(`pending_user_id`), verify-email attaches it, and any other proof of the
-address drops the mark.
+(`pending_user_id`), and only on a round trip this browser started
+(ROUND_TRIPS); verify-email attaches it, and any other proof of the address
+drops the mark.
 
 A held draft belongs to the browser, not to an account, so logout deletes it
 (`drop_held_draft`): on a shared computer it must not be handed to the next
@@ -28,6 +29,25 @@ COOKIE = "neoori_hold"
 TOO_MANY = "Le service est très demandé : connectez-vous d’abord, puis revenez à ce formulaire."
 # Every /api route that reads it: drafts, claim, and /auth/register.
 PATH = "/api"
+
+# The `next` of each sign-in round trip that hands a held row on: « Avec mon
+# compte » and « J'ai un code promo » in the doors panel, the lapsed-session
+# link under « Enregistrer le brouillon » (ruling R14), and « Créer un compte
+# pour le garder » on /rapport (decision 32). The frontend calls /claim on
+# these four URLs only. A password signup marks the held row only when its
+# `next` is one of them (decision 34, amended by the final review): a signup
+# from anywhere else — the landing's « Créer un compte » lands on /espace —
+# may be a stranger's on a shared computer, after someone who held a CV here
+# walked away, and marking would hand that CV to them at verify-email.
+# Compared exactly, never decoded or prefix-matched: the frontend writes these
+# strings literally, encodes them once into ?redirect= and reads them back
+# once, so they reach /auth/register exactly as written here.
+ROUND_TRIPS = frozenset({
+    "/analyse/nouveau?reprendre=compte",
+    "/analyse/nouveau?reprendre=promo",
+    "/analyse/nouveau?reprendre=brouillon",
+    "/espace?garder=1",
+})
 
 
 def _secure() -> bool:
@@ -92,8 +112,12 @@ def attach(row: Analysis, user_id: str) -> None:
         row.created_at = datetime.utcnow()
 
 
-def mark_for(user_id: str) -> bool:
-    """Password signup: the held row waits for this account. Caller commits."""
+def mark_for(user_id: str, next_path: str | None) -> bool:
+    """Password signup: the held row waits for this account, when the signup
+    is a round trip this browser started (`next_path` in ROUND_TRIPS).
+    Caller commits."""
+    if next_path not in ROUND_TRIPS:
+        return False
     row = held_row()
     if row is None:
         return False

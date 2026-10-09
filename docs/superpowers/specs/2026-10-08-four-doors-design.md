@@ -283,6 +283,9 @@ numbers are indicative; the plan re-reads them after both merges.
       logs.
     - Promoting a draft — at any door — sets `created_at` to the submit time,
       so retention and the report's date count from the run.
+
+    > Amended 2026-10-09 (final review): signup marks the held row only when its `next` is the round trip this browser started (`/analyse/nouveau?reprendre=compte|promo|brouillon`, `/espace?garder=1`) — a signup from anywhere else marks nothing, so a stranger's later signup on a shared computer cannot take over a held CV.
+
 35. *Claude's call.* **A held draft not claimed within 48 hours is deleted** —
     the life of the verification link (`VERIFY_MAX_AGE`). The form then opens
     empty with « Votre brouillon a expiré. »

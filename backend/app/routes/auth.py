@@ -75,17 +75,21 @@ def register():
 
     db.session.commit()
 
+    next_path = text_field(data, "next") or None
+
     # A draft this browser holds waits for this account (four-doors spec,
     # decision 34): marked now, attached only once the signup password proves
-    # the address at verify-email (decision 36). Never for an address that
+    # the address at verify-email (decision 36). Only when this signup is the
+    # round trip that holding it started (held.ROUND_TRIPS): any other signup
+    # in this browser may be someone else's. Never for an address that
     # already had an account — that answered 409 above.
-    if held.mark_for(user.id):
+    if held.mark_for(user.id, next_path):
         db.session.commit()
 
     # No session: the account opens once its address is proven (spec decision
     # 2). `next` rides in the link, so the email round-trip lands them back
     # where they were heading.
-    mail_sent = auth_mail.verification_if_due(user, text_field(data, "next") or None)
+    mail_sent = auth_mail.verification_if_due(user, next_path)
     return jsonify({"user": user.to_dict(), "mail_sent": mail_sent}), 201
 
 

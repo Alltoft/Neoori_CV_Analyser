@@ -14,6 +14,12 @@ from app.utils import auth_links
 from app.utils.tokens import hash_token, new_access_token
 from tests.helpers_doors import P1_INPUTS, bearer, expired_bearer, user
 
+# The `next` of the two round trips most tests below take: « Avec mon compte »
+# on the form, and « Créer un compte pour le garder » on /rapport. Signup marks
+# the held row only on a round trip this browser started (ruling R39).
+FORM_ROUND_TRIP = "/analyse/nouveau?reprendre=compte"
+KEEP_ROUND_TRIP = "/espace?garder=1"
+
 
 def _cookie(client):
     cookie = client.get_cookie(held.COOKIE, path="/api")
@@ -102,7 +108,8 @@ def test_hold_refuses_an_unknown_token(client, app):
 
 def test_signup_marks_and_only_the_signup_password_attaches(client, app):
     _held_draft(client)
-    res = client.post("/api/auth/register", json={"email": "zoe@test.fr", "password": "motdepasse1"})
+    res = client.post("/api/auth/register", json={"email": "zoe@test.fr", "password": "motdepasse1",
+                                                  "next": FORM_ROUND_TRIP})
     assert res.status_code == 201
     new_id = res.get_json()["user"]["id"]
     row = Analysis.query.one()
@@ -121,15 +128,18 @@ def test_signup_for_a_taken_address_marks_nothing(client, app):
     user("zoe@test.fr")
     _held_draft(client)
     assert client.post("/api/auth/register",
-                       json={"email": "zoe@test.fr", "password": "motdepasse1"}).status_code == 409
+                       json={"email": "zoe@test.fr", "password": "motdepasse1",
+                             "next": FORM_ROUND_TRIP}).status_code == 409
     assert Analysis.query.one().pending_user_id is None
 
 
 def test_proving_the_address_another_way_drops_the_mark_and_keeps_the_row(client, app):
     _held_draft(client)
-    res = client.post("/api/auth/register", json={"email": "zoe@test.fr", "password": "motdepasse1"})
+    res = client.post("/api/auth/register", json={"email": "zoe@test.fr", "password": "motdepasse1",
+                                                  "next": FORM_ROUND_TRIP})
     from app.models.user import User
     stranger_set = db.session.get(User, res.get_json()["user"]["id"])
+    assert Analysis.query.one().pending_user_id == stranger_set.id     # marked first
 
     sign_in.enter(stranger_set)            # Google, Microsoft or the email link
     db.session.expire_all()
@@ -140,9 +150,11 @@ def test_proving_the_address_another_way_drops_the_mark_and_keeps_the_row(client
 
 def test_a_reset_on_an_unverified_account_drops_the_mark(client, app):
     _held_draft(client)
-    res = client.post("/api/auth/register", json={"email": "zoe@test.fr", "password": "motdepasse1"})
+    res = client.post("/api/auth/register", json={"email": "zoe@test.fr", "password": "motdepasse1",
+                                                  "next": FORM_ROUND_TRIP})
     from app.models.user import User
     account = db.session.get(User, res.get_json()["user"]["id"])
+    assert Analysis.query.one().pending_user_id == account.id          # marked first
     token = auth_links.make_reset_token(account)
     assert client.post("/api/auth/reset-password",
                        json={"token": token, "password": "nouveau-mdp1"}).status_code == 200
@@ -186,10 +198,14 @@ def _kept_report(client):
     return report, token
 
 
-def _signup(client, email="zoe@test.fr", password="motdepasse1"):
-    """Password signup in this browser, as committed. Returns the new, still
-    unverified account."""
-    res = client.post("/api/auth/register", json={"email": email, "password": password})
+def _signup(client, email="zoe@test.fr", password="motdepasse1", next_path=FORM_ROUND_TRIP):
+    """Password signup in this browser, as committed, on the round trip
+    `next_path` (None: no `next` at all). Returns the new, still unverified
+    account."""
+    body = {"email": email, "password": password}
+    if next_path is not None:
+        body["next"] = next_path
+    res = client.post("/api/auth/register", json=body)
     assert res.status_code == 201
     account_id = res.get_json()["user"]["id"]
     _reload()
@@ -385,7 +401,7 @@ def test_the_cookie_finds_nothing_once_verify_has_attached_the_row(client, app):
 
 def test_a_kept_report_follows_the_signup_password_path(client, app):
     report, token = _kept_report(client)
-    account = _signup(client)
+    account = _signup(client, next_path=KEEP_ROUND_TRIP)
     assert _verify(client, account).status_code == 200
     row = db.session.get(Analysis, report.id)
     assert (row.user_id, row.access_token_hash, row.pending_user_id) == (account.id, None, None)
@@ -620,3 +636,71 @@ def test_a_signed_out_save_says_it_is_held_and_a_signed_in_one_does_not(client, 
         "inputs": P1_INPUTS, "draft_id": signed_in.get_json()["analysis"]["id"],
     })
     assert again.status_code == 200 and "held" not in again.get_json()
+
+
+# ── Final review (ruling R39): only the round trip this browser started marks ─
+#
+# A held row may be the leftover of someone else on this browser: « Avec mon
+# compte » or « Garder », then no signup. A later signup that did not start
+# from one of those round trips — the landing's « Créer un compte » lands on
+# /espace — must not take it over: verify-email would attach the stranger's
+# CV to the new account for good, and the purge would never select it again.
+
+ROUND_TRIPS = [
+    "/analyse/nouveau?reprendre=compte",
+    "/analyse/nouveau?reprendre=promo",
+    "/analyse/nouveau?reprendre=brouillon",        # ruling R14's lapsed-session link
+    "/espace?garder=1",                            # « Créer un compte pour le garder »
+]
+
+
+def _unmarked_and_still_held():
+    row = Analysis.query.one()
+    assert (row.pending_user_id, row.user_id) == (None, None)
+    assert row.access_token_hash is not None       # still the browser's, and expires with it
+
+
+@pytest.mark.parametrize("next_path", ROUND_TRIPS)
+def test_each_round_trip_signup_marks_and_verify_attaches(client, app, next_path):
+    _held_draft(client)
+    account = _signup(client, next_path=next_path)
+    assert Analysis.query.one().pending_user_id == account.id
+    assert _verify(client, account).status_code == 200
+    row = Analysis.query.one()
+    assert (row.user_id, row.access_token_hash, row.pending_user_id) == (account.id, None, None)
+
+
+def test_a_signup_heading_for_espace_marks_nothing(client, app):
+    _held_draft(client)
+    account = _signup(client, next_path="/espace")
+    _unmarked_and_still_held()
+    assert _verify(client, account).status_code == 200     # the registrant's proof...
+    _unmarked_and_still_held()                             # ...attaches nothing either
+
+
+def test_a_signup_with_no_next_marks_nothing(client, app):
+    _held_draft(client)
+    _signup(client, next_path=None)
+    _unmarked_and_still_held()
+
+
+@pytest.mark.parametrize("next_path", [
+    "/espace?garder=1&x=1",                        # starts with an allowed value
+    "/analyse/nouveau?reprendre=compte&x=1",
+    "/analyse/nouveau?reprendre=comptes",
+    "/analyse/nouveau?reprendre=promo#x",
+    "/espace?garder=10",
+    "/espace/?garder=1",
+    "/Espace?garder=1",
+    "%2Fespace%3Fgarder%3D1",                      # compared as given, never decoded
+])
+def test_a_next_that_only_resembles_a_round_trip_marks_nothing(client, app, next_path):
+    _held_draft(client)
+    _signup(client, next_path=next_path)
+    _unmarked_and_still_held()
+
+
+def test_a_kept_report_is_not_marked_by_a_signup_from_elsewhere(client, app):
+    _kept_report(client)
+    _signup(client, next_path="/espace")
+    _unmarked_and_still_held()
