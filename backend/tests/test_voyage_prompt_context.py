@@ -486,6 +486,17 @@ def test_a_bogus_voyage_id_never_500s(_start, client, app, candidate_headers):
     assert payload["voyage_id"] is None
 
 
+def test_merge_voyage_still_strips_the_server_only_keys_it_is_handed(app):
+    """The allow-list (analysis_inputs.clean) drops a posted _voyage before the
+    submit gets here, so the route tests above no longer reach these two pops.
+    They stay as defence in depth, and are pinned directly."""
+    from app.routes.analyses import _merge_voyage
+
+    inputs = {"cv_text": "x", "_voyage": ["intrus"], "_voyage_id": "not-a-real-voyage-id"}
+    _merge_voyage(inputs, None)
+    assert inputs == {"cv_text": "x"}
+
+
 def test_a_posted_voyage_is_stripped_from_a_draft_new_and_updated(client, app):
     """save_draft has none of _merge_voyage's protections -- inputs is
     stored on the row verbatim, so a client-posted _voyage / _voyage_id used

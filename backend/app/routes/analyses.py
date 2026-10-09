@@ -1,5 +1,7 @@
 import hmac
-import os
+from datetime import datetime
+from functools import partial
+from uuid import uuid4
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
@@ -8,17 +10,16 @@ from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
 from ..models.counselor_note import CounselorNote
 from ..models.price_feedback import BUCKETS, PriceFeedback
-from ..models.profile import Profile, prompt_context
+from ..models.profile import CONSENT_VERSION, Profile, prompt_context
 from ..models.voyage import Voyage
 from ..services.voyage.scoring import STAGE_S0, STAGE_VALIDATED
 from ..services.voyage.scoring import prompt_context as voyage_prompt_context
-from ..utils.tokens import generate_share_token, hash_token
+from ..utils.tokens import hash_token, new_access_token
 from ..utils.request_body import json_object, text_field, dict_field
 from ..services import analysis_inputs, held
 from ..services import code_service
 from ..services import doors
 from ..services import section_registry as registry
-from ..services import tiers
 from ..services import unlock_service
 from ..services.anthropic_service import start_analysis
 
@@ -27,17 +28,6 @@ analyses_bp = Blueprint("analyses", __name__)
 # The key to a no-login report travels in this header, never in a URL the
 # server would log (four-doors spec, decision 30).
 TOKEN_HEADER = "X-Analysis-Token"
-
-# ── TEMPORARY: force every analysis to one tier ──────────────────────────────
-# While the PM reviews report *content*, the free tier's three sections aren't
-# what needs judging — so every analysis runs paid until they're done.
-#
-# To restore normal behaviour: change the default below to "" (or set
-# FORCE_ANALYSIS_TIER="" in /srv/neoori/.env). The paywall, the unlock flow and the
-# Premium checkout are untouched — this only decides what a *new* analysis
-# generates.
-_FORCE_TIER = tiers.normalize(os.getenv("FORCE_ANALYSIS_TIER", "paid")) \
-    if os.getenv("FORCE_ANALYSIS_TIER", "paid") else None
 
 # Parcours 1 splits in two (Parcours doc §4). Chemin A is an actual job ad,
 # pasted or uploaded — the report compares the CV against it point by point.
@@ -64,57 +54,125 @@ def _normalize_chemin(value) -> str:
 
 
 @analyses_bp.post("/")
-@jwt_required()
 def create_analysis():
-    # An account with a proven address is required (email verification spec,
-    # decision 13): the anonymous path made throwaway accounts unnecessary.
-    user_id = get_jwt_identity()
+    """The submit behind « Générer mon analyse »: one of four doors (four-doors
+    spec). services/doors.py decides the tier and who the report is for. A
+    `tier` in the body, from a form older than the doors, is never read.
+
+    Order matters: everything that can refuse runs before the code is spent,
+    and the code is spent — committed — before the run starts (decision 23).
+    At the doors with a code that commit is redeem()'s own, and it carries the
+    row and its run_log entry with it, so a use is never spent on a run that
+    has no row.
+    """
+    user_id = _optional_user_id()
     data = json_object()
-    inputs = dict_field(data, "inputs")
-    # Parcours 1 is the only parcours (2 and 3 were retired on 2026-10-08).
-    # The stored id is the server's, whatever the body says: a stale page
-    # posting "2" or "3" gets a parcours 1 analysis, validated as one.
+
+    inputs, errors = analysis_inputs.clean(dict_field(data, "inputs"))
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    plan, refusal = doors.decide(text_field(data, "door") or None, user_id=user_id)
+    if refusal:
+        message, status = refusal
+        return jsonify({"error": message}), status
+
+    # Parcours 1 is the only parcours (2 and 3 were retired on 2026-10-08), and
+    # the stored id is the server's: clean() never lets a posted _path through.
     inputs["_path"] = registry.DEFAULT_PARCOURS
     inputs["_chemin"] = _normalize_chemin(inputs.get("_chemin"))
-
-    if _FORCE_TIER:
-        # TEMPORARY — see _FORCE_TIER above. Delete the default to restore
-        # normal tier selection.
-        inputs["_tier"] = _FORCE_TIER
-    else:
-        # normalize() accepts the legacy "haiku"/"sonnet" nicknames and
-        # falls back to free for anything unrecognised.
-        inputs["_tier"] = tiers.normalize(data.get("tier"))
-
     errors = _validate_inputs(inputs)
     if errors:
         return jsonify({"errors": errors}), 400
 
-    # Fold in the Profil de base so the form never re-asks what the profile
-    # already knows, and pre-shape bloc 5 into the three lists the report may
-    # use — the raw answers never reach the model.
-    _merge_profile(inputs, user_id)
+    if plan.needs_identity:
+        prenom, nom = text_field(data, "prenom"), text_field(data, "nom")
+        if not prenom or not nom:
+            return jsonify({"error": doors.IDENTITY}), 400
+        if len(prenom) > doors.NAME_MAX or len(nom) > doors.NAME_MAX:
+            return jsonify({"error": doors.IDENTITY_LONG}), 400
+        inputs["prenom"], inputs["nom"] = prenom, nom
 
-    analysis = Analysis(
+    if plan.needs_consent and data.get("consent") is not True:
+        return jsonify({"error": doors.CONSENT}), 400
+
+    over = doors.over_cap(plan, user_id)
+    if over:
+        return jsonify({"error": over}), 429
+
+    code = None
+    if plan.code_kind:
+        code, door_refusal = code_service.resolve_for_door(data.get("code"), plan.door, user_id)
+        if door_refusal:
+            body = {"error": door_refusal.message}
+            if door_refusal.door:
+                body["door"] = door_refusal.door
+            return jsonify(body), door_refusal.status
+
+    inputs["_tier"] = plan.tier
+    if plan.folds_profile:
+        # Profil de base and le voyage join the inputs — account and promo
+        # only. An advisor-door report goes to a counselor and must carry
+        # nothing the candidate's account knows (decision 24).
+        _merge_profile(inputs, user_id)
+
+    draft = _draft_for(data, user_id)
+    promote = draft is not None and not plan.always_new_row
+    target_id = draft.id if promote else str(uuid4())
+    token = new_access_token() if plan.gives_token else None
+    # Plain values from here on: redeem() commits, and may roll back, and both
+    # expire every row this request has loaded.
+    stage = partial(
+        _stage_run, plan,
         user_id=user_id,
         inputs=inputs,
-        status="queued",
-        share_token=generate_share_token(),
-        # Set by _merge_voyage a few lines up. Stored on the row as well as
-        # in the inputs blob so "which voyage fed this analysis" survives a
-        # JSON shape change and is queryable -- B2G traceability, as with
-        # prompt_version_id.
-        voyage_id=inputs.get("_voyage_id"),
+        target_id=target_id,
+        promote=promote,
+        draft_id=draft.id if draft is not None else None,
+        token=token,
+        counselor_id=code.owner_id if plan.door == doors.ADVISOR else None,
     )
-    db.session.add(analysis)
-    db.session.commit()
+    held_draft_used = user_id is None and draft is not None
+
+    stage()
+    if code is None:
+        db.session.commit()
+    else:
+        refused = code_service.redeem(
+            code,
+            # Promo: the account, for once-per-account. Advisor: nobody — the
+            # candidate stays out of the counselor's records but for prénom/nom.
+            user_id=user_id if plan.door == doors.PROMO else None,
+            target_type="analysis",
+            target_id=target_id,
+        )
+        if refused:
+            # redeem() rolls back on a key violation but not on its early
+            # EXHAUSTED: either way the staged row must not outlive the refusal.
+            db.session.rollback()
+            return jsonify({"error": refused}), 409
+        if not _is_queued_at(target_id, plan.door):
+            # Another request took the slot first: redeem() rolled back — the
+            # row with it — and committed only the redemption on its retry.
+            # The use is spent, so put the row back and commit it.
+            stage()
+            db.session.commit()
 
     # Hand the slow Anthropic call to a background thread so the HTTP
-    # response returns immediately. The frontend polls GET /analyses/<id>
-    # for status — avoids edge-proxy timeouts on long Sonnet generations.
-    start_analysis(analysis.id, current_app._get_current_object())
+    # response returns immediately; the page polls for status.
+    start_analysis(target_id, current_app._get_current_object())
 
-    return jsonify({"analysis": analysis.to_dict()}), 201
+    if plan.door == doors.ADVISOR:
+        body = {}
+    else:
+        body = {"analysis": db.session.get(Analysis, target_id).to_dict()}
+        if token:
+            body["access_token"] = token
+    response = jsonify(body)
+    if held_draft_used:
+        # The row it held now carries a fresh key, or is gone.
+        held.clear_cookie(response)
+    return response, 201
 
 
 @analyses_bp.post("/draft")
@@ -314,6 +372,31 @@ def unlock_with_code(analysis_id):
     return jsonify({"analysis": analysis.to_dict()}), 200
 
 
+@analyses_bp.post("/<analysis_id>/relaunch")
+@jwt_required()
+def relaunch_promo(analysis_id):
+    """A failed promo-door run, relaunched by its owner on the same row with no
+    new code use (four-doors spec, decision 49). The use was spent before the
+    run, once-per-account would refuse a second try, and unlock_service.refusal
+    refuses an errored row: without this, a failure burns the code.
+
+    A conditional update, so a double click starts one run, not two.
+    """
+    analysis = Analysis.query.get_or_404(analysis_id)
+    if analysis.user_id is None or analysis.user_id != get_jwt_identity() or analysis.door != doors.PROMO:
+        return jsonify({"error": "Accès non autorisé."}), 403
+    claimed = (
+        Analysis.query
+        .filter(Analysis.id == analysis.id, Analysis.status.in_(("error", "timeout")))
+        .update({"status": "queued", "progress": 0}, synchronize_session=False)
+    )
+    db.session.commit()
+    if claimed != 1:
+        return jsonify({"error": "Cette analyse n'a pas besoin d'être relancée."}), 409
+    start_analysis(analysis.id, current_app._get_current_object())
+    return jsonify({"analysis": analysis.to_dict()}), 200
+
+
 @analyses_bp.post("/<analysis_id>/price-feedback")
 def submit_price_feedback(analysis_id):
     """Willingness-to-pay probe, shown after a free report.
@@ -359,6 +442,72 @@ def delete_analysis(analysis_id):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def _draft_for(data: dict, user_id: str | None) -> Analysis | None:
+    """The draft this submit replaces: the caller's own (draft_id) when signed
+    in, the one this browser holds when not. None when there is none."""
+    if user_id is not None:
+        draft_id = text_field(data, "draft_id")
+        if not draft_id:
+            return None
+        return Analysis.query.filter_by(id=draft_id, user_id=user_id, status="draft").first()
+    return held.held_row(draft_only=True)
+
+
+def _stage_run(
+    plan: doors.Plan,
+    *,
+    user_id: str | None,
+    inputs: dict,
+    target_id: str,
+    promote: bool,
+    draft_id: str | None,
+    token: str | None,
+    counselor_id: str | None,
+) -> None:
+    """Put one submitted run in the session — its row and its run_log entry —
+    for the caller to commit.
+
+    The row is the caller's draft promoted in place (`promote`), else a new row
+    that replaces the draft, if there was one: a draft the person holds an id
+    to is never reused where the report is not theirs. Everything arrives as
+    ids and plain values, and the draft is looked up again here, because this
+    can run a second time after redeem() rolled the first attempt back.
+    """
+    analysis = db.session.get(Analysis, target_id) if promote else None
+    if analysis is None:
+        analysis = Analysis(id=target_id)
+        db.session.add(analysis)
+    if draft_id is not None and not promote:
+        replaced = db.session.get(Analysis, draft_id)
+        if replaced is not None:
+            db.session.delete(replaced)
+
+    now = datetime.utcnow()
+    analysis.inputs = inputs
+    analysis.status = "queued"
+    # The run's time, not the draft's: retention and the report's date count
+    # from here (decision 34).
+    analysis.created_at = now
+    analysis.door = plan.door
+    analysis.user_id = user_id if plan.needs_session else None
+    analysis.counselor_id = counselor_id
+    analysis.pending_user_id = None
+    analysis.access_token_hash = hash_token(token) if token else None
+    if plan.needs_consent:
+        analysis.consent_at = now
+        analysis.consent_version = CONSENT_VERSION
+    # Stored on the row as well as in the inputs blob: which voyage fed this
+    # analysis stays queryable -- B2G traceability, as with prompt_version_id.
+    analysis.voyage_id = inputs.get("_voyage_id")
+    doors.log_run(plan.door, user_id)
+
+
+def _is_queued_at(analysis_id: str, door: str) -> bool:
+    """Whether the run's row is committed, queued, through this door."""
+    row = db.session.get(Analysis, analysis_id)
+    return row is not None and row.status == "queued" and row.door == door
+
+
 def _merge_profile(inputs: dict, user_id: str | None) -> None:
     """Copy the Profil de base and le voyage into this analysis's inputs.
 
@@ -368,11 +517,10 @@ def _merge_profile(inputs: dict, user_id: str | None) -> None:
     OETH flag becomes a plain boolean — neither the raw condition answers nor
     the status itself is ever stored on the analysis.
 
-    The voyage fold runs whether or not a profile exists: _merge_voyage is
-    the only place that strips a client-supplied _voyage/_voyage_id (see its
-    docstring), and that has to happen for every request create_analysis
-    accepts. That route is @jwt_required now, so user_id is always set there;
-    the falsy branch is kept so the strip never depends on it.
+    The voyage fold runs whether or not a profile exists. The submit calls
+    this for the account and promo doors only (doors.Plan.folds_profile), both
+    of which need a session, so user_id is always set there; the falsy branch
+    is kept so nothing here depends on that.
     """
     if user_id:
         profile = Profile.query.filter_by(user_id=user_id).first()
@@ -398,16 +546,16 @@ def _merge_profile(inputs: dict, user_id: str | None) -> None:
 def _merge_voyage(inputs: dict, user_id: str | None) -> None:
     """Fold le voyage into this analysis's inputs, reduced to plain lines.
 
-    The first two statements remove whatever the caller itself posted under
-    these keys. `inputs` is dict_field(data, "inputs") — a shallow copy of
-    the request's own JSON, so it carries any key the client sent, verbatim.
-    _voyage and _voyage_id are server-only: left in place, a posted _voyage
-    reaches the model under the real "CE QUE LE VOYAGE A REVELE" header
-    (prompt injection, and a framework-vocabulary leak past every guard
-    prompt_context() enforces), and a posted _voyage_id either stamps another
-    user's voyage onto this row's traceability column or, if it names no
-    row, raises an uncaught IntegrityError on the Analysis(voyage_id=...)
-    commit below — a 500 any signed-in account could trigger.
+    The first two statements are defence in depth. The client's keys are
+    already an allow-list (analysis_inputs.clean), so a posted _voyage or
+    _voyage_id never gets here. They stay because both are server-only and a
+    key that slipped through would do real harm: a posted _voyage reaches the
+    model under the real "CE QUE LE VOYAGE A REVELE" header (prompt injection,
+    and a framework-vocabulary leak past every guard prompt_context()
+    enforces), and a posted _voyage_id either stamps another user's voyage
+    onto this row's traceability column or, if it names no row, raises an
+    uncaught IntegrityError on the commit that writes it — a 500 any
+    signed-in account could trigger.
     Popping unconditionally, before any lookup, closes both — for every
     caller, which is why this runs even when user_id is falsy rather than
     from inside _merge_profile's `if user_id:` block.

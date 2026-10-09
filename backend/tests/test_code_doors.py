@@ -1,5 +1,4 @@
 """Codes under the four doors (four-doors spec, decisions 17-23)."""
-from contextlib import contextmanager
 from datetime import datetime
 from unittest.mock import patch
 
@@ -8,7 +7,9 @@ from app.models.analysis import Analysis
 from app.models.code_redemption import CodeRedemption
 from app.models.voyage import STATUS_TERMINE, Voyage
 from app.services import code_service, unlock_service
-from tests.helpers_doors import bearer, code, counselor, user
+from tests.helpers_doors import (
+    bearer, code, counselor, last_place_goes_after_resolve, stale_first_count_after_resolve, user,
+)
 
 
 def test_kind_is_derived_from_the_owner(app):
@@ -203,48 +204,6 @@ def test_erasing_a_voyage_lets_the_account_unlock_a_new_one_with_the_code(client
     assert code_service.redemption_count(c.id, "voyage") == 2
 
 
-@contextmanager
-def _stale_first_count_after_resolve():
-    """The first redemption_count after resolve() is redeem()'s own read, and
-    it reports 0 — as a MySQL snapshot older than another request's commit
-    would. `served` says the stale read really happened."""
-    real_resolve, real_count = code_service.resolve, code_service.redemption_count
-    state = {"next": False, "served": False}
-
-    def resolve_then_go_stale(code_str, target_type):
-        found = real_resolve(code_str, target_type)
-        state["next"] = True
-        return found
-
-    def count(code_id, target_type=None):
-        if state["next"]:
-            state["next"], state["served"] = False, True
-            return 0
-        return real_count(code_id, target_type)
-
-    with patch.object(code_service, "resolve", side_effect=resolve_then_go_stale), \
-            patch.object(code_service, "redemption_count", side_effect=count):
-        yield state
-
-
-@contextmanager
-def _last_place_goes_after_resolve(code_id, target_type):
-    """Another request takes slot 1 after this one's check and before its
-    write: resolve() said yes, redeem() will find the code full."""
-    real_resolve = code_service.resolve
-
-    def resolve_then_lose_the_place(code_str, kind):
-        found = real_resolve(code_str, kind)
-        db.session.add(CodeRedemption(
-            code_id=code_id, target_type=target_type, target_id="x-other", slot=1,
-        ))
-        db.session.commit()
-        return found
-
-    with patch.object(code_service, "resolve", side_effect=resolve_then_lose_the_place):
-        yield
-
-
 def _unlockable_voyage():
     candidate = user()
     voyage = Voyage(user_id=candidate.id, consent_at=datetime.utcnow(), age_attested=True)
@@ -278,7 +237,7 @@ def test_a_retried_redemption_still_unlocks_the_voyage(client, app):
     db.session.add(CodeRedemption(code_id=c.id, target_type="voyage", target_id="v-other", slot=1))
     db.session.commit()
 
-    with _stale_first_count_after_resolve() as stale:
+    with stale_first_count_after_resolve() as stale:
         res = client.post("/api/voyage/unlock", json={"code": "CONS0016"}, headers=bearer(candidate))
 
     assert res.status_code == 200, res.data
@@ -295,7 +254,7 @@ def test_a_refusal_after_the_check_leaves_the_voyage_locked(client, app):
     candidate, voyage = _unlockable_voyage()
     c = code(counselor(), max_uses=1, value="CONS0017")
 
-    with _last_place_goes_after_resolve(c.id, "voyage"):
+    with last_place_goes_after_resolve(c.id, "voyage"):
         res = client.post("/api/voyage/unlock", json={"code": "CONS0017"}, headers=bearer(candidate))
 
     assert res.status_code == 400
@@ -352,7 +311,7 @@ def test_a_retried_debloquer_redemption_still_unlocks_the_report(start, client, 
     db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-other", slot=1))
     db.session.commit()
 
-    with _stale_first_count_after_resolve() as stale:
+    with stale_first_count_after_resolve() as stale:
         res = client.post(f"/api/analyses/{analysis.id}/unlock", json={"code": "PROMO008"},
                           headers=bearer(owner))
 
@@ -373,7 +332,7 @@ def test_a_refusal_after_the_check_leaves_the_report_free(start, client, app):
     analysis = _free_report(owner)
     c = code(value="PROMO009", max_uses=1)
 
-    with _last_place_goes_after_resolve(c.id, "analysis"):
+    with last_place_goes_after_resolve(c.id, "analysis"):
         res = client.post(f"/api/analyses/{analysis.id}/unlock", json={"code": "PROMO009"},
                           headers=bearer(owner))
 

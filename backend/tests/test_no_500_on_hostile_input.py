@@ -125,6 +125,9 @@ def rig(client, app, monkeypatch):
     """
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
     monkeypatch.setattr("app.routes.analyses.start_analysis", lambda *a, **kw: None)
+    # A fuzz loop makes several valid runs with one account: past the daily cap
+    # the later ones would answer 429, a pass that tests nothing.
+    app.config["FREE_RUNS_PER_ACCOUNT_PER_DAY"] = 10_000
 
     import stripe
 
@@ -239,16 +242,44 @@ ROUTES = [
         headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {
             "inputs": {"_path": "1", "cv_text": "x" * 250, "cible_visee": "y" * 60},
-            "tier": "free",
+            "tier": "free", "door": "account",
         },
         fields=[
-            "inputs", "tier",
+            # `tier` is never read since the doors; a stale form still posts it.
+            "inputs", "tier", "door", "draft_id",
             "inputs.cv_text", "inputs.cible_visee", "inputs._path", "inputs._chemin",
-            # R1: _voyage / _voyage_id are server-only -- _merge_voyage pops
-            # both before any lookup, so a hostile shape here must never
-            # reach _voyage_block() or the Analysis(voyage_id=...) commit.
+            # R1: _voyage / _voyage_id are server-only -- the allow-list drops
+            # both (and _merge_voyage pops them again, as defence in depth),
+            # so a hostile shape here must never reach _voyage_block() or the
+            # Analysis(voyage_id=...) commit.
             "inputs._voyage", "inputs._voyage_id",
         ],
+    ),
+    dict(
+        # The same route through the advisor door, signed out: the code, the
+        # identity and the consent are all body fields.
+        name="create_analysis_advisor",
+        method="post",
+        path=lambda rig: "/api/analyses/",
+        headers=lambda rig: {},
+        base=lambda rig: {
+            "inputs": {"cv_text": "x" * 250, "cible_visee": "y" * 60},
+            "door": "advisor", "code": "AAAA1111",
+            "prenom": "Rig", "nom": "Fuzz", "consent": True,
+        },
+        fields=["door", "code", "prenom", "nom", "consent", "draft_id"],
+    ),
+    dict(
+        # And through the no-login door: a consent and nothing else.
+        name="create_analysis_anonymous",
+        method="post",
+        path=lambda rig: "/api/analyses/",
+        headers=lambda rig: {},
+        base=lambda rig: {
+            "inputs": {"cv_text": "x" * 250, "cible_visee": "y" * 60},
+            "door": "anonymous", "consent": True,
+        },
+        fields=["door", "consent", "inputs"],
     ),
     dict(
         name="save_draft",

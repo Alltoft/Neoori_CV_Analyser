@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
 from ..services.pdf_service import extract_text_from_pdf
 
 upload_bp = Blueprint("upload", __name__)
@@ -24,8 +23,10 @@ def _extract_pdf_from_request() -> tuple[str | None, tuple | None]:
     return text, None
 
 
+# Open to signed-out visitors: the parcours 1 form is (four-doors spec, ruling
+# 1). The text is extracted in memory and returned, never stored; nginx's
+# `analyses` zone limits these per address (decision 39).
 @upload_bp.post("/cv")
-@jwt_required()
 def upload_cv():
     text, err = _extract_pdf_from_request()
     if err:
@@ -34,7 +35,6 @@ def upload_cv():
 
 
 @upload_bp.post("/projet")
-@jwt_required()
 def upload_projet():
     text, err = _extract_pdf_from_request()
     if err:
