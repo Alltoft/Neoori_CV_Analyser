@@ -38,7 +38,7 @@ _OFFERS = {
     tiers.PAID: {
         "cents": PRICE_EUR_CENTS,
         "name": "neoori — analyse complète",
-        "description": "Déblocage du rapport complet + export conseiller",
+        "description": "Déblocage du rapport complet",
     },
     tiers.PREMIUM: {
         "cents": PREMIUM_PRICE_EUR_CENTS,
