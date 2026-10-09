@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
+import { AppLink, useSite } from "@/lib/site-context"
 import { Logo } from "@/components/brand/Logo"
 import { LogOut } from "lucide-react"
 
@@ -24,10 +25,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading, logout } = useAuth()
+  const { go } = useSite()
 
   const handleLogout = async () => {
     await logout()
-    router.push("/")
+    // The root landing (subdomain split spec, decision 16).
+    go("/")
   }
 
   // The proxy checks that a cookie exists, not what it says. Without this a
@@ -67,7 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <p className="mt-2 text-sm text-muted-foreground">
             Cette page est réservée à l&apos;administration.
           </p>
-          <Button render={<Link href="/espace" />} size="lg" className="mt-4">
+          <Button render={<AppLink href="/espace" />} size="lg" className="mt-4">
             Retour à mon espace
           </Button>
         </div>

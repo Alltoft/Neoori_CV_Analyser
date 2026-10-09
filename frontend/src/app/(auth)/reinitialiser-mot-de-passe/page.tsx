@@ -1,13 +1,14 @@
 "use client"
 
 import { Suspense, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useAuth } from "@/lib/auth"
 import { homeFor } from "@/lib/home"
+import { useSite } from "@/lib/site-context"
 import { api, ApiError } from "@/lib/api"
 import type { User } from "@/types"
 import { Button } from "@/components/ui/button"
@@ -33,7 +34,7 @@ type Fields = z.infer<typeof schema>
 
 function Reinitialiser() {
   const params = useSearchParams()
-  const router = useRouter()
+  const { app, go } = useSite()
   const { refresh } = useAuth()
   const token = params.get("token") ?? ""
   const [dead, setDead] = useState<string | null>(token ? null : INVALID)
@@ -52,7 +53,7 @@ function Reinitialiser() {
       await refresh()
       setLeaving(true)
       // replace, not push: Back must not reopen the spent link.
-      router.replace(homeFor(res.user.role))
+      go(homeFor(res.user.role, app), { replace: true })
     } catch (e) {
       const code = e instanceof ApiError ? e.body?.code : undefined
       if (code === "link_expired" || code === "link_invalid") setDead((e as ApiError).message)

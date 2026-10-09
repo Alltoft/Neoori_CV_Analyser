@@ -1,10 +1,11 @@
 "use client"
 
 import { Suspense, useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth"
 import { homeFor } from "@/lib/home"
+import { useSite } from "@/lib/site-context"
 import { api, ApiError } from "@/lib/api"
 import type { User } from "@/types"
 import { Button } from "@/components/ui/button"
@@ -30,7 +31,7 @@ type Consumed = { user: User; next: string | null } | { signup: true }
  *  address shown says whose account it opens. */
 function ConnexionLien() {
   const params = useSearchParams()
-  const router = useRouter()
+  const { app, go } = useSite()
   const { refresh } = useAuth()
   const token = params.get("token") ?? ""
   const [state, setState] = useState<LinkState>(() =>
@@ -72,11 +73,11 @@ function ConnexionLien() {
       const res = await api.post<Consumed>("/auth/email-link/consume", { token }, { skipRedirect: true })
       // replace, not push: Back must not reopen the spent link.
       if ("signup" in res) {
-        router.replace("/inscription/finaliser")
+        go("/inscription/finaliser", { replace: true })
         return
       }
       await refresh()
-      router.replace(res.next ?? homeFor(res.user.role))
+      go(res.next ?? homeFor(res.user.role, app), { replace: true })
     } catch (err) {
       const code = err instanceof ApiError ? err.body?.code : undefined
       if (code === "link_expired" || code === "link_invalid") {
