@@ -235,11 +235,17 @@ def test_a_stale_parcours_2_form_gets_the_parcours_1_error(app, client, candidat
 
 
 @pytest.mark.parametrize("posted", ["2", "3", "B"])
-def test_a_draft_carrying_a_retired_parcours_is_stamped_1(posted, app, client, candidate_headers):
+def test_a_draft_carrying_a_retired_parcours_keeps_no_parcours(posted, app, client, candidate_headers):
+    """A draft keeps only the allow-listed keys (four-doors spec, decision 37),
+    and _path is not one of them: a stale page posting a retired parcours
+    leaves none on the row, which reads as parcours 1, the only one left."""
+    from app.models.analysis import Analysis
+
     res = client.post("/api/analyses/draft", json={"inputs": {"_path": posted, "cv_text": "x"}},
                       headers=candidate_headers)
     assert res.status_code == 201, res.data
-    assert json.loads(res.data)["analysis"]["inputs"]["_path"] == "1"
+    assert json.loads(res.data)["analysis"]["inputs"] == {"cv_text": "x"}
+    assert Analysis.query.one().parcours == "1"
 
 
 def test_a_draft_without_a_parcours_stays_without_one(app, client, candidate_headers):

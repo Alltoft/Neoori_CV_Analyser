@@ -22,7 +22,7 @@ from ..models.auth_identity import PROVIDERS, AuthIdentity
 from ..models.profile import PRENOM_MAX_LENGTH
 from ..models.user import User
 from ..utils import auth_links
-from . import demande_mail
+from . import demande_mail, held
 
 # The tenant every personal Microsoft account (Outlook, Hotmail, Live) signs
 # in under. Microsoft vouches for those addresses; in a work or school tenant
@@ -90,6 +90,9 @@ def enter(user: User, provider: str | None = None, sub: str | None = None) -> No
     if newly_verified:
         user.password_hash = unusable_password_hash()
         user.email_verified_at = datetime.utcnow()
+        # Same reason as the password above: a stranger may have registered
+        # this address, and nothing they held joins the account.
+        held.unmark(user.id)
     db.session.commit()
     if newly_verified:
         demande_mail.notify_if_visible(user)

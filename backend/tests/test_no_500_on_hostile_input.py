@@ -259,6 +259,16 @@ ROUTES = [
         fields=["inputs", "draft_id"],
     ),
     dict(
+        # The same route signed out: the held draft, read through the
+        # neoori_hold cookie, with the allow-listed keys fuzzed one by one.
+        name="save_draft_signed_out",
+        method="post",
+        path=lambda rig: "/api/analyses/draft",
+        headers=lambda rig: {},
+        base=lambda rig: {"inputs": {"cv_text": "x" * 250, "cible_visee": "y" * 60, "_chemin": "A"}},
+        fields=["inputs", "inputs.cv_text", "inputs.cible_visee", "inputs._chemin"],
+    ),
+    dict(
         name="unlock_with_code",
         method="post",
         path=lambda rig: f"/api/analyses/{rig['owned_analysis_id']}/unlock",

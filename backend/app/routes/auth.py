@@ -20,7 +20,7 @@ from ..models.profile import (
     ACCEPTED_AGE_BRACKETS, AGE_BRACKETS, CONSENT_VERSION, PRENOM_MAX_LENGTH, Profile,
 )
 from ..models.user import User
-from ..services import auth_mail, demande_mail, email_service, sign_in
+from ..services import auth_mail, demande_mail, email_service, held, sign_in
 from ..utils import auth_links
 from ..utils.request_body import json_object, text_field, raw_text_field
 
@@ -74,6 +74,13 @@ def register():
         _add_seeded_profile(user, seed)
 
     db.session.commit()
+
+    # A draft this browser holds waits for this account (four-doors spec,
+    # decision 34): marked now, attached only once the signup password proves
+    # the address at verify-email (decision 36). Never for an address that
+    # already had an account — that answered 409 above.
+    if held.mark_for(user.id):
+        db.session.commit()
 
     # No session: the account opens once its address is proven (spec decision
     # 2). `next` rides in the link, so the email round-trip lands them back
@@ -282,6 +289,9 @@ def verify_email():
 
     if user.email_verified_at is None:
         user.email_verified_at = datetime.utcnow()
+        # The link AND the signup password: the registrant. What signup marked
+        # for this account is theirs.
+        held.attach_pending(user.id)
         db.session.commit()
         # This address's first proof: a demande waiting on it joins the admin
         # queue now. A second use of the link is a login and skips this.
@@ -333,6 +343,9 @@ def reset_password():
     newly_verified = user.email_verified_at is None
     if newly_verified:
         user.email_verified_at = datetime.utcnow()
+        # Proven without the signup password: whoever registered this address
+        # may have been someone else (four-doors spec, decision 36).
+        held.unmark(user.id)
     db.session.commit()
 
     # After the commit, like every mail. It reaches the address's owner even

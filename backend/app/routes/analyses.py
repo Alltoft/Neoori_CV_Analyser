@@ -14,6 +14,7 @@ from ..services.voyage.scoring import STAGE_S0, STAGE_VALIDATED
 from ..services.voyage.scoring import prompt_context as voyage_prompt_context
 from ..utils.tokens import generate_share_token, hash_token
 from ..utils.request_body import json_object, text_field, dict_field
+from ..services import analysis_inputs, held
 from ..services import code_service
 from ..services import doors
 from ..services import section_registry as registry
@@ -117,53 +118,98 @@ def create_analysis():
 
 
 @analyses_bp.post("/draft")
-@jwt_required()
 def save_draft():
-    """Create or update a draft. Auth required — anonymous drafts would be
-    orphaned (no user_id) and never visible in the user's space."""
-    user_id = get_jwt_identity()
+    """Create or update a draft.
+
+    Signed in: the account's own draft, as before. Signed out: the draft this
+    browser holds (four-doors spec, decision 34) — saved by the doors that need
+    a sign-in round trip, keyed by the neoori_hold cookie and never by
+    anything in the body.
+
+    What is stored is the allow-list in analysis_inputs.clean (decision 37),
+    for both callers: it replaces the old per-key pops and the _path stamp,
+    since a key that is not allowed is never kept.
+    """
+    user_id = _optional_user_id()
     data = json_object()
     # dict_field, not a bare data.get(): a non-dict "inputs" would be stored
     # as-is on the model, then crash Analysis.parcours -- called from
     # to_dict() a few lines below -- via (self.inputs or {}).get("_path").
-    inputs = dict_field(data, "inputs")
-    # Same rule as create_analysis: a draft that names a parcours names
-    # parcours 1. An absent _path already means parcours 1, so an empty draft
-    # stays empty.
-    if "_path" in inputs:
-        inputs["_path"] = registry.DEFAULT_PARCOURS
+    inputs, errors = analysis_inputs.clean(dict_field(data, "inputs"))
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    if user_id is None:
+        row, token, status = held.held_row(draft_only=True), None, 200
+        if row is None:
+            if held.too_many():
+                return jsonify({"error": held.TOO_MANY}), 429
+            row, token = held.new_held_draft(inputs)
+            status = 201
+        else:
+            row.inputs = inputs
+        db.session.commit()
+        response = jsonify({"analysis": row.to_dict()})
+        if token:
+            held.set_cookie(response, token)
+        return response, status
+
     # text_field, not a bare data.get(): a non-string draft_id (a list, a
     # dict) reaching filter_by(id=draft_id) as a query parameter raises
     # sqlalchemy.exc.ProgrammingError ("type 'list' is not supported") --
     # no id is ever actually a list, so falling back to "no draft_id" (a new
     # draft) is the right answer, same as an absent one.
     draft_id = text_field(data, "draft_id")
-    # Same rule as _merge_voyage: _voyage / _voyage_id are server-owned, never
-    # client-supplied. A draft never sets them itself (voyage_id is only
-    # assigned at create_analysis time), so a posted pair here can only be a
-    # leftover echoed back from a previous submit response or a planted one --
-    # pop both before the row is created or updated, covering both branches
-    # below in one place.
-    inputs.pop("_voyage", None)
-    inputs.pop("_voyage_id", None)
-
     if draft_id:
-        analysis = Analysis.query.filter_by(
-            id=draft_id, user_id=user_id, status="draft"
-        ).first()
+        analysis = Analysis.query.filter_by(id=draft_id, user_id=user_id, status="draft").first()
         if analysis:
             analysis.inputs = inputs
             db.session.commit()
             return jsonify({"analysis": analysis.to_dict()}), 200
 
-    analysis = Analysis(
-        user_id=user_id,
-        inputs=inputs,
-        status="draft",
-    )
+    analysis = Analysis(user_id=user_id, inputs=inputs, status="draft")
     db.session.add(analysis)
     db.session.commit()
     return jsonify({"analysis": analysis.to_dict()}), 201
+
+
+@analyses_bp.get("/held")
+def get_held():
+    """The draft this browser holds, to refill the form after a round trip."""
+    row = held.held_row(draft_only=True)
+    if row is None:
+        return jsonify({"error": "Votre brouillon a expiré."}), 404
+    return jsonify({"analysis": row.to_dict()}), 200
+
+
+@analyses_bp.post("/hold")
+def hold_report():
+    """« Créer un compte pour le garder » (decision 32): hand a no-login report
+    to the cookie, so the claim after sign-in finds it. The page proves it
+    holds the link with the header."""
+    raw = request.headers.get(TOKEN_HEADER, "")
+    row = Analysis.query.filter_by(access_token_hash=hash_token(raw)).first() if raw else None
+    if row is None or row.user_id is not None or row.door != doors.ANONYMOUS:
+        return jsonify({"error": "Ce lien n'est plus valide."}), 404
+    response = jsonify({})
+    held.set_cookie(response, raw)
+    return response, 200
+
+
+@analyses_bp.post("/claim")
+def claim():
+    """Attach the held row to the signed-in account, then forget the cookie."""
+    user_id = _optional_user_id()
+    if user_id is None:
+        return jsonify({"error": doors.SIGN_IN}), 401
+    row = held.held_row()
+    if row is None:
+        return jsonify({"error": "Votre brouillon a expiré."}), 404
+    held.attach(row, user_id)
+    db.session.commit()
+    response = jsonify({"analysis": row.to_dict()})
+    held.clear_cookie(response)
+    return response, 200
 
 
 @analyses_bp.get("/")

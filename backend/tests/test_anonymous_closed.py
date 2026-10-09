@@ -26,12 +26,6 @@ def test_an_analysis_needs_an_account(client):
     assert client.post("/api/analyses/", json=P1).status_code == 401
 
 
-def test_a_draft_needs_an_account(client):
-    # Already jwt_required before this change; pinned here so the closed
-    # surface (create, drafts, both uploads) is asserted in one place.
-    assert client.post("/api/analyses/draft", json=P1).status_code == 401
-
-
 @patch("app.routes.analyses.start_analysis")
 def test_a_signed_in_candidate_still_creates_one(_start, client, candidate_headers):
     res = client.post("/api/analyses/", json=P1, headers=candidate_headers)
