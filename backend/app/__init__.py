@@ -193,6 +193,10 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(auth_oauth_bp, url_prefix="/api/auth")
     app.register_blueprint(codes_bp, url_prefix="/api/codes")
 
+    # CLI commands
+    from . import cli
+    cli.register(app)
+
     @app.route("/api/health")
     def health():
         return {"status": "ok"}, 200
