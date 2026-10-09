@@ -77,15 +77,31 @@ export default function RapportSansCompte() {
   // router alone (it skips entries that already carry its own state), and
   // replaceState fires neither hashchange nor popstate: the page is not
   // reloaded, remounted or re-rendered.
+  // A browser may never fire afterprint (some mobile print flows), and this
+  // history entry would stay keyless: a reload or Back would then lose the
+  // report for good. So the key also comes back at the person's next
+  // pointerdown or keydown, or when the page is shown again. Each is a no-op
+  // while the address still carries its fragment, which is always, outside a
+  // print. Capture phase, so nothing on the page can swallow them.
   useEffect(() => {
     if (!token) return
     const hideKey = () => window.history.replaceState(window.history.state, "", window.location.pathname)
-    const showKey = () => window.history.replaceState(window.history.state, "", `${window.location.pathname}#${token}`)
+    const showKey = () => {
+      if (window.location.hash) return
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}#${token}`)
+    }
+    const showKeyIfShown = () => { if (document.visibilityState === "visible") showKey() }
     window.addEventListener("beforeprint", hideKey)
     window.addEventListener("afterprint", showKey)
+    window.addEventListener("pointerdown", showKey, true)
+    window.addEventListener("keydown", showKey, true)
+    document.addEventListener("visibilitychange", showKeyIfShown)
     return () => {
       window.removeEventListener("beforeprint", hideKey)
       window.removeEventListener("afterprint", showKey)
+      window.removeEventListener("pointerdown", showKey, true)
+      window.removeEventListener("keydown", showKey, true)
+      document.removeEventListener("visibilitychange", showKeyIfShown)
     }
   }, [token])
 
