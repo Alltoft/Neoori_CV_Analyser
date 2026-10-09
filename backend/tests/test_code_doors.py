@@ -1,4 +1,5 @@
 """Codes under the four doors (four-doors spec, decisions 17-23)."""
+from contextlib import contextmanager
 from datetime import datetime
 from unittest.mock import patch
 
@@ -6,7 +7,7 @@ from app.extensions import db
 from app.models.analysis import Analysis
 from app.models.code_redemption import CodeRedemption
 from app.models.voyage import STATUS_TERMINE, Voyage
-from app.services import code_service
+from app.services import code_service, unlock_service
 from tests.helpers_doors import bearer, code, counselor, user
 
 
@@ -202,6 +203,48 @@ def test_erasing_a_voyage_lets_the_account_unlock_a_new_one_with_the_code(client
     assert code_service.redemption_count(c.id, "voyage") == 2
 
 
+@contextmanager
+def _stale_first_count_after_resolve():
+    """The first redemption_count after resolve() is redeem()'s own read, and
+    it reports 0 — as a MySQL snapshot older than another request's commit
+    would. `served` says the stale read really happened."""
+    real_resolve, real_count = code_service.resolve, code_service.redemption_count
+    state = {"next": False, "served": False}
+
+    def resolve_then_go_stale(code_str, target_type):
+        found = real_resolve(code_str, target_type)
+        state["next"] = True
+        return found
+
+    def count(code_id, target_type=None):
+        if state["next"]:
+            state["next"], state["served"] = False, True
+            return 0
+        return real_count(code_id, target_type)
+
+    with patch.object(code_service, "resolve", side_effect=resolve_then_go_stale), \
+            patch.object(code_service, "redemption_count", side_effect=count):
+        yield state
+
+
+@contextmanager
+def _last_place_goes_after_resolve(code_id, target_type):
+    """Another request takes slot 1 after this one's check and before its
+    write: resolve() said yes, redeem() will find the code full."""
+    real_resolve = code_service.resolve
+
+    def resolve_then_lose_the_place(code_str, kind):
+        found = real_resolve(code_str, kind)
+        db.session.add(CodeRedemption(
+            code_id=code_id, target_type=target_type, target_id="x-other", slot=1,
+        ))
+        db.session.commit()
+        return found
+
+    with patch.object(code_service, "resolve", side_effect=resolve_then_lose_the_place):
+        yield
+
+
 def _unlockable_voyage():
     candidate = user()
     voyage = Voyage(user_id=candidate.id, consent_at=datetime.utcnow(), age_attested=True)
@@ -235,26 +278,11 @@ def test_a_retried_redemption_still_unlocks_the_voyage(client, app):
     db.session.add(CodeRedemption(code_id=c.id, target_type="voyage", target_id="v-other", slot=1))
     db.session.commit()
 
-    real_resolve, real_count = code_service.resolve, code_service.redemption_count
-    state = {"stale_next": False, "stale_served": False}
-
-    def resolve_then_go_stale(code_str, target_type):
-        found = real_resolve(code_str, target_type)
-        state["stale_next"] = True          # redeem()'s first read follows
-        return found
-
-    def count(code_id, target_type=None):
-        if state["stale_next"]:
-            state["stale_next"], state["stale_served"] = False, True
-            return 0                        # a snapshot from before slot 1 was taken
-        return real_count(code_id, target_type)
-
-    with patch.object(code_service, "resolve", side_effect=resolve_then_go_stale), \
-            patch.object(code_service, "redemption_count", side_effect=count):
+    with _stale_first_count_after_resolve() as stale:
         res = client.post("/api/voyage/unlock", json={"code": "CONS0016"}, headers=bearer(candidate))
 
     assert res.status_code == 200, res.data
-    assert state["stale_served"]            # the first attempt did collide on slot 1
+    assert stale["served"]                  # the first attempt did collide on slot 1
     assert res.get_json()["voyage"]["has_code"] is True
     assert db.session.get(Voyage, voyage.id).counselor_code_id == c.id
     assert sorted(r.slot for r in CodeRedemption.query.filter_by(code_id=c.id)) == [1, 2]
@@ -266,17 +294,8 @@ def test_a_refusal_after_the_check_leaves_the_voyage_locked(client, app):
     that refusal."""
     candidate, voyage = _unlockable_voyage()
     c = code(counselor(), max_uses=1, value="CONS0017")
-    code_id = c.id
 
-    real_resolve = code_service.resolve
-
-    def resolve_then_lose_the_place(code_str, target_type):
-        found = real_resolve(code_str, target_type)
-        db.session.add(CodeRedemption(code_id=code_id, target_type="voyage", target_id="v-other", slot=1))
-        db.session.commit()
-        return found
-
-    with patch.object(code_service, "resolve", side_effect=resolve_then_lose_the_place):
+    with _last_place_goes_after_resolve(c.id, "voyage"):
         res = client.post("/api/voyage/unlock", json={"code": "CONS0017"}, headers=bearer(candidate))
 
     assert res.status_code == 400
@@ -284,3 +303,133 @@ def test_a_refusal_after_the_check_leaves_the_voyage_locked(client, app):
     db.session.expire_all()
     assert db.session.get(Voyage, voyage.id).counselor_code_id is None
     assert CodeRedemption.query.count() == 1                 # the other request's
+
+
+def _free_report(owner):
+    analysis = Analysis(user_id=owner.id, status="success", door="account",
+                        inputs={"_path": "1", "_tier": "free"}, output={"1": {}})
+    db.session.add(analysis)
+    db.session.commit()
+    return analysis
+
+
+def test_debloquer_commits_the_redemption_and_the_unlock_once_then_starts_the_run(client, app):
+    """One commit carries the redemption and the unlock, and the run starts
+    only after it: a use is never spent on a report that stays free."""
+    owner = user()
+    analysis = _free_report(owner)
+    analysis_id = analysis.id
+    c = code(value="PROMO007", max_uses=2)
+
+    events, real_commit = [], db.session.commit
+
+    def commit():
+        events.append("commit")
+        return real_commit()
+
+    with patch.object(db.session, "commit", side_effect=commit), \
+            patch("app.services.unlock_service.start_analysis",
+                  side_effect=lambda *a, **k: events.append("start")):
+        res = client.post(f"/api/analyses/{analysis_id}/unlock", json={"code": "PROMO007"},
+                          headers=bearer(owner))
+
+    assert res.status_code == 200, res.data
+    assert events == ["commit", "start"]
+    row = db.session.get(Analysis, analysis_id)
+    assert (row.status, row.unlock_method, row.inputs["_tier"]) == ("queued", "code", "paid")
+    redemption = CodeRedemption.query.one()
+    assert (redemption.code_id, redemption.target_id, redemption.slot) == (c.id, analysis_id, 1)
+
+
+@patch("app.services.unlock_service.start_analysis")
+def test_a_retried_debloquer_redemption_still_unlocks_the_report(start, client, app):
+    """When another request took the slot first, redeem() rolls back — the
+    unlock with it — and commits only the redemption on its retry. The route
+    puts the unlock back, and the run starts after that commit."""
+    owner = user()
+    analysis = _free_report(owner)
+    c = code(value="PROMO008", max_uses=2)
+    db.session.add(CodeRedemption(code_id=c.id, target_type="analysis", target_id="a-other", slot=1))
+    db.session.commit()
+
+    with _stale_first_count_after_resolve() as stale:
+        res = client.post(f"/api/analyses/{analysis.id}/unlock", json={"code": "PROMO008"},
+                          headers=bearer(owner))
+
+    assert res.status_code == 200, res.data
+    assert stale["served"]                  # the first attempt did collide on slot 1
+    start.assert_called_once()
+    row = db.session.get(Analysis, analysis.id)
+    assert (row.status, row.unlock_method, row.inputs["_tier"]) == ("queued", "code", "paid")
+    assert sorted(r.slot for r in CodeRedemption.query.filter_by(code_id=c.id)) == [1, 2]
+
+
+@patch("app.services.unlock_service.start_analysis")
+def test_a_refusal_after_the_check_leaves_the_report_free(start, client, app):
+    """redeem() can still refuse once resolve() has said yes: the last place
+    went in between. The unlock applied ahead of the redemption must not
+    outlive that refusal, and no run starts."""
+    owner = user()
+    analysis = _free_report(owner)
+    c = code(value="PROMO009", max_uses=1)
+
+    with _last_place_goes_after_resolve(c.id, "analysis"):
+        res = client.post(f"/api/analyses/{analysis.id}/unlock", json={"code": "PROMO009"},
+                          headers=bearer(owner))
+
+    assert res.status_code == 409
+    assert res.get_json()["error"] == code_service.EXHAUSTED
+    start.assert_not_called()
+    db.session.expire_all()
+    row = db.session.get(Analysis, analysis.id)
+    assert (row.status, row.unlock_method, row.inputs["_tier"]) == ("success", None, "free")
+    assert CodeRedemption.query.count() == 1                 # the other request's
+
+
+@patch("app.services.unlock_service.start_analysis")
+def test_a_second_report_for_the_same_promo_code_is_refused_and_stays_free(start, client, app):
+    owner = user()
+    first, second = _free_report(owner), _free_report(owner)
+    code(value="PROMO011", max_uses=5)
+
+    ok = client.post(f"/api/analyses/{first.id}/unlock", json={"code": "PROMO011"},
+                     headers=bearer(owner))
+    res = client.post(f"/api/analyses/{second.id}/unlock", json={"code": "PROMO011"},
+                      headers=bearer(owner))
+
+    assert ok.status_code == 200
+    assert res.status_code == 409
+    assert res.get_json()["error"] == code_service.ALREADY_USED
+    start.assert_called_once()                               # the first report's run only
+    db.session.expire_all()
+    row = db.session.get(Analysis, second.id)
+    assert (row.status, row.unlock_method, row.inputs["_tier"]) == ("success", None, "free")
+    assert CodeRedemption.query.count() == 1
+
+
+@patch("app.services.unlock_service.start_analysis")
+def test_debloquer_does_not_overwrite_an_unlock_that_landed_meanwhile(start, client, app):
+    """If redeem() returns with the report already unlocked by someone else —
+    a payment landing while this request retried — the route neither unlocks
+    over it (that would downgrade a premium purchase) nor starts a second run."""
+    owner = user()
+    analysis = _free_report(owner)
+    code(value="PROMO012")
+
+    def redeem_after_a_payment_landed(code_, *, user_id, target_type, target_id):
+        db.session.rollback()                       # this request's unlock is dropped…
+        row = db.session.get(Analysis, target_id)
+        unlock_service.apply_unlock(row, method="payment", stripe_session_id="cs_x", tier="premium")
+        db.session.commit()                         # …and the payment's lands
+        return None
+
+    with patch.object(code_service, "redeem", side_effect=redeem_after_a_payment_landed):
+        res = client.post(f"/api/analyses/{analysis.id}/unlock", json={"code": "PROMO012"},
+                          headers=bearer(owner))
+
+    db.session.expire_all()
+    row = db.session.get(Analysis, analysis.id)
+    assert res.status_code == 409
+    assert res.get_json()["error"] == unlock_service.refusal(row)
+    start.assert_not_called()
+    assert (row.unlock_method, row.inputs["_tier"]) == ("payment", "premium")

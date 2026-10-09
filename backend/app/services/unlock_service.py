@@ -22,22 +22,18 @@ def refusal(analysis: Analysis) -> str | None:
     return None
 
 
-def unlock_analysis(
+def apply_unlock(
     analysis: Analysis,
     method: str,
     stripe_session_id: str | None = None,
     tier: str | None = None,
-) -> tuple[bool, str | None]:
-    """Switch an analysis to the paid tier and regenerate the full 9 sections.
+) -> None:
+    """Put the unlock on the row, without committing.
 
-    Idempotent: returns (False, reason) when the analysis is already unlocked
-    or a regeneration is already in flight. Caller commits are not needed —
-    this commits before spawning the generation thread.
+    The caller owns the commit and starts the run only after it. A payment
+    commits this alone (unlock_analysis); /debloquer commits it together with
+    the code redemption, so a use is never spent on a report that stays free.
     """
-    reason = refusal(analysis)
-    if reason:
-        return False, reason
-
     inputs = analysis.inputs or {}
 
     # JSON column: reassign a new dict so SQLAlchemy sees the change
@@ -56,7 +52,31 @@ def unlock_analysis(
     analysis.unlocked_at = datetime.utcnow()
     if stripe_session_id:
         analysis.stripe_session_id = stripe_session_id
+
+
+def start_run(analysis_id: str) -> None:
+    """Start the paid-tier generation for an unlock that is already committed."""
+    start_analysis(analysis_id, current_app._get_current_object())
+
+
+def unlock_analysis(
+    analysis: Analysis,
+    method: str,
+    stripe_session_id: str | None = None,
+    tier: str | None = None,
+) -> tuple[bool, str | None]:
+    """Switch an analysis to the paid tier and regenerate the full 9 sections.
+
+    Idempotent: returns (False, reason) when the analysis is already unlocked
+    or a regeneration is already in flight. Caller commits are not needed —
+    this commits before spawning the generation thread.
+    """
+    reason = refusal(analysis)
+    if reason:
+        return False, reason
+
+    apply_unlock(analysis, method, stripe_session_id, tier)
     db.session.commit()
 
-    start_analysis(analysis.id, current_app._get_current_object())
+    start_run(analysis.id)
     return True, None

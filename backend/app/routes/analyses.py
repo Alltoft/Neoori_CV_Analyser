@@ -17,7 +17,6 @@ from ..services import section_registry as registry
 from ..services import tiers
 from ..services import unlock_service
 from ..services.anthropic_service import start_analysis
-from ..services.unlock_service import unlock_analysis
 
 analyses_bp = Blueprint("analyses", __name__)
 
@@ -196,7 +195,11 @@ def unlock_with_code(analysis_id):
     """Redeem a promo code on the caller's own free report (four-doors spec,
     decision 22). A conseiller code is refused here: with one, the full report
     goes to the counselor through the advisor door, never back to the
-    candidate (ruling 2)."""
+    candidate (ruling 2).
+
+    The unlock goes on the row before the redemption is written, so redeem()'s
+    one commit carries both and the run starts only after it: a use is never
+    spent on a report that stays free."""
     analysis = Analysis.query.get_or_404(analysis_id)
     user_id = get_jwt_identity()
     if analysis.user_id is None or analysis.user_id != user_id:
@@ -217,13 +220,30 @@ def unlock_with_code(analysis_id):
     reason = unlock_service.refusal(analysis)
     if reason:
         return jsonify({"error": reason}), 409
-    refused = code_service.redeem(code, user_id=user_id, target_type="analysis", target_id=analysis.id)
+
+    # The id goes in a local because a rollback inside redeem() expires the row.
+    target_id = analysis.id
+    unlock_service.apply_unlock(analysis, method="code")
+    refused = code_service.redeem(code, user_id=user_id, target_type="analysis", target_id=target_id)
     if refused:
+        # redeem() has rolled back on a key violation, but not on its early
+        # EXHAUSTED: either way the pending unlock must not outlive the refusal.
+        db.session.rollback()
         return jsonify({"error": refused}), 409
 
-    ok, reason = unlock_analysis(analysis, method="code")
-    if not ok:
-        return jsonify({"error": reason}), 409
+    # When another request took the slot first, redeem() rolls back and retries
+    # once, and that retry commits only the redemption: the unlock rode on the
+    # commit that was rolled back. Re-read the row and put it back — unless
+    # someone else unlocked it meanwhile (a payment), which stays theirs.
+    analysis = Analysis.query.get_or_404(target_id)
+    if analysis.unlock_method != "code":
+        reason = unlock_service.refusal(analysis)
+        if reason:
+            return jsonify({"error": reason}), 409
+        unlock_service.apply_unlock(analysis, method="code")
+        db.session.commit()
+
+    unlock_service.start_run(target_id)
     return jsonify({"analysis": analysis.to_dict()}), 200
 
 
