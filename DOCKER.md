@@ -201,9 +201,10 @@ that serves HTTP. A staging stack gets a domain of its own.
 nginx and gunicorn log the path only (`log_format neoori_paths` in the nginx
 templates, `--access-logformat` in `backend/entrypoint.sh`): sign-in links,
 `next` paths and Stripe session ids travel in query strings, and the Referer
-repeats them. An access line carries the address, the time, the host, the method, the
-path, the status, the size and the duration, nothing more. To check on the VPS
-after a deploy and a few requests:
+repeats them. An nginx access line carries the address, the time, the host,
+the method, the path, the status, the size and the duration; gunicorn's
+carries the same without the host, nothing more. To check on the VPS after a
+deploy and a few requests:
 
 ```bash
 cd /srv/neoori
