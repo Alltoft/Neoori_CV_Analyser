@@ -32,12 +32,30 @@ const DOORS: { id: DoorId; title: string }[] = [
 const WRONG_FOR_PROMO = "Ce code est un code conseiller : choisissez « J'ai un code conseiller »."
 const THROTTLED = "Trop de tentatives — réessayez dans une minute."
 
+/** A door's button wraps instead of spilling out of its card on a narrow phone
+ *  (« Créer un compte ou me connecter » is wider than a 360 px card). min-h-9
+ *  keeps a one-line label at the usual 36 px. */
+const DOOR_BUTTON = "h-auto min-h-9 whitespace-normal py-1.5 text-left"
+
+/** The promo code saved before a sign-in round trip, or "". What is stored is
+ *  not trusted: an entry that is not { code: string, at: number }, or is older
+ *  than the TTL, is removed and reads as empty (a stray `{"at":1}` used to
+ *  reach code.trim() as undefined and crash the panel). */
 function readPromo(): string {
   try {
-    const saved = JSON.parse(localStorage.getItem(PROMO_KEY) ?? "null") as { code: string; at: number } | null
-    if (!saved || Date.now() - saved.at > PROMO_TTL_MS) return ""
-    return saved.code
-  } catch { return "" }
+    const raw = localStorage.getItem(PROMO_KEY)
+    if (raw === null) return ""
+    const saved = JSON.parse(raw) as { code?: unknown; at?: unknown } | null
+    if (typeof saved?.code === "string" && typeof saved.at === "number") {
+      const age = Date.now() - saved.at
+      if (age >= 0 && age <= PROMO_TTL_MS) return saved.code
+    }
+    localStorage.removeItem(PROMO_KEY)
+  } catch {
+    // Not JSON, or storage unavailable (private mode): nothing usable either way.
+    try { localStorage.removeItem(PROMO_KEY) } catch { /* nothing to remove */ }
+  }
+  return ""
 }
 function writePromo(value: string | null) {
   try {
@@ -89,8 +107,13 @@ export function DoorsPanel({
   const [open, setOpen] = useState<DoorId | null>(initialDoor)
   const [prenom, setPrenom] = useState("")
   const [nom, setNom] = useState("")
-  const [code, setCode] = useState(readPromo)
+  // One state per « Code » field: the stored promo code seeds the promo door
+  // only. A code typed at the wrong door is carried to the right one explicitly
+  // (below), not by sharing a field.
+  const [promoCode, setPromoCode] = useState(readPromo)
+  const [advisorCode, setAdvisorCode] = useState("")
   const [consent, setConsent] = useState(false)
+  // The one error state belongs to the open door and is shown inside it.
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [retried, setRetried] = useState(false)
@@ -101,7 +124,10 @@ export function DoorsPanel({
   const panel = useRef<HTMLElement>(null)
   useEffect(() => { panel.current?.scrollIntoView({ block: "start" }) }, [])
 
-  const choose = (id: DoorId) => { setOpen(id); setError(null) }
+  /** Open a door. The error and the consent were given at the door they belong
+   *  to, so neither follows the person to another one. */
+  const openDoor = (id: DoorId) => { setOpen(id); setConsent(false); setError(null) }
+  const choose = (id: DoorId) => { if (id !== open) openDoor(id) }
 
   /** Sign in, then come back to the form with the draft held by the cookie. */
   const roundTrip = async (door: "account" | "promo") => {
@@ -120,7 +146,12 @@ export function DoorsPanel({
   const fail = (e: unknown) => {
     if (!(e instanceof ApiError)) { setError("Erreur inattendue."); return }
     const other = e.body?.door
-    if (e.status === 409 && (other === "promo" || other === "advisor")) setOpen(other)
+    if (e.status === 409 && (other === "promo" || other === "advisor")) {
+      // A code typed at the wrong door moves to the right one, already typed in.
+      if (other === "promo") { setPromoCode(advisorCode); setAdvisorCode("") }
+      else { setAdvisorCode(promoCode); setPromoCode("") }
+      openDoor(other)
+    }
     setError(e.status === 429 && !e.body?.error ? THROTTLED : e.message)
   }
 
@@ -138,14 +169,21 @@ export function DoorsPanel({
         const res = await submit("account")
         router.push(`/analyse/en-cours/${res.analysis!.id}`)
       } else if (open === "promo") {
-        const check = await api.post<{ kind: "promo" | "conseiller" }>("/codes/check", { code }, { skipRedirect: true })
-        if (check.kind !== "promo") { setOpen("advisor"); setError(WRONG_FOR_PROMO); setBusy(false); return }
-        if (!signedIn) { writePromo(code); return await roundTrip("promo") }
-        const res = await submit("promo", { code })
+        const check = await api.post<{ kind: "promo" | "conseiller" }>("/codes/check", { code: promoCode }, { skipRedirect: true })
+        if (check.kind !== "promo") {
+          setAdvisorCode(promoCode)
+          setPromoCode("")
+          openDoor("advisor")
+          setError(WRONG_FOR_PROMO)
+          setBusy(false)
+          return
+        }
+        if (!signedIn) { writePromo(promoCode); return await roundTrip("promo") }
+        const res = await submit("promo", { code: promoCode })
         writePromo(null)
         router.push(`/analyse/en-cours/${res.analysis!.id}`)
       } else if (open === "advisor") {
-        await submit("advisor", { code, prenom, nom, consent })
+        await submit("advisor", { code: advisorCode, prenom, nom, consent })
         router.push("/analyse/envoyee")
       } else {
         const res = await submit("anonymous", { consent })
@@ -156,6 +194,9 @@ export function DoorsPanel({
       // again, once (four-doors spec, decision 38).
       if (e instanceof ApiError && e.status === 401 && (open === "account" || open === "promo") && !retried) {
         setRetried(true)
+        // The code was checked just before: it has to survive this round trip
+        // as it does the first one.
+        if (open === "promo") writePromo(promoCode)
         try { await roundTrip(open) } catch (again) { setBusy(false); fail(again) }
       } else {
         setBusy(false)
@@ -174,6 +215,12 @@ export function DoorsPanel({
     </div>
   )
 
+  // The error shows inside the open door, right above its button: on a phone a
+  // banner above all the doors can be off-screen, and each door owns its error.
+  const errorAlert = error ? (
+    <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+  ) : null
+
   const body = (id: DoorId) => {
     switch (id) {
       case "account":
@@ -182,7 +229,8 @@ export function DoorsPanel({
             <p className="text-sm text-muted-foreground">
               Version gratuite : les trois premières sections et le verdict, gardés dans votre espace. Le rapport complet reste disponible à 9 €.
             </p>
-            <Button onClick={go} disabled={busy} size="lg">
+            {errorAlert}
+            <Button onClick={go} disabled={busy} size="lg" className={DOOR_BUTTON}>
               {signedIn ? "Lancer la version gratuite" : "Créer un compte ou me connecter"} <ArrowRight />
             </Button>
           </>
@@ -194,12 +242,13 @@ export function DoorsPanel({
               {field("door-prenom", "Prénom", prenom, setPrenom, { maxLength: 80, autoComplete: "given-name" })}
               {field("door-nom", "Nom", nom, setNom, { maxLength: 80, autoComplete: "family-name" })}
             </div>
-            {field("door-code-conseiller", "Code", code, setCode, { autoComplete: "off", placeholder: "ex. A1B2C3D4" })}
+            {field("door-code-conseiller", "Code", advisorCode, setAdvisorCode, { autoComplete: "off", placeholder: "ex. A1B2C3D4" })}
             <p className="rounded-lg bg-peach-soft p-3 text-xs leading-relaxed text-navy">
               {"Le rapport complet sera envoyé à votre conseiller, pas à vous : vous n'en recevrez pas de copie. Votre conseiller pourra vous le présenter ou vous le transmettre."}
             </p>
             <Consent checked={consent} onChange={setConsent} />
-            <Button onClick={go} size="lg" disabled={busy || !consent || !prenom.trim() || !nom.trim() || !code.trim()}>
+            {errorAlert}
+            <Button onClick={go} size="lg" className={DOOR_BUTTON} disabled={busy || !consent || !prenom.trim() || !nom.trim() || !advisorCode.trim()}>
               Envoyer à mon conseiller <ArrowRight />
             </Button>
           </>
@@ -208,8 +257,9 @@ export function DoorsPanel({
         return (
           <>
             <p className="text-sm text-muted-foreground">Le rapport complet, offert. Un compte est nécessaire pour le recevoir.</p>
-            {field("door-code-promo", "Code", code, setCode, { autoComplete: "off", placeholder: "ex. A1B2C3D4" })}
-            <Button onClick={go} size="lg" disabled={busy || !code.trim()}>
+            {field("door-code-promo", "Code", promoCode, setPromoCode, { autoComplete: "off", placeholder: "ex. A1B2C3D4" })}
+            {errorAlert}
+            <Button onClick={go} size="lg" className={DOOR_BUTTON} disabled={busy || !promoCode.trim()}>
               {signedIn ? "Lancer l’analyse complète" : "Continuer"} <ArrowRight />
             </Button>
           </>
@@ -221,7 +271,8 @@ export function DoorsPanel({
               Version gratuite, accessible par un lien privé pendant 30 jours. Sans compte, nous ne pourrons pas vous renvoyer ce lien.
             </p>
             <Consent checked={consent} onChange={setConsent} />
-            <Button onClick={go} size="lg" disabled={busy || !consent}>
+            {errorAlert}
+            <Button onClick={go} size="lg" className={DOOR_BUTTON} disabled={busy || !consent}>
               Lancer sans compte <ArrowRight />
             </Button>
           </>
@@ -233,9 +284,9 @@ export function DoorsPanel({
     <section ref={panel} aria-labelledby="doors-title" className="scroll-mt-24 rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 id="doors-title" className="font-display text-lg font-bold text-navy">Comment voulez-vous continuer ?</h2>
-        <Button variant="ghost" size="icon-sm" aria-label="Fermer" onClick={onClose}><X className="size-4" /></Button>
+        {/* Not while a request is out: closing and reopening would release `busy` and allow a second submit. */}
+        <Button variant="ghost" size="icon-sm" aria-label="Fermer" onClick={onClose} disabled={busy}><X className="size-4" /></Button>
       </div>
-      {error && <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
       <div className="space-y-3">
         {doors.map((d) => (
           <div key={d.id} className={cn("rounded-xl border", open === d.id ? "border-navy" : "border-border")}>

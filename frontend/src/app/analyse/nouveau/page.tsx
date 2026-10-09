@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
 import { useAuth } from "@/lib/auth"
@@ -15,7 +15,7 @@ import { SectionCard } from "@/components/ui/section-card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 import { held } from "@/lib/held"
 import { cn } from "@/lib/utils"
 import type { Analysis } from "@/types"
@@ -85,6 +85,7 @@ export default function NouvelleAnalysePage() {
 }
 
 function NouvelleAnalyseForm() {
+  const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   // The form opens to everyone (four-doors spec): it waits only for auth to
   // resolve, so the doors know who is there.
@@ -96,7 +97,6 @@ function NouvelleAnalyseForm() {
   const [uploadedFilename, setUploadedFilename] = useState<string>("")
   const [projectUploadState, setProjectUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
   const [projectUploadedFilename, setProjectUploadedFilename] = useState<string>("")
-  const [submitError, setSubmitError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isProjectDragging, setIsProjectDragging] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -134,10 +134,17 @@ function NouvelleAnalyseForm() {
   // decision 34). The person confirms; nothing starts on its own.
   // ?reprendre=brouillon is the way back from the lapsed-session link under
   // « Enregistrer le brouillon » (ruling R14): same restore, but no door.
+  // Once it has run, whatever the outcome, ?reprendre= is dropped from the URL:
+  // it is a one-shot instruction, and left in the history entry it would replay
+  // on Back, after a submit promoted the draft, as a false « formulaire resté
+  // sur l’appareil ».
   useEffect(() => {
     const porte = searchParams.get("reprendre")
     if (!porte || authLoading) return
     const door: DoorId | null = porte === "brouillon" ? null : porte === "promo" ? "promo" : "account"
+    // A run can be cleaned up before it settles (the page is left; Strict Mode
+    // runs effects twice in dev): only the live run touches the form or the URL.
+    let live = true
     const restore = (a: Analysis, owned: boolean) => {
       const i = a.inputs ?? {}
       reset({ cv_text: i.cv_text ?? "", cible_visee: i.cible_visee ?? "", chemin: i._chemin === "B" ? "B" : "A" })
@@ -147,25 +154,38 @@ function NouvelleAnalyseForm() {
         setPanelOpen(true)
       }
     }
-    if (user) {
-      held.claim()
-        .then((r) => restore(r.analysis, true))
-        .catch(() =>
+    const resume = async () => {
+      try {
+        if (!user) {
+          const { analysis } = await held.get()
+          if (live) restore(analysis, false)
+          return
+        }
+        let draft: Analysis | undefined
+        try {
+          draft = (await held.claim()).analysis
+        } catch (e) {
+          // Only « nothing held » (404) falls back. Any other failure is shown
+          // as it is: guessing around it would restore the wrong thing.
+          if (!(e instanceof ApiError && e.status === 404)) throw e
           // Verified on another device: signup attached the draft to this
           // account at verify-email, so it is the account's latest draft.
-          api.get<{ analyses: Analysis[] }>("/analyses/", { skipRedirect: true })
-            .then((r) => {
-              const latest = r.analyses.find((a) => a.status === "draft")
-              if (latest) restore(latest, true)
-              else setResumeNotice("Votre formulaire est resté sur l’appareil où vous l’avez rempli : connectez-vous depuis celui-ci pour le retrouver.")
-            })
-            .catch(() => setResumeNotice("Votre brouillon a expiré.")),
-        )
-    } else {
-      held.get()
-        .then((r) => restore(r.analysis, false))
-        .catch(() => setResumeNotice("Votre brouillon a expiré."))
+          const { analyses } = await api.get<{ analyses: Analysis[] }>("/analyses/", { skipRedirect: true })
+          draft = analyses.find((a) => a.status === "draft")
+          if (!draft) {
+            if (live) setResumeNotice("Votre formulaire est resté sur l’appareil où vous l’avez rempli : connectez-vous depuis celui-ci pour le retrouver.")
+            return
+          }
+        }
+        if (live) restore(draft, true)
+      } catch (e) {
+        if (live) setResumeNotice(e instanceof ApiError ? e.message : "Erreur inattendue.")
+      } finally {
+        if (live) router.replace("/analyse/nouveau", { scroll: false })
+      }
     }
+    resume()
+    return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading])
 
@@ -214,10 +234,7 @@ function NouvelleAnalyseForm() {
   }, [handleProjectFile])
 
   // Validation passed: the doors decide what happens next (four-doors spec).
-  const onSubmit = () => {
-    setSubmitError(null)
-    setPanelOpen(true)
-  }
+  const onSubmit = () => setPanelOpen(true)
 
   // The button is shown to signed-in visitors only, but a session can lapse
   // under an open page: the backend then keeps the draft in this browser and
@@ -321,7 +338,6 @@ function NouvelleAnalyseForm() {
         </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {submitError && <Alert variant="destructive"><AlertDescription>{submitError}</AlertDescription></Alert>}
           {resumeNotice && <Alert><AlertDescription>{resumeNotice}</AlertDescription></Alert>}
 
           <SectionCard n={1} title="Votre CV">
@@ -400,17 +416,19 @@ function NouvelleAnalyseForm() {
                 <Button type="button" variant="outline" onClick={saveDraft} disabled={draftState === "saving"} className="self-start">
                   {draftState === "saving" ? "Enregistrement…" : draftState === "saved" ? <><Check className="size-4 text-success" /> Brouillon enregistré</> : "Enregistrer le brouillon"}
                 </Button>
+                {/* Information, not a failure: the draft is safe in this browser. */}
                 {draftState === "held" && (
-                  <span className="text-xs text-destructive">
+                  <span className="text-xs text-muted-foreground">
                     Votre session a expiré : ce brouillon est gardé dans ce navigateur.{" "}
-                    <Link href={`/connexion?redirect=${encodeURIComponent(DRAFT_RETURN)}`} className="underline">Connectez-vous</Link> pour l’enregistrer dans votre espace.
+                    <Link href={`/connexion?redirect=${encodeURIComponent(DRAFT_RETURN)}`} className="text-navy underline underline-offset-2">Connectez-vous</Link> pour l’enregistrer dans votre espace.
                   </span>
                 )}
                 {draftState === "error" && <span className="text-xs text-destructive">Échec de l’enregistrement. Réessayez.</span>}
               </div>
             )}
 
-            <Button type="submit" size="xl">
+            {/* sm:ml-auto keeps it on the right when the draft button is not there (signed out). */}
+            <Button type="submit" size="xl" className="sm:ml-auto">
               Générer mon analyse <ArrowRight />
             </Button>
           </div>
