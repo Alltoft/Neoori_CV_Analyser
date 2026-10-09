@@ -4,6 +4,11 @@ RESEND_API_KEY in config, with nothing calling either.
 Fail-soft by contract: send() returns False and logs, and never raises. It is
 called after the decision has already committed, and a provider outage must not
 turn a successful approval into a 500 the admin retries.
+
+Links (subdomain split spec, decision 31): an account mail — verification,
+reset, sign-in link, password changed — links to the host it was asked from,
+site.request_origin(); every other mail links to cv. Neither copies the
+request's Host header.
 """
 import html as html_escape
 
@@ -12,13 +17,9 @@ from flask import current_app
 
 from ..models.counselor_profile import CounselorProfile
 from ..models.profile import Profile
-from ..utils import auth_links
+from ..utils import auth_links, site
 
 FOOTER = "neoori — pour nous écrire, répondez à ce message."
-
-
-def _app_url() -> str:
-    return current_app.config["APP_URL"]
 
 
 def send(to: str, subject: str, html: str, text: str | None = None) -> bool:
@@ -79,7 +80,7 @@ def send_counselor_approved(profile: CounselorProfile) -> bool:
             "<p>Vous pouvez maintenant créer des codes pour les personnes que vous "
             "accompagnez, et suivre leur utilisation depuis votre espace.</p>"
             f'<ul style="font-size:14px">{limits}</ul>'
-            f'<p><a href="{_app_url()}/conseiller" '
+            f'<p><a href="{site.origin("cv")}/conseiller" '
             'style="color:#c96442">Ouvrir mon espace conseiller</a></p>'
         )
         return send(profile.user.email, "Votre compte conseiller est activé", _layout(
@@ -195,7 +196,7 @@ def _deliver_link(to: str, subject: str, html: str, text: str, link: str) -> boo
 def send_verification(user, next_path=None) -> bool:
     """« Confirmez votre adresse ». Fail-soft like every mail here."""
     try:
-        link = f"{_app_url()}/verifier-email?token={auth_links.make_verify_token(user, next_path)}"
+        link = f"{site.request_origin()}/verifier-email?token={auth_links.make_verify_token(user, next_path)}"
         body, text = _mail(
             [
                 _greeting(prenom_of(user)),
@@ -217,7 +218,7 @@ def send_verification(user, next_path=None) -> bool:
 def send_password_reset(user) -> bool:
     """« Réinitialiser votre mot de passe ». Fail-soft."""
     try:
-        link = f"{_app_url()}/reinitialiser-mot-de-passe?token={auth_links.make_reset_token(user)}"
+        link = f"{site.request_origin()}/reinitialiser-mot-de-passe?token={auth_links.make_reset_token(user)}"
         body, text = _mail(
             [
                 "Une demande de réinitialisation a été faite pour votre compte. Le lien "
@@ -241,7 +242,7 @@ def send_login_link(to: str, prenom: str, token: str) -> bool:
     state (social sign-in spec, decision 15): it goes to the inbox owner, and an
     address with no account gets the same link, which signs it up. Fail-soft."""
     try:
-        link = f"{_app_url()}/connexion/lien?token={token}"
+        link = f"{site.request_origin()}/connexion/lien?token={token}"
         body, text = _mail(
             [
                 _greeting(prenom),
@@ -282,7 +283,7 @@ def send_analysis_ready(to: str, prenom: str, *, unlocked: bool) -> bool:
             line = "Votre analyse est prête. Elle est enregistrée dans votre espace."
         body, text = _mail(
             [_greeting(prenom), line],
-            button=("Ouvrir mon espace", f"{_app_url()}/espace"),
+            button=("Ouvrir mon espace", f"{site.origin("cv")}/espace"),
         )
         return send(to, subject, _layout(title, body), text)
     except Exception:
@@ -311,7 +312,7 @@ def send_analysis_failed(to: str, prenom: str, *, unlocked: bool, analysis_id: s
                     "La génération de votre analyse n'a pas abouti. Vous pouvez relancer "
                     "une analyse depuis votre espace.",
                 ],
-                button=("Ouvrir mon espace", f"{_app_url()}/espace"),
+                button=("Ouvrir mon espace", f"{site.origin("cv")}/espace"),
             )
         return send(to, subject, _layout(title, body), text)
     except Exception:
@@ -332,7 +333,7 @@ def send_counselor_analysis_ready(to: str) -> bool:
                 "Un bénéficiaire a utilisé votre code : son analyse est prête dans "
                 "votre espace conseiller.",
             ],
-            button=("Ouvrir mon espace conseiller", f"{_app_url()}/conseiller"),
+            button=("Ouvrir mon espace conseiller", f"{site.origin("cv")}/conseiller"),
         )
         return send(to, "Une analyse est prête", _layout("Analyse prête", body), text)
     except Exception:
@@ -350,7 +351,7 @@ def send_counselor_analysis_failed(to: str) -> bool:
                 "Un bénéficiaire a utilisé votre code : son analyse n’a pas abouti. "
                 "Vous pouvez la relancer depuis votre espace conseiller.",
             ],
-            button=("Ouvrir mon espace conseiller", f"{_app_url()}/conseiller"),
+            button=("Ouvrir mon espace conseiller", f"{site.origin("cv")}/conseiller"),
         )
         return send(to, "Une analyse n’a pas abouti", _layout("Analyse interrompue", body), text)
     except Exception:
@@ -368,7 +369,7 @@ def send_new_demande(to: str, prenom: str) -> bool:
                 _greeting(prenom),
                 "Une demande de compte conseiller attend votre décision.",
             ],
-            button=("Voir les demandes", f"{_app_url()}/admin/conseillers"),
+            button=("Voir les demandes", f"{site.origin("cv")}/admin/conseillers"),
         )
         return send(
             to, "Nouvelle demande de compte conseiller",
@@ -422,7 +423,7 @@ def send_password_changed(user) -> bool:
                 "Si vous n'êtes pas à l'origine de ce changement, choisissez-en un "
                 "nouveau tout de suite.",
             ],
-            button=("Choisir un nouveau mot de passe", f"{_app_url()}/mot-de-passe-oublie"),
+            button=("Choisir un nouveau mot de passe", f"{site.request_origin()}/mot-de-passe-oublie"),
         )
         return send(
             user.email, "Votre mot de passe a été modifié",

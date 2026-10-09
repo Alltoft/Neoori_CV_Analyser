@@ -63,9 +63,9 @@ def test_the_rejection_mail_carries_the_reason(app):
     assert "<b>" not in html
 
 
-def test_the_approval_link_follows_app_url(app):
+def test_the_approval_link_goes_to_cv(app):
     app.config["RESEND_API_KEY"] = "re_test"
-    app.config["APP_URL"] = "http://localhost:8080"
+    app.config.update(DOMAIN="neoori.localhost", PUBLIC_SCHEME="http", PUBLIC_PORT="8080")
     with patch("app.services.email_service.resend.Emails.send") as mock_send:
         email_service.send_counselor_approved(_profile())
-    assert "http://localhost:8080/conseiller" in mock_send.call_args[0][0]["html"]
+    assert "http://cv.neoori.localhost:8080/conseiller" in mock_send.call_args[0][0]["html"]

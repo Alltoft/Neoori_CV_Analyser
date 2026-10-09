@@ -20,14 +20,14 @@ def _sent(mock_send) -> dict:
 
 def test_the_verification_mail_links_to_the_app_with_a_live_token(app, make_user):
     app.config["RESEND_API_KEY"] = "re_test"
-    app.config["APP_URL"] = "https://neoori.tech"
+    app.config["DOMAIN"] = "neoori.tech"
     user = make_user(verified=False)
     with patch(SEND, return_value={"id": "1"}) as mock_send:
         assert email_service.send_verification(user, "/analyse/nouveau") is True
     mail = _sent(mock_send)
     assert mail["to"] == [user.email]
     assert mail["subject"] == "Confirmez votre adresse email"
-    assert "https://neoori.tech/verifier-email?token=" in mail["html"]
+    assert "https://cv.neoori.tech/verifier-email?token=" in mail["html"]
     payload = auth_links.load_verify_token(TOKEN.search(mail["text"]).group(1)).payload
     assert payload["uid"] == user.id
     assert payload["next"] == "/analyse/nouveau"
