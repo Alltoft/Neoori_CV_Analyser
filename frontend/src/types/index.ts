@@ -123,13 +123,6 @@ export interface PromptVersion {
   created_at: string
 }
 
-export interface CounselorNote {
-  id: string
-  analysis_id: string
-  body: string | null
-  updated_at: string
-}
-
 export const SECTION_TITLES: Record<string, string> = {
   "1": "Lecture stratégique du parcours",
   "2": "Forces du profil pour la cible",
