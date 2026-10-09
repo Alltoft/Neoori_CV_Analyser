@@ -14,7 +14,7 @@ from flask import Blueprint, abort, current_app, jsonify, redirect, request, ses
 from ..extensions import db
 from ..models.auth_identity import PROVIDERS
 from ..services import oauth_clients, sign_in
-from ..utils import auth_links
+from ..utils import auth_links, site
 # The one place a session opens, and where a signed-in person lands.
 from .auth import _issue_session, _landing
 
@@ -39,6 +39,15 @@ def providers():
 def start(provider):
     if provider not in PROVIDERS:
         abort(404)
+    # A sign-in ends on the host it started on: the callback is registered for
+    # cv and voyage, and the state cookie stays on one host (subdomain split
+    # spec, decision 28). Anywhere else — the root has no sign-in page — goes
+    # to cv's /start, `next` kept, before any state is written.
+    if site.request_app() not in ("cv", "voyage"):
+        target = f"{site.origin('cv')}/api/auth/{provider}/start"
+        if request.args.get("next") is not None:
+            target += "?next=" + quote(request.args["next"], safe="")
+        return redirect(target)
     client = oauth_clients.client(provider)
     next_path = auth_links.safe_next(request.args.get("next"))
     if client is None:
@@ -109,7 +118,10 @@ def callback(provider):
         # demande): inside the try, so a failure there redirects as well.
         landing = None
         if outcome.kind == "user":
-            landing = _landing(outcome.user, {"next": next_path}) or _home_path(outcome.user.role)
+            landing = (
+                _landing(outcome.user, {"next": next_path})
+                or _home_path(outcome.user.role, site.request_app())
+            )
     except Exception:
         # A dead or replayed state, a refused token, the provider or the
         # database failing: the person is on a browser navigation, and a
@@ -133,8 +145,10 @@ def callback(provider):
 
 
 def _redirect_uri(provider: str) -> str:
-    """From APP_URL, never the request: behind nginx, Flask sees backend:5000."""
-    return f"{current_app.config['APP_URL']}/api/auth/{provider}/callback"
+    """On the host the sign-in started on, rebuilt from DOMAIN — never the
+    Host header itself (subdomain split spec, decision 28). Both callbacks
+    are registered with each provider."""
+    return f"{site.request_origin()}/api/auth/{provider}/callback"
 
 
 def _to_connexion(code: str, next_path: str | None = None):
@@ -147,11 +161,13 @@ def _to_connexion(code: str, next_path: str | None = None):
     return redirect(url)
 
 
-def _home_path(role: str) -> str:
-    """The role's home. frontend/src/lib/home.ts homeFor says the same:
-    keep the two in step."""
+def _home_path(role: str, app: str | None = None) -> str:
+    """The role's home on this host: a candidate's is the voyage hub on
+    voyage and /espace anywhere else; a counselor's and an admin's are the
+    same everywhere (subdomain split spec, decision 15).
+    frontend/src/lib/home.ts homeFor says the same: keep the two in step."""
     if role == "admin":
         return "/admin"
     if role == "counselor":
         return "/conseiller"
-    return "/espace"
+    return "/voyage" if app == "voyage" else "/espace"
