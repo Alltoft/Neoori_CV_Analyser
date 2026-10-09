@@ -71,6 +71,11 @@ function toInputs({ chemin, ...rest }: Fields) {
   return { ...rest, _chemin: chemin }
 }
 
+/** Where the sign-in link under « Enregistrer le brouillon » brings the person
+ *  back after a lapsed session (ruling R14): the form, refilled from the draft
+ *  this browser holds, with no door open — they only wanted their form back. */
+const DRAFT_RETURN = "/analyse/nouveau?reprendre=brouillon"
+
 export default function NouvelleAnalysePage() {
   return (
     <Suspense>
@@ -87,10 +92,6 @@ function NouvelleAnalyseForm() {
   const searchParams = useSearchParams()
   const [draftId, setDraftId] = useState<string | null>(searchParams.get("draft"))
   const [draftState, setDraftState] = useState<"idle" | "saving" | "saved" | "error" | "held">("idle")
-  // Where « Connectez-vous » leads when a save lands in the browser-held draft
-  // (draftState "held"): this page, pathname and query as the browser holds
-  // them, never decoded or rebuilt. Set when that save answers.
-  const [heldReturn, setHeldReturn] = useState("")
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
   const [uploadedFilename, setUploadedFilename] = useState<string>("")
   const [projectUploadState, setProjectUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
@@ -131,16 +132,20 @@ function NouvelleAnalyseForm() {
   // Back from a sign-in round trip (?reprendre=compte|promo): refill the form
   // from the held draft and reopen the panel at that door (four-doors spec,
   // decision 34). The person confirms; nothing starts on its own.
+  // ?reprendre=brouillon is the way back from the lapsed-session link under
+  // « Enregistrer le brouillon » (ruling R14): same restore, but no door.
   useEffect(() => {
     const porte = searchParams.get("reprendre")
     if (!porte || authLoading) return
-    const door: DoorId = porte === "promo" ? "promo" : "account"
+    const door: DoorId | null = porte === "brouillon" ? null : porte === "promo" ? "promo" : "account"
     const restore = (a: Analysis, owned: boolean) => {
       const i = a.inputs ?? {}
       reset({ cv_text: i.cv_text ?? "", cible_visee: i.cible_visee ?? "", chemin: i._chemin === "B" ? "B" : "A" })
       if (owned) setDraftId(a.id)
-      setInitialDoor(door)
-      setPanelOpen(true)
+      if (door) {
+        setInitialDoor(door)
+        setPanelOpen(true)
+      }
     }
     if (user) {
       held.claim()
@@ -227,7 +232,6 @@ function NouvelleAnalyseForm() {
       )
       if (res.held) {
         // Not the account's draft: no draftId to carry, and no « Brouillon enregistré ».
-        setHeldReturn(window.location.pathname + window.location.search)
         setDraftState("held")
         return
       }
@@ -399,7 +403,7 @@ function NouvelleAnalyseForm() {
                 {draftState === "held" && (
                   <span className="text-xs text-destructive">
                     Votre session a expiré : ce brouillon est gardé dans ce navigateur.{" "}
-                    <Link href={`/connexion?redirect=${encodeURIComponent(heldReturn)}`} className="underline">Connectez-vous</Link> pour l’enregistrer dans votre espace.
+                    <Link href={`/connexion?redirect=${encodeURIComponent(DRAFT_RETURN)}`} className="underline">Connectez-vous</Link> pour l’enregistrer dans votre espace.
                   </span>
                 )}
                 {draftState === "error" && <span className="text-xs text-destructive">Échec de l’enregistrement. Réessayez.</span>}
