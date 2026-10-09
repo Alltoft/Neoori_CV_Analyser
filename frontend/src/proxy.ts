@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 
 /** Routes that need an account. Gated at the edge so no page ever renders a
- *  form the user can fill and then lose at submit. */
+ *  screen the visitor cannot use without a session. Inside /analyse only the
+ *  exact paths in PUBLIC are open. */
 const PROTECTED = ["/admin", "/conseiller", "/profil", "/voyage", "/espace", "/analyse"]
 
-/** Where a signed-out visitor on these lands instead of /connexion. The
- *  analysis form is where new people arrive from the landing page, so it opens
- *  on signup — and the redirect survives the confirmation email, because it
- *  travels inside the link. */
+/** Where a signed-out visitor on these lands instead of /connexion. A report,
+ *  its waiting page and its unlock page are where new people arrive from a
+ *  link or a mail, so they open on signup — and the redirect survives the
+ *  confirmation email, because it travels inside the link. */
 const SIGNUP_FIRST = ["/analyse"]
+
+/** Open to signed-out visitors inside /analyse (four-doors spec, ruling 1):
+ *  the form, the advisor-door confirmation, and /analyse itself (a redirect
+ *  to the form). Exact paths: /analyse/<id>/* stays the owner's. */
+const PUBLIC = ["/analyse", "/analyse/nouveau", "/analyse/envoyee"]
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl
+
+  if (PUBLIC.includes(pathname)) return NextResponse.next()
 
   if (!PROTECTED.some((p) => pathname.startsWith(p))) return NextResponse.next()
 

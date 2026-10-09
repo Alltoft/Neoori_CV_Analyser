@@ -55,7 +55,8 @@ export interface AnalysisInputs {
   /** Le voyage, reduced to plain French lines at merge time — no number, no
    *  trait name, no framework name. Two lines until a counselor validates the
    *  portrait, up to nine after. Model-facing only: neither the report nor
-   *  /c/<token> renders it, and neither should anything added later. */
+   *  the counselor's copy of it renders it, and neither should anything
+   *  added later. */
   _voyage?: string[]
   /** Which voyage the lines above were reduced from. Mirrored onto
    *  Analysis.voyage_id. Absent when the person has no voyage — an
@@ -81,6 +82,10 @@ export type AnalysisOutput = Record<string, AnalysisSection>
 
 export type AnalysisStatus = "draft" | "queued" | "running" | "success" | "error" | "timeout"
 
+/** Which door an analysis came through (four-doors spec). "legacy" marks the
+ *  ownerless rows written before accounts were required. */
+export type Door = "account" | "promo" | "advisor" | "anonymous" | "legacy"
+
 export interface Analysis {
   id: string
   status: AnalysisStatus
@@ -88,11 +93,11 @@ export interface Analysis {
   output: AnalysisOutput | null
   /** Ordered render instructions. Absent on responses from an older backend. */
   sections_meta?: SectionMeta[]
-  /** Section keys the counselor synthesis shows (§1, §4, §5). */
-  counselor_keys?: string[]
   /** "code" | "payment" once unlocked, null while on the free tier. */
   unlock_method?: string | null
-  share_token: string | null
+  door?: Door | null
+  /** When an unclaimed no-login report's private link stops working. */
+  access_expires_at?: string | null
   prompt_version_id: string | null
   /** The voyage that fed this analysis. Traceability, like
    *  prompt_version_id. Absent on responses from an older backend. */
@@ -203,13 +208,17 @@ export interface CounselorCodeRow {
   /** Real count from code_redemptions, not the legacy uses_count. */
   uses: number
   statut: CodeStatut
+  uses_by_kind: { analysis: number; voyage: number }
 }
 
-/** Identified, and nothing more: no id, no token, no content (spec decision 9). */
+/** Who used my codes — and, for an advisor-door analysis, the report's id
+ *  (four-doors spec, ruling 2). */
 export interface Beneficiaire {
   prenom: string | null
+  nom: string | null
   email: string | null
   target_type: "analysis" | "voyage"
+  analysis_id: string | null
   redeemed_at: string
 }
 
@@ -221,4 +230,29 @@ export interface CounselorStats {
   codes_restants: number | null
   codes_en_circulation: number
   max_uses_per_code: number | null
+}
+
+/** An advisor-door report, as the counselor's list shows it. */
+export interface CounselorAnalysisRow {
+  id: string
+  prenom: string | null
+  nom: string | null
+  code_label: string | null
+  status: AnalysisStatus
+  created_at: string
+}
+
+/** A code as the admin's table shows it: promo (no owner) or conseiller. */
+export interface AdminCodeRow {
+  id: string
+  code: string
+  label: string
+  is_active: boolean
+  owner_id: string | null
+  max_uses: number | null
+  expires_at: string | null
+  revoked_at: string | null
+  created_at: string
+  kind: "promo" | "conseiller"
+  uses_by_kind: { analysis: number; voyage: number }
 }

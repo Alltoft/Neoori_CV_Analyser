@@ -24,7 +24,7 @@ const BUCKETS = [
   { value: "je_ne_paierais_pas", label: "Je ne paierais pas" },
 ]
 
-export function PriceProbe({ analysisId }: { analysisId: string }) {
+export function PriceProbe({ analysisId, token }: { analysisId: string; token?: string }) {
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -32,10 +32,11 @@ export function PriceProbe({ analysisId }: { analysisId: string }) {
     if (busy) return
     setBusy(true)
     try {
-      await api.post(`/analyses/${analysisId}/price-feedback`, {
-        bucket,
-        useful: bucket !== "je_ne_paierais_pas",
-      })
+      await api.post(
+        `/analyses/${analysisId}/price-feedback`,
+        { bucket, useful: bucket !== "je_ne_paierais_pas" },
+        { token, skipRedirect: Boolean(token) },
+      )
     } catch {
       // A refused probe must never look like a broken report — thank them
       // either way and move on.

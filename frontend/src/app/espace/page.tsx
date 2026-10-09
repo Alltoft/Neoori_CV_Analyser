@@ -13,12 +13,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
-import { copyToClipboard } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
 import { getVoyage } from "@/lib/voyage"
 import type { Analysis } from "@/types"
 import type { Voyage } from "@/types/voyage"
-import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2, ArrowRight } from "lucide-react"
+import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, ArrowRight } from "lucide-react"
 
 function cardTitle(a: Analysis) {
   if (a.status === "draft") return "Brouillon"
@@ -29,23 +28,8 @@ export default function EspacePage() {
   const { user } = useAuth()
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
-  const [origin, setOrigin] = useState("")
   const [voyage, setVoyage] = useState<Voyage | null>(null)
   const [voyageLoaded, setVoyageLoaded] = useState(false)
-
-  useEffect(() => setOrigin(window.location.origin), [])
-
-  const copyShare = async (token: string) => {
-    const url = `${window.location.origin}/c/${token}`
-    const ok = await copyToClipboard(url)
-    if (!ok) {
-      window.prompt("Copiez le lien conseiller :", url)
-      return
-    }
-    setCopiedToken(token)
-    setTimeout(() => setCopiedToken((t) => (t === token ? null : t)), 2500)
-  }
 
   useEffect(() => {
     api.get<{ analyses: Analysis[] }>("/analyses/")
@@ -73,8 +57,6 @@ export default function EspacePage() {
       alert(e instanceof ApiError ? e.message : "Erreur lors de la suppression.")
     }
   }
-
-  const shareable = analyses.find((a) => a.status === "success" && a.share_token)
 
   return (
     <div className="min-h-screen bg-background">
@@ -223,11 +205,6 @@ export default function EspacePage() {
                       <Button render={<Link href={`/analyse/${a.id}/rapport?print=1`} />} size="icon-sm" variant="outline" aria-label="Télécharger le PDF">
                         <Download className="size-3.5" />
                       </Button>
-                      {a.share_token && (
-                        <Button size="icon-sm" variant="outline" aria-label="Copier le lien conseiller" onClick={() => copyShare(a.share_token!)}>
-                          {copiedToken === a.share_token ? <Check className="size-3.5 text-success" /> : <Link2 className="size-3.5" />}
-                        </Button>
-                      )}
                     </>
                   )}
                 </div>
@@ -249,23 +226,7 @@ export default function EspacePage() {
         <Separator className="my-8" />
 
         {/* Bottom strip */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-          <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:flex-row sm:items-center">
-            <span className="shrink-0 text-sm font-medium text-navy">Partagez avec votre conseiller</span>
-            {shareable ? (
-              <>
-                <code className="flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs text-muted-foreground">
-                  {origin}/c/{shareable.share_token}
-                </code>
-                <Button size="sm" variant="outline" className="shrink-0" onClick={() => copyShare(shareable.share_token!)}>
-                  {copiedToken === shareable.share_token ? <><Check className="size-3.5 text-success" /> Copié</> : "Copier"}
-                </Button>
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">Aucune analyse complète disponible pour le moment.</span>
-            )}
-          </div>
-
+        <div className="grid grid-cols-1 gap-4">
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
             <div>
               <p className="eyebrow text-muted-foreground">Crédits restants</p>
