@@ -77,3 +77,33 @@ def test_the_command(app):
     assert result.exit_code == 0 and "dry run" in result.output
     result = runner.invoke(args=["purge-expired", "--before-rollback"])
     assert result.exit_code == 0 and "dry run" in result.output
+
+
+def test_the_bare_command_is_the_cron_run_and_deletes(app):
+    """`flask purge-expired` with no flag is what the 03:30 cron runs
+    (scripts/neoori-purge.sh): it deletes, unlike every other form above."""
+    c = counselor()
+    expired = [
+        _row(status="draft", access_token_hash=_hash("h"), created_at=_ago(hours=49)),
+        _row(door="anonymous", access_token_hash=_hash("i"), created_at=_ago(days=31)),
+        _row(door="advisor", counselor_id=c.id, created_at=_ago(days=366)),
+    ]
+    fresh = [
+        _row(status="draft", access_token_hash=_hash("j"), created_at=_ago(hours=1)),
+        _row(door="anonymous", access_token_hash=_hash("k"), created_at=_ago(days=1)),
+        _row(door="advisor", counselor_id=c.id, created_at=_ago(days=1)),
+    ]
+    db.session.add_all([RunLog(door="anonymous", created_at=_ago(days=3)), RunLog(door="anonymous")])
+    db.session.commit()
+    expired_ids = {a.id for a in expired}
+
+    result = app.test_cli_runner().invoke(args=["purge-expired"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines() == [
+        "held_drafts: 1", "anonymous: 1", "advisor: 1", "run_log: 1", "deleted",
+    ]
+    db.session.expire_all()
+    remaining = {a.id for a in Analysis.query.all()}
+    assert remaining == {a.id for a in fresh} and not remaining & expired_ids
+    assert RunLog.query.count() == 1
