@@ -8,8 +8,8 @@ Two audiences, two access rules, one blueprint:
   * counselor handlers need the counselor/admin role **and** the share token.
     That was deliberately stricter than /api/c/<token> for analyses, a public
     link the four-doors spec retired (decision 43): the synthesis sheet is a
-    psychometric read-out, so a leaked link alone must not open it (spec
-    § Security).
+    psychometric read-out, so a leaked link alone must not open it (voyage
+    spec § Security).
 
 Session locking is enforced here and not only in the UI — see
 models.voyage.session_lock: S0 needs the voyage to exist, S1-S5 need a

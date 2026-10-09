@@ -1779,7 +1779,8 @@ def sheet(candidate):
 
 
 def test_the_sheet_is_never_reachable_by_link_alone(client, sheet, auth, counselor_auth):
-    """Unlike /api/c/<token> for an analysis. Deliberate: this is a
+    """Unlike /api/c/<token>, the analysis share link that opened on the
+    link alone until the four-doors spec retired it. Deliberate: this is a
     psychometric read-out, not a report the person already has."""
     _, counselor_auth = counselor_auth
     assert client.get("/api/voyage/c/tok-conseiller").status_code == 401

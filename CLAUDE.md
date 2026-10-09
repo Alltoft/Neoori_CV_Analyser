@@ -55,7 +55,8 @@ Do NOT use handwritten fonts (Caveat, Patrick Hand, etc.) — wireframes only.
 | 1 | Lecture stratégique du parcours | ✓ |
 | 2 | Forces du profil pour la cible | ✓ |
 | 3 | Compétences transférables (tag cloud) | ✓ |
-| 4 | Ce qui reste à renforcer | ✓ |
+| — | Verdict (free only) | ✓ |
+| 4 | Ce qui reste à renforcer | Paid only |
 | 5 | Préconisations terrain | Paid only |
 | 6 | Exemple de réécriture | Paid only |
 | 7 | Synthèse | Paid only |
@@ -93,20 +94,25 @@ decides each door's tier and recipient — the browser never chooses a tier, and
   counselor link (`/voyage/c/…`) is untouched.
 - **No token in a URL a server sees.** The report link carries its key in the
   fragment; a signed-out draft is held by the HttpOnly `neoori_hold` cookie.
-  Password signup only marks a held row (`pending_user_id`); verify-email
-  with the signup password attaches it; any other proof of the address
-  (Google, Microsoft, email link, password reset) drops the mark.
+  Password signup only marks a held row (`pending_user_id`), and only on the
+  round trip that held it (`next` exactly
+  `/analyse/nouveau?reprendre=compte|promo|brouillon` or `/espace?garder=1`,
+  `held.ROUND_TRIPS`): a signup from anywhere else may be a stranger's on a
+  shared computer. verify-email with the signup password attaches it; any
+  other proof of the address (Google, Microsoft, email link, password reset)
+  drops the mark.
 - **Caps** read the append-only `run_log`, so deleting a report never lowers
   them: `ANONYMOUS_RUNS_PER_DAY`, `FREE_RUNS_PER_ACCOUNT_PER_DAY`. nginx limits
   the open POSTs per address (`analyses`, `codes` zones).
 - **Retention** — `flask purge-expired`, host cron 03:30 (DOCKER.md « Purge »):
   held drafts 48 h, unclaimed no-login reports 30 days, advisor reports 12
   months, `run_log` 2 days.
-- **Rolling back below the four-doors migration** needs
-  `flask purge-expired --before-rollback --apply` first, then
-  `flask db downgrade`: otherwise advisor rows become plain ownerless rows the
-  previous image serves by id. The commands, in order: DOCKER.md, « Rolling
-  back below the four-doors migration ».
+- **Rolling back below the four-doors migration** needs a backup, then
+  `flask purge-expired --before-rollback --apply`, then `flask db downgrade`:
+  otherwise advisor reports, unclaimed no-login reports and held drafts become
+  plain ownerless rows (belonging to no account) that the previous image
+  serves by id. The commands, in order: DOCKER.md, « Rolling back below the
+  four-doors migration ».
 - Access logs (nginx, gunicorn) record the path only — no query string, no
   Referer.
 
@@ -116,7 +122,7 @@ Two-tier model routing by user plan:
 
 | Plan | Sections generated | Model | max_tokens |
 |---|---|---|---|
-| free | 1–4 only | `claude-haiku-4-5-20251001` | 8000 |
+| free | 1–3 + verdict | `claude-haiku-4-5-20251001` | 8000 |
 | paid | 1–9 (full) | `claude-sonnet-4-6` | 8000 |
 
 ```
@@ -139,7 +145,7 @@ user: <concatenation of 8 fields per format in prompt v1.3>
 - Every analysis row stores `prompt_version_id` (B2G traceability)
 
 ## Paywall
-- Free: sections 1–4 (genuinely useful, do NOT aggressively blur)
+- Free: sections 1–3 + verdict (genuinely useful, do NOT aggressively blur)
 - Paid: 9 € one-shot, no subscription
 - Conseiller code → the advisor door: Complet, sent to the counselor, not the candidate. Promo code → Complet for a signed-in account, once.
 

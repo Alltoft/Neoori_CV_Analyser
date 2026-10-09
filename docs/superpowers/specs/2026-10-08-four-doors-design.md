@@ -840,8 +840,8 @@ On the developer's go, each step:
    lazy reap (`reap_if_orphaned()`, which takes a stuck row when it is
    read) and the startup sweep both send no mail, by the rule that already
    held, so the person who paid, or spent a code, is left on a failed report
-   with nothing to click. Send the unlock-failure mail when the reaper takes
-   such a row?
+   with nothing that retries the unlock. Send the unlock-failure mail when
+   the reaper takes such a row?
 9. **Payment window** (raised during the build, 2026-10-09). A promo code
    redeemed on a report between the creation of its Stripe session and the
    payment unlocks it; when the payment then completes, the webhook's unlock
@@ -869,8 +869,8 @@ On the developer's go, each step:
     counselor synthesis, and no copy row covers it. The admin page lead,
     « Demandes de comptes conseiller, comptes actifs, et codes d’accès créés
     directement. », predates « Codes promo ». The panel shows the server's
-    raw-key sentences (« max_uses doit être supérieur à zéro. ») under
-    « Utilisations ». The « Prénom » header of `/conseiller`'s bénéficiaires
+    raw-key sentences (« max_uses doit être supérieur à zéro. ») in the
+    panel's alert. The « Prénom » header of `/conseiller`'s bénéficiaires
     table now sits over prénom and nom. A deleted advisor report leaves its
     row reading « — » and « Bénéficiaire anonyme », because the redemption is
     kept on purpose (a delete never lowers a count).

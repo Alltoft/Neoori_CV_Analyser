@@ -6,7 +6,8 @@ claimed one is never touched by the daily run.
 
 The rollback mode is the one exception, and it is not a clock: before
 downgrading past the four-doors migration, every row the previous image would
-serve to anyone holding its id has to go (DOCKER.md, « Rollback »).
+serve to anyone holding its id has to go (DOCKER.md, « Rolling back below
+the four-doors migration »).
 """
 from datetime import datetime, timedelta
 

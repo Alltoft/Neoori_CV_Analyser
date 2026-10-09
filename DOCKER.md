@@ -142,7 +142,7 @@ The open analysis form adds two more per-address limits, in the same templates.
 The `analyses` zone (10 r/min, burst 40) and the `codes` zone (10 r/min, burst
 20) limit the open form's POSTs per address; the polling GETs are not limited.
 The `analyses` zone covers `POST /api/analyses/`, `/api/analyses/draft` and the
-two CV upload endpoints; the `codes` zone covers `POST /api/codes/check`, an
+two PDF upload endpoints; the `codes` zone covers `POST /api/codes/check`, an
 analysis unlock and the voyage unlock. The numbers are sized for a workshop
 room behind one address: fifteen people, about four requests each, within
 minutes. Both zones key on the client address like the auth ones, so the
@@ -300,21 +300,38 @@ CI/CD section. The four-doors migration is `c1d2e3f4a5b6`, on top of
   (`backend/entrypoint.sh:24`) and does not know `c1d2e3f4a5b6`.
 - A downgrade alone drops the columns that keep some rows private. Advisor-door
   reports, unclaimed no-login reports and held drafts would become plain
-  ownerless rows, and the previous image serves an ownerless row to anyone
-  holding its id.
+  ownerless rows — reports and drafts that belong to no account — and the
+  previous image serves an ownerless row to anyone holding its id.
 
-So those rows go first. In order, with the new image still running:
+So those rows go first, after a backup. Every command below runs on the VPS,
+in `/srv/neoori`: the first two lines take you there, as in the restore test
+under « Backups ». In order, with the new image still running:
 
 ```bash
+ssh neoori
+cd /srv/neoori
+/usr/local/bin/neoori-backup.sh                   # 0. a fresh dump, before anything else
+ls -lh /backups/neoori-$(date +%F).sql.gz
+gzip -dc /backups/neoori-$(date +%F).sql.gz | head -c 200 | wc -c     # 100 or more
 C="docker compose -f docker-compose.prod.yml exec -T backend"
-$C flask purge-expired --before-rollback          # counts only
-$C flask purge-expired --before-rollback --apply
-$C flask db downgrade b0c1d2e3f4a5                # the revision before c1d2e3f4a5b6
-IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d
+$C flask purge-expired --before-rollback          # 1. counts only
+$C flask purge-expired --before-rollback --apply  # 2. deletes
+$C flask db downgrade b0c1d2e3f4a5                # 3. the revision before c1d2e3f4a5b6
+IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d   # 4. FORCE_ANALYSIS_TIER first
 ```
 
 (`<sha>` is the commit of the image you are going back to.)
 
+0. The backup comes first because command 2 cannot be undone: it deletes
+   every advisor report (the counselors' only copy: the candidate never
+   received one), every unclaimed no-login report and every held draft, and
+   this dump is the only way back. The script checks its own dump, as every
+   night: its last line is `backup: wrote /backups/neoori-<date>.sql.gz
+   (<size>)`, followed by the off-box warning while no rclone remote is set
+   (« Backups »). If it says `backup: dump looks empty` instead, or `ls` finds
+   no file for today, stop here: nothing has been touched yet. The `gzip` line
+   repeats the script's own test, the first 200 bytes of the dump: 100 or more
+   means it holds SQL.
 1. `--before-rollback` alone deletes nothing. It prints three counts —
    `held_drafts`, `anonymous`, `advisor` — and `dry run — nothing deleted`.
    Read them: they are the rows the next command destroys. Every `advisor`
@@ -327,8 +344,22 @@ IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d
    again now prints zeros.
 3. `flask db downgrade b0c1d2e3f4a5` removes the four-doors columns, keys and
    the `run_log` table. Check: `$C flask db current` names `b0c1d2e3f4a5`.
-4. `up -d` with the earlier tag starts the previous image, whose
-   `flask db upgrade` now finds nothing to do. Check:
+   `b0c1d2e3f4a5` is the head of the image that was live just before the
+   four-doors deploy. Going back further, to an older image, needs that
+   image's own head instead. Read it from the image itself, before command 3:
+   `IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml run --rm
+   --no-deps -e DATABASE_URL=sqlite:// backend flask db heads` prints it (an
+   in-memory SQLite: the command only reads the image's migration files and
+   never touches the database).
+4. Before `up -d`, look at `FORCE_ANALYSIS_TIER` in `/srv/neoori/.env`. The
+   four-doors image ignores it, but every image from `46f7380` (2026-07-30) to
+   the one before four-doors reads it with `paid` as its default —
+   `os.getenv("FORCE_ANALYSIS_TIER", "paid")`, `backend/app/routes/analyses.py:30`
+   at `fd2f47f`. With no line in `.env`, every new analysis runs on the paid
+   tier again after the rollback. Write `FORCE_ANALYSIS_TIER=paid` only if
+   that is what you want back; `FORCE_ANALYSIS_TIER=` (empty) gives the
+   normal tiers. `up -d` then starts the previous image with that setting,
+   and its `flask db upgrade` finds nothing to do. Check:
    `curl -s https://neoori.tech/api/health` prints `{"status":"ok"}` (plain
    `http://` only redirects while `NGINX_MODE=https`).
 
@@ -336,5 +367,6 @@ Run commands 3 and 4 back to back: between them the running (new) code expects
 columns the downgrade has just removed, so its requests fail. Keep the gap
 between commands 2 and 3 short too: a row a visitor submits in it survives as
 an ownerless row. For a rollback that must leave none, stop nginx before
-command 1 (`docker compose -f docker-compose.prod.yml stop nginx`); the `up -d`
-of command 4 starts it again.
+command 0 (`docker compose -f docker-compose.prod.yml stop nginx`), so the
+dump also holds every row command 2 deletes; the `up -d` of command 4 starts
+it again.

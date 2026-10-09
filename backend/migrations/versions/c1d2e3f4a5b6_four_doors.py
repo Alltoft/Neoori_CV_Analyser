@@ -6,9 +6,10 @@ revision are marked door='legacy'. code_redemptions gains slot and two unique
 keys; counselor_notes one unique key; run_log is new.
 
 Rolling back past this revision is only safe after
-`flask purge-expired --before-rollback --apply` (DOCKER.md, « Rollback »):
-without it, advisor-door rows become plain ownerless rows, which the previous
-image serves to anyone holding the id.
+`flask purge-expired --before-rollback --apply` (DOCKER.md, « Rolling back
+below the four-doors migration »): without it, advisor-door reports, unclaimed
+no-login reports and held drafts become plain ownerless rows, which the
+previous image serves to anyone holding the id.
 
 Revision ID: c1d2e3f4a5b6
 Revises: b0c1d2e3f4a5

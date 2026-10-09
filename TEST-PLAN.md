@@ -160,18 +160,31 @@ The form at `/analyse/nouveau` is open to everyone, and « Générer mon analyse
 leads to four doors. The server decides each door's tier and who gets the
 report (CLAUDE.md, « Les quatre portes »). This replaces the old counselor-view
 checks: the `/c/<token>` share link, the « Vue conseiller » tab and the
-`VERSION CONSEILLER` badge on the report no longer exist (§ 8.6). Everything
+`VERSION CONSEILLER` badge on the report no longer exist (8.6.4 checks the old
+link; the counselor now reads the report on their own page, § 8.4). Everything
 here goes through nginx, http://localhost:8080.
 
 **Set up once**
 
 - A verified candidate account, and a second browser profile (or a private
   window) for the rows that say "profile 2".
-- An approved counselor account with one **single-use** conseiller code: mint
-  it in `/conseiller` with « Places » = 1. A promo code with **two** uses: mint
-  it in `/admin/conseillers`, « Codes promo », « Utilisations » = 2. Two, so
-  that the once-per-account rule (8.1.6) is reached: a one-use code is already
-  exhausted by then and answers « Ce code a atteint sa limite d'utilisation. »
+- An approved counselor account with **three single-use** conseiller codes,
+  minted in `/conseiller` with « Places » = 1: the first for 8.1.3 (8.1.4
+  tries it again), the second for 8.1.8, which only checks it and spends
+  nothing, so 8.2.7 can use it afterwards, and the third for 8.2.4. 8.4 and
+  8.7.1 say when to mint more.
+- A promo code with **three** uses, minted in `/admin/conseillers`, « Codes
+  promo », « Utilisations » = 3: 8.1.6, 8.2.3 and 8.2.6 each spend one (8.2.6
+  once you launch after its round trip). A promo code is once per account, so
+  each of those three launches is made by an account that has not used it
+  yet. A code with no use left answers « Ce code a atteint sa limite
+  d'utilisation. » before anything else, at « Continuer » and at the wrong
+  door alike: 8.1.6's second try reads « Vous avez déjà utilisé ce code. »,
+  and 8.1.8's promo code moves to its door, only while the code still has a
+  use left.
+- No-login reports: 8.1.2 makes the first (8.5.1 keeps it), 8.2.8 makes
+  another (8.5.3 opens it, 8.5.4 deletes it) and 8.5.2 asks for a new one.
+  Print one (8.5.5) before 8.5.4 deletes it, or make one more.
 - Locally there is no Resend key, so a mail is a line in
   `docker compose logs backend`, and so are the verification and sign-in links
   (`DEV — no RESEND_API_KEY, link for <address>: <link>`).
@@ -434,7 +447,7 @@ advisor and no-login doors fold in no profile and no voyage (§ 8), so
 | 12.9.2 | Play session 0 to the end, wait for the phrase, then run a new analysis and look at `inputs._voyage` in the same response | A list of **exactly 2** lines: « Phrase révélée : … » and « Ce qui l'attire le plus dans dix ans : … ». `inputs._voyage_id` and the top-level `voyage_id` are the same id |
 | 12.9.3 | Have the counselor validate the portrait (§ 13.22), then run **another** new analysis and look at `inputs._voyage` | Up to **9** lines — the two from § 12.9.2 plus « Univers dominants », « Besoin dominant », « Ambivalences relevées », « Cadre où elle donne le meilleur », « Ce qui l'épuise », « Ce qui la met en colère », « Se sent vivant(e) quand » (a line is omitted, not left empty, when it has nothing to say). The § 12.9.2 analysis itself is untouched — still its own 2 lines |
 | 12.9.4 | Read every line in `inputs._voyage` carefully | The first line (« Phrase révélée : … ») is free text the model wrote from the person's own answers and may legitimately carry a digit — an age or a duration, e.g. a made-up « Après 17 ans d'usine… », is not a bug. **Every other line must never contain a digit**, and no line may contain a framework word: « score », « névrotisme », « RIASEC », « Big Five », « extraversion », « conscienciosité », « Élevé » / « Moyen » / « Faible ». If one does, stop and report it — it is the one bug in this section that matters |
-| 12.9.5 | On an analysis carrying a voyage, open the report itself, and print it to PDF | The voyage lines are rendered on **neither** the page nor the printout — they exist only in the raw `inputs` payload read directly, as in the rows above. Model-facing only, never on a page. (The old « Vue conseiller » tab and the `/c/<token>` share link are gone, § 8.6.) |
+| 12.9.5 | On an analysis carrying a voyage, open the report itself, and print it to PDF | The voyage lines are rendered on **neither** the page nor the printout — they exist only in the raw `inputs` payload read directly, as in the rows above. Model-facing only, never on a page. (The old « Vue conseiller » tab and the `/c/<token>` share link are gone; 8.6.4 checks the link.) |
 | 12.9.6 | With that same analysis still around, open `/voyage`, click « Supprimer mon voyage » (§ 12.7.1) and confirm, then re-open the analysis's response | `inputs` no longer has `_voyage` or `_voyage_id`, and the top-level `voyage_id` is `null`. The analysis and its delivered report text are untouched — only the copied voyage lines are gone |
 
 > The rule the PM cares about here: **the person never sees a score, a trait
