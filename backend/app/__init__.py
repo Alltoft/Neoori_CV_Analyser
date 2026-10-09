@@ -162,7 +162,6 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.prompts import prompts_bp
     from .routes.upload import upload_bp
     from .routes.admin import admin_bp
-    from .routes.counselor import counselor_bp
     from .routes.profile import profile_bp
     from .routes.voyage import voyage_bp
     from .routes.payments import payments_bp
@@ -176,7 +175,6 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(prompts_bp, url_prefix="/api/prompts")
     app.register_blueprint(upload_bp, url_prefix="/api/upload")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
-    app.register_blueprint(counselor_bp, url_prefix="/api/c")
     app.register_blueprint(profile_bp, url_prefix="/api/profile")
     app.register_blueprint(voyage_bp, url_prefix="/api/voyage")
     app.register_blueprint(counselor_space_bp, url_prefix="/api/counselor")

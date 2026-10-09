@@ -95,3 +95,28 @@ def test_redeem_writes_the_row_and_bumps_the_counter(app):
     assert row.target_id == "a-1"
     assert c.uses_count == 1
     assert code_service.redemption_count(c.id) == 1
+
+
+def test_use_counts_by_kind_groups_per_code_and_per_kind(app):
+    a, b, unused, other = _code(), _code(), _code(), _code()
+    db.session.add_all([
+        CodeRedemption(code_id=a.id, target_type="analysis", target_id="a-1"),
+        CodeRedemption(code_id=a.id, target_type="analysis", target_id="a-2"),
+        CodeRedemption(code_id=a.id, target_type="voyage", target_id="v-1"),
+        CodeRedemption(code_id=b.id, target_type="voyage", target_id="v-2"),
+        CodeRedemption(code_id=other.id, target_type="analysis", target_id="a-3"),
+    ])
+    db.session.commit()
+
+    counts = code_service.use_counts_by_kind([a.id, b.id, unused.id])
+    assert counts == {
+        a.id: {"analysis": 2, "voyage": 1},
+        b.id: {"analysis": 0, "voyage": 1},
+    }
+    # A code nobody used is simply absent, and so is one it was not asked about:
+    # callers default the missing ones to no uses.
+    assert unused.id not in counts and other.id not in counts
+
+
+def test_use_counts_by_kind_of_no_codes_is_empty(app):
+    assert code_service.use_counts_by_kind([]) == {}

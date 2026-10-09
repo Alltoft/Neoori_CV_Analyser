@@ -7,11 +7,13 @@ unhandled 500 where the route meant to answer 400. Class B: a field read as
 `(data.get(field) or "").strip()` raised the same way when the field was
 present but a truthy non-string (an int, a non-empty list/dict, `True`).
 
-Class C (`PUT /api/c/<token>/notes`) had a third defect on top of class A: a
-malformed body didn't just avoid crashing, it silently cleared the counselor's
-stored note and reported success. The tests at the bottom of this file assert
-the note's text from a fresh DB query after every malformed request, because
-that is the whole point of the fix -- the data must survive.
+Class C (the counselor's private note, `PUT /api/counselor/analyses/<id>/notes`;
+before the four-doors spec, `PUT /api/c/<token>/notes`) had a third defect on
+top of class A: a malformed body didn't just avoid crashing, it silently
+cleared the counselor's stored note and reported success. The tests at the
+bottom of this file assert the note's text from a fresh DB query after every
+malformed request, because that is the whole point of the fix -- the data must
+survive.
 """
 import pytest
 from flask_jwt_extended import create_access_token
@@ -20,6 +22,7 @@ from app.extensions import db as _db
 from app.models.analysis import Analysis
 from app.models.counselor_note import CounselorNote
 from app.models.user import User
+from tests.helpers_doors import counselor as _approved_counselor
 
 # A JSON array, a bare JSON string and a bare JSON number: each is valid,
 # truthy JSON that is not a dict.
@@ -144,10 +147,10 @@ def test_upsert_profile_survives_malformed_body(client, auth, body):
 
 
 @pytest.mark.parametrize("body", MALFORMED_BODIES)
-def test_upsert_notes_survives_malformed_body(client, body):
-    counselor = _user("notes-malformed@test.fr", role="counselor")
-    _analysis(share_token="tok-malformed")
-    res = client.put("/api/c/tok-malformed/notes", json=body, headers=_headers(counselor))
+def test_save_counselor_note_survives_malformed_body(client, body):
+    counselor = _approved_counselor("notes-malformed@test.fr")
+    a = _analysis(door="advisor", counselor_id=counselor.id)
+    res = client.put(f"/api/counselor/analyses/{a.id}/notes", json=body, headers=_headers(counselor))
     assert res.status_code != 500
     assert res.status_code == 400
     assert res.get_json()["error"] == "Note invalide."
@@ -244,44 +247,43 @@ def test_create_prompt_rejects_non_string_system_prompt_text(client, value, admi
 # ── class C: a malformed PUT must never destroy a counselor's note ───────────
 
 def test_malformed_put_never_wipes_an_existing_note(client):
-    counselor = _user("notes-guard@test.fr", role="counselor")
+    counselor = _approved_counselor("notes-guard@test.fr")
     headers = _headers(counselor)
-    a = _analysis(share_token="tok-guard")
+    a = _analysis(door="advisor", counselor_id=counselor.id)
+    url = f"/api/counselor/analyses/{a.id}/notes"
 
-    write = client.put("/api/c/tok-guard/notes",
-                       json={"body": "note clinique importante"}, headers=headers)
+    def stored_body():
+        # A fresh DB query, not the response body -- the whole point of the
+        # regression is that the stored row survives.
+        return CounselorNote.query.filter_by(analysis_id=a.id, counselor_id=counselor.id).first().body
+
+    write = client.put(url, json={"note": "note clinique importante"}, headers=headers)
     assert write.status_code == 200
-    assert write.get_json()["note"]["body"] == "note clinique importante"
+    assert write.get_json()["note"] == "note clinique importante"
 
-    empty_body = client.put("/api/c/tok-guard/notes", json={}, headers=headers)
-    assert empty_body.status_code == 400
-    assert empty_body.get_json()["error"] == "Note invalide."
-
-    other_key = client.put("/api/c/tok-guard/notes", json={"autre": "x"}, headers=headers)
-    assert other_key.status_code == 400
-    assert other_key.get_json()["error"] == "Note invalide."
-
-    # Assert against a fresh DB query, not the response body -- the whole
-    # point of the regression is that the stored row survives.
-    stored = CounselorNote.query.filter_by(analysis_id=a.id, counselor_id=counselor.id).first()
-    assert stored.body == "note clinique importante"
+    for refused in (
+        {},                                  # no key at all
+        {"autre": "x"},                      # the wrong key
+        {"body": "x"},                       # the retired route's key
+        {"note": None}, {"note": 5}, {"note": ["x"]}, {"note": {"a": "x"}},   # not a string
+    ):
+        res = client.put(url, json=refused, headers=headers)
+        assert res.status_code == 400, refused
+        assert res.get_json()["error"] == "Note invalide."
+        assert stored_body() == "note clinique importante", refused
 
     for body in MALFORMED_BODIES:
-        res = client.put("/api/c/tok-guard/notes", json=body, headers=headers)
+        res = client.put(url, json=body, headers=headers)
         assert res.status_code == 400
         assert res.get_json()["error"] == "Note invalide."
 
-    stored = CounselorNote.query.filter_by(analysis_id=a.id, counselor_id=counselor.id).first()
-    assert stored.body == "note clinique importante"
+    assert stored_body() == "note clinique importante"
 
-    # An explicit {"body": ""} is a deliberate clear and must still work.
-    cleared = client.put("/api/c/tok-guard/notes", json={"body": ""}, headers=headers)
+    # An explicit {"note": ""} is a deliberate clear and must still work.
+    cleared = client.put(url, json={"note": ""}, headers=headers)
     assert cleared.status_code == 200
-    stored = CounselorNote.query.filter_by(analysis_id=a.id, counselor_id=counselor.id).first()
-    assert stored.body == ""
+    assert stored_body() == ""
 
-    rewrite = client.put("/api/c/tok-guard/notes",
-                         json={"body": "note refaite"}, headers=headers)
+    rewrite = client.put(url, json={"note": "note refaite"}, headers=headers)
     assert rewrite.status_code == 200
-    stored = CounselorNote.query.filter_by(analysis_id=a.id, counselor_id=counselor.id).first()
-    assert stored.body == "note refaite"
+    assert stored_body() == "note refaite"

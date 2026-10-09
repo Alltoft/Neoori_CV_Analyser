@@ -7,26 +7,6 @@ from ..extensions import db
 from ..services import section_registry as registry
 
 
-# GET /api/c/<share_token> is public and unauthenticated -- anyone holding
-# the link gets whatever to_dict(audience="counselor") puts in "inputs".
-# This allow-list mirrors every `analysis.inputs.X` access in
-# frontend/src/app/c/[token]/page.tsx (verified 2026-10-08): the candidate
-# name shown in the header and the "key facts" strip. Anything that page
-# does not render -- cv_text, the encrypted-profile-derived _conditions/_oeth
-# lines, the _voyage/_voyage_id lines -- must never travel over this public
-# link. Add a key here only after confirming that page reads it; this must
-# stay an allow-list, never a deny-list, so an unclassified future field
-# defaults to hidden.
-COUNSELOR_VISIBLE_INPUT_KEYS = frozenset({
-    "prenom",
-    "nom",
-    "cible_visee",
-    "type_mobilite",
-    "situation_actuelle",
-    "notes_specifiques",
-})
-
-
 class Analysis(db.Model):
     __tablename__ = "analyses"
 
@@ -67,7 +47,8 @@ class Analysis(db.Model):
     # the waiting screen reports the run instead of animating a clock.
     progress = db.Column(db.SmallInteger, nullable=False, default=0, server_default="0")
 
-    # Public token for counselor share link: /c/<share_token>
+    # The retired /c/<share_token> link (four-doors spec, decision 43): kept,
+    # no longer minted.
     share_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
 
     # Paywall unlock traceability: 'code' (counselor) or 'payment' (Stripe)
@@ -123,7 +104,7 @@ class Analysis(db.Model):
         days = current_app.config.get("ANONYMOUS_RETENTION_DAYS", 30)
         return (self.created_at + timedelta(days=days)).isoformat()
 
-    def to_dict(self, audience: str = "candidate"):
+    def to_dict(self):
         parcours = self.parcours
         data = {
             "id": self.id,
@@ -132,7 +113,6 @@ class Analysis(db.Model):
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
             "progress": 100 if self.status == "success" else (self.progress or 0),
-            "share_token": self.share_token,
             "prompt_version_id": self.prompt_version_id,
             "voyage_id": self.voyage_id,
             "unlock_method": self.unlock_method,
@@ -146,34 +126,7 @@ class Analysis(db.Model):
         # Render instructions for the client: ordered, with titles and render
         # mode. The client must never sort output keys itself — "verdict" sits
         # between "3" and "4", and a string sort puts "10" before "2".
-        meta = registry.sections_meta(parcours)
-        counselor = list(registry.counselor_keys(parcours))
-        if audience == "counselor":
-            # Spec rule: same analysis object, different view — no regeneration.
-            meta = [m for m in meta if m["key"] in set(counselor)]
-            # Public share link: ship only what the counselor page renders,
-            # never the candidate's full submission. See
-            # COUNSELOR_VISIBLE_INPUT_KEYS above -- the candidate audience
-            # (default) is untouched and keeps every input key.
-            data["inputs"] = {
-                k: v for k, v in (self.inputs or {}).items()
-                if k in COUNSELOR_VISIBLE_INPUT_KEYS
-            }
-            # /api/c/<share_token> needs no login. _voyage itself is already
-            # excluded by the allow-list above, but voyage_id sits outside
-            # "inputs" at the top level of this dict, so the allow-list alone
-            # does not cover it. No frontend reads it -- pop it too.
-            data.pop("voyage_id", None)
-        data["sections_meta"] = meta
-        # Lets the candidate view render its "vue conseiller" tab without a
-        # second request, and without keeping its own copy of this rule.
-        data["counselor_keys"] = counselor
-
+        data["sections_meta"] = registry.sections_meta(parcours)
         if self.output:
-            if audience == "counselor":
-                keep = set(registry.counselor_keys(parcours))
-                data["output"] = {k: v for k, v in self.output.items() if k in keep}
-            else:
-                data["output"] = self.output
-
+            data["output"] = self.output
         return data

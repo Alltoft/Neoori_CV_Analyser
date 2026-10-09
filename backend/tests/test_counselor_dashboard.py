@@ -46,11 +46,13 @@ def test_stats_count_redemptions_not_codes(client, app):
                            expires_at=datetime.utcnow() + timedelta(days=30))
     db.session.add_all([code, unused])
     db.session.commit()
-    db.session.add(CodeRedemption(code_id=code.id, target_type="voyage", target_id="v-1"))
+    # One single-use code with both of its places spent: a voyage and an analysis.
+    db.session.add(CodeRedemption(code_id=code.id, target_type="voyage", target_id="v-1", slot=1))
+    db.session.add(CodeRedemption(code_id=code.id, target_type="analysis", target_id="a-1", slot=1))
     db.session.commit()
 
     stats = client.get("/api/counselor/stats", headers=headers).get_json()
-    assert stats["beneficiaires"] == 1
+    assert stats["beneficiaires"] == 2            # two redemptions, one code
     assert stats["codes_crees"] == 2
     assert stats["codes_restants"] == 8
     assert stats["codes_en_circulation"] == 1     # only the unused, unexpired one
@@ -93,7 +95,11 @@ def test_beneficiaires_are_named_and_nothing_more(client, app):
     assert rows[0]["prenom"] == "Karim"
     assert rows[0]["email"] == "karim@test.com"
     assert rows[0]["target_type"] == "voyage"
-    # No link, no token, no content — spec decision 9.
+    # A voyage is reached only through the token the person hands over: no
+    # link, no token, no content. Only an advisor-door analysis names its
+    # report (analysis_id), and this is not one.
+    assert rows[0]["analysis_id"] is None
+    assert rows[0]["nom"] is None
     assert "target_id" not in rows[0]
     assert "share_token" not in rows[0]
 

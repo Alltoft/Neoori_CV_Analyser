@@ -1,4 +1,4 @@
-"""Analysis.to_dict() — parcours resolution, counselor filter, sections_meta."""
+"""Analysis.to_dict() — parcours resolution, sections_meta, the whole report."""
 
 from datetime import datetime
 
@@ -6,8 +6,6 @@ import pytest
 
 from app.extensions import db as _db
 from app.models.analysis import Analysis
-from app.models.user import User
-from app.models.voyage import Voyage
 
 
 @pytest.fixture(autouse=True)
@@ -59,17 +57,11 @@ def test_sections_meta_is_ordered_and_typed():
     assert next(m for m in meta if m["key"] == "1")["render"] == "markdown"
 
 
-# ── counselor view ───────────────────────────────────────────────────────────
+# ── the report ───────────────────────────────────────────────────────────────
 
-def test_counselor_view_filters_to_parcours_1_set():
-    output = {k: {"title": k, "body_markdown": "b", "items": []}
-              for k in ("1", "2", "3", "4", "5", "6")}
-    data = _analysis("1", output).to_dict(audience="counselor")
-    assert set(data["output"].keys()) == {"1", "4", "5"}
-    assert [m["key"] for m in data["sections_meta"]] == ["1", "4", "5"]
-
-
-def test_candidate_view_keeps_every_generated_section():
+def test_to_dict_keeps_every_generated_section():
+    """One dict for every reader, the counselor's page included: nothing is
+    filtered to a subset of sections any more."""
     output = {k: {"title": k, "body_markdown": "b", "items": []} for k in ("1", "4", "5", "9")}
     data = _analysis("1", output).to_dict()
     assert set(data["output"].keys()) == {"1", "4", "5", "9"}
@@ -93,146 +85,19 @@ def test_voyage_id_is_null_rather_than_absent_when_there_is_no_voyage():
     assert payload["voyage_id"] is None
 
 
-def test_the_counselor_view_does_not_carry_it():
-    """R2: /api/c/<share_token> needs no login. _voyage itself is already
-    excluded by the inputs allow-list below; voyage_id must not ride along at
-    the top level either -- no frontend reads it, so popping it costs
-    nothing."""
-    analysis = _analysis("1")
-    analysis.voyage_id = "voy-456"
-    assert "voyage_id" not in analysis.to_dict(audience="counselor")
-
-
-# ── counselor view: inputs allow-list ───────────────────────────────────────
-# GET /api/c/<share_token> is public and unauthenticated: anyone holding the
-# link receives whatever to_dict(audience="counselor") puts in "inputs". The
-# candidate's cv_text, the encrypted-profile-derived _conditions/_oeth lines,
-# and the _voyage/_voyage_id lines must never be in that response -- the
-# counselor page (frontend/src/app/c/[token]/page.tsx) never renders them.
-
-# Keys the counselor page never reads -- must be stripped from a public link.
-_SENSITIVE_INPUT_KEYS = {"cv_text", "_conditions", "_oeth", "_voyage", "_voyage_id"}
-
-# Every analysis.inputs.X access in frontend/src/app/c/[token]/page.tsx
-# (verified 2026-10-08): the header name and the "key facts" strip.
-_RENDERED_INPUT_KEYS = {
-    "prenom", "nom", "cible_visee", "type_mobilite",
-    "situation_actuelle", "notes_specifiques",
-}
-
-
-def _full_inputs(**extra):
-    """A submission carrying every sensitive key the counselor view must
-    never leak, plus every key the counselor page actually renders."""
-    data = {
-        "cv_text": "Jean Dupont, 15 ans d'experience en logistique...",
-        "_conditions": {"rqth": True, "amenagements": ["horaires"]},
-        "_oeth": True,
-        "_voyage": {"phrases": ["une phrase issue du parcours voyage"]},
-        "_voyage_id": "voy-secret-1",
-        "_path": "1",
-        "prenom": "Camille",
-        "nom": "Durand",
-        "cible_visee": "Chef de projet logistique",
-        "type_mobilite": "evolution",
-        "situation_actuelle": "en poste",
-        "notes_specifiques": "Anxieuse a l'idee de changer de secteur.",
-    }
-    data.update(extra)
-    return data
-
-
-def _persisted_analysis(inputs, share_token=None):
-    """Like _analysis() above, but written to the DB -- needed to hit the
-    real HTTP route, which looks the row up by share_token instead of
-    calling to_dict() directly."""
-    a = Analysis(
-        inputs=inputs,
-        status="success",
-        share_token=share_token,
-        created_at=datetime(2026, 9, 12),
-    )
-    _db.session.add(a)
-    _db.session.commit()
-    return a
-
-
-def test_public_share_link_hides_cv_text_and_sensitive_inputs(client):
-    """The actual defect surface: no Authorization header at all. The
-    response's inputs must be exactly the rendered set -- checked as an
-    exact key-set match, never with `in` on a substring, so a sibling leak
-    can't hide behind one correct key."""
-    _persisted_analysis(_full_inputs(), share_token="tok-public-share")
-
-    res = client.get("/api/c/tok-public-share")
-
-    assert res.status_code == 200
-    returned = set(res.get_json()["analysis"]["inputs"].keys())
-    assert returned == _RENDERED_INPUT_KEYS
-    assert returned.isdisjoint(_SENSITIVE_INPUT_KEYS)
-
-
-def test_candidate_audience_still_gets_every_input_key(client):
-    """Owner access is unchanged: the filter applies only to audience=
-    "counselor". Same shape of analysis as the share-link test above."""
-    inputs = _full_inputs()
-    analysis = _persisted_analysis(inputs, share_token="tok-owner-view")
-
-    data = analysis.to_dict()  # default audience="candidate"
-
-    assert set(data["inputs"].keys()) == set(inputs.keys())
-    assert data["inputs"]["cv_text"] == inputs["cv_text"]
-
-
-def test_public_share_link_hides_the_voyage_id_too(client):
-    """Same defect surface as the inputs allow-list test above: no
-    Authorization header at all. voyage_id sits outside "inputs", so that
-    allow-list alone does not cover it -- R2."""
-    owner = User(email="voyage-share-owner@test.fr", password_hash="x")
-    _db.session.add(owner)
-    _db.session.commit()
-    voyage = Voyage(
-        user_id=owner.id, status="s0_termine", sessions_completed=["0"],
-        consent_at=datetime(2026, 9, 12), age_attested=True,
-    )
-    _db.session.add(voyage)
-    _db.session.commit()
-
-    analysis = _persisted_analysis(_full_inputs(), share_token="tok-voyage-id-hidden")
-    analysis.voyage_id = voyage.id
-    _db.session.commit()
-
-    res = client.get("/api/c/tok-voyage-id-hidden")
-
-    assert res.status_code == 200
-    assert "voyage_id" not in res.get_json()["analysis"]
-
-
-def test_an_unknown_input_key_does_not_reach_the_counselor_payload():
-    """The filter is an allow-list, not a deny-list: a key nobody has
-    classified yet (a typo, or a field added later) must default to hidden,
-    never shown."""
-    analysis = Analysis(
-        inputs=_full_inputs(_future_secret="x"),
-        status="success",
-        created_at=datetime(2026, 9, 12),
-    )
-
-    data = analysis.to_dict(audience="counselor")
-
-    assert "_future_secret" not in data["inputs"]
-    assert set(data["inputs"].keys()) == _RENDERED_INPUT_KEYS
-
+# ── retired parcours ─────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("retired", ["2", "3", "B"])
-def test_a_leftover_retired_row_is_served_as_parcours_1(retired, client):
+def test_a_leftover_retired_row_is_served_as_parcours_1(retired):
     """Review Focus 2. Between the deploy and the purge, a P2/P3/'B' row must
-    render as parcours 1 — never a 500 — on the owner's view and on the
-    public counselor link."""
-    row = _persisted_analysis({"_path": retired, "cv_text": "x"},
-                              share_token=f"tok-retired-{retired}")
-    row.output = {"A": {"title": "Capital", "body_markdown": "b", "items": []}}
+    render as parcours 1 — never a 500."""
+    row = Analysis(
+        inputs={"_path": retired, "cv_text": "x"},
+        output={"A": {"title": "Capital", "body_markdown": "b", "items": []}},
+        status="success",
+        created_at=datetime(2026, 9, 12),
+    )
+    _db.session.add(row)
     _db.session.commit()
 
     assert row.to_dict()["sections_meta"][0]["key"] == "1"
-    assert client.get(f"/api/c/tok-retired-{retired}").status_code == 200

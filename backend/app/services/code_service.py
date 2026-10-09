@@ -165,3 +165,20 @@ def redeem(code: CounselorCode, *, user_id: str | None, target_type: str, target
             ).first() is not None:
                 return None
     return EXHAUSTED
+
+
+def use_counts_by_kind(code_ids: list[str]) -> dict[str, dict[str, int]]:
+    """{code_id: {"analysis": n, "voyage": m}} in one grouped query — the
+    counselor's and the admin's code tables both show uses per kind (ruling 10)."""
+    if not code_ids:
+        return {}
+    rows = (
+        db.session.query(CodeRedemption.code_id, CodeRedemption.target_type, db.func.count(CodeRedemption.id))
+        .filter(CodeRedemption.code_id.in_(code_ids))
+        .group_by(CodeRedemption.code_id, CodeRedemption.target_type)
+        .all()
+    )
+    counts: dict[str, dict[str, int]] = {}
+    for code_id, target_type, n in rows:
+        counts.setdefault(code_id, {"analysis": 0, "voyage": 0})[target_type] = n
+    return counts

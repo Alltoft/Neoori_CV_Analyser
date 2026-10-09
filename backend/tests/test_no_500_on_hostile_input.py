@@ -39,6 +39,7 @@ from flask_jwt_extended import create_access_token
 from app.extensions import bcrypt as _bcrypt
 from app.extensions import db as _db
 from app.models.analysis import Analysis
+from app.models.counselor_profile import CounselorProfile
 from app.models.profile import Profile
 from app.models.user import User
 from app.utils import auth_links
@@ -173,9 +174,14 @@ def rig(client, app, monkeypatch):
     profile.consent_at = datetime.utcnow()
     profile.consent_version = "v1.2"
     _db.session.add(profile)
+    # The counselor routes are for an approved conseiller, and a report is its
+    # counselor's alone: the notes row needs both to reach its body.
+    _db.session.add(CounselorProfile(
+        user_id=counselor.id, structure="s", fonction="f", telephone="t", status="approved",
+    ))
     _db.session.commit()
 
-    analysis = _analysis(share_token="fuzz-share-token")
+    counselor_report = _analysis(door="advisor", counselor_id=counselor.id)
     # /unlock, checkout and verify are the owner's alone and the price probe is
     # for whoever may read the report (401 / 403 before the body is read), so
     # those rows need an analysis the candidate owns.
@@ -203,9 +209,8 @@ def rig(client, app, monkeypatch):
         "counselor_headers": _headers(counselor),
         "candidate_email": candidate.email,
         "admin_id": admin.id,
-        "analysis_id": analysis.id,
         "owned_analysis_id": owned_analysis.id,
-        "share_token": analysis.share_token,
+        "counselor_report_id": counselor_report.id,
     }
 
 
@@ -396,12 +401,15 @@ ROUTES = [
         fields=["version_label", "system_prompt_text", "path", "activate"],
     ),
     dict(
-        name="upsert_counselor_notes",
+        # The counselor's private note on a report sent through their code. A
+        # report is its counselor's alone (404 for anyone else), so this posts
+        # as the counselor who owns the rig's report.
+        name="save_counselor_note",
         method="put",
-        path=lambda rig: f"/api/c/{rig['share_token']}/notes",
+        path=lambda rig: f"/api/counselor/analyses/{rig['counselor_report_id']}/notes",
         headers=lambda rig: rig["counselor_headers"],
-        base=lambda rig: {"body": "note de test"},
-        fields=["body"],
+        base=lambda rig: {"note": "note de test"},
+        fields=["note"],
     ),
     dict(
         name="email_link",
@@ -455,6 +463,15 @@ def test_the_price_probe_rig_reaches_its_body(client, rig):
     body must be accepted, or the probe's rows would be fuzzing the access
     check instead of the body."""
     route = next(r for r in ROUTES if r["name"] == "price_feedback")
+    res = _call(client, route, rig, body=route["base"](rig))
+    assert res.status_code == 200
+
+
+def test_the_counselor_note_rig_reaches_its_body(client, rig):
+    """Same guard for the counselor's note, which is its counselor's alone: its
+    base body must be accepted, or the row would be fuzzing the access check
+    and passing on its 404."""
+    route = next(r for r in ROUTES if r["name"] == "save_counselor_note")
     res = _call(client, route, rig, body=route["base"](rig))
     assert res.status_code == 200
 
