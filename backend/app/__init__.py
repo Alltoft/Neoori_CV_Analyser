@@ -168,6 +168,7 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.counselor_space import counselor_space_bp
     from .routes.auth_link import auth_link_bp
     from .routes.auth_oauth import auth_oauth_bp
+    from .routes.codes import codes_bp
 
     app.register_blueprint(payments_bp, url_prefix="/api/payments")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -180,6 +181,7 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(counselor_space_bp, url_prefix="/api/counselor")
     app.register_blueprint(auth_link_bp, url_prefix="/api/auth")
     app.register_blueprint(auth_oauth_bp, url_prefix="/api/auth")
+    app.register_blueprint(codes_bp, url_prefix="/api/codes")
 
     @app.route("/api/health")
     def health():
