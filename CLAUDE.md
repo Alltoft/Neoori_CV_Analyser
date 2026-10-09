@@ -212,8 +212,10 @@ uses `AppLink`, `useSite().href` or `go()` (`lib/site-context.tsx`).
 
 - **One sign-in.** The session cookies are `neoori_access` / `neoori_refresh`
   with `Domain=DOMAIN` (`config.py`, `app/__init__.py`). The Google/Microsoft
-  state, the signup ticket and `neoori_hold` stay on one host: each of their
-  round trips starts and ends there.
+  state and the signup ticket stay on one host: each of their round trips
+  starts and ends there. `neoori_hold` covers the whole domain like the
+  session (`services/held.py`), so a sign-out on any host drops the held
+  draft.
 - **Absolute URLs come from `DOMAIN`, never from the Host header**
   (`backend/app/utils/site.py`). An account mail links to the host it was
   asked from — cv when that is any other name — and every other mail to cv;

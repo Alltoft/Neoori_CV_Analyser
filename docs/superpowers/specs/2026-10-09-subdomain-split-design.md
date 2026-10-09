@@ -208,9 +208,14 @@ swapped some day (see « Out of scope »).
     cookies**: browsers refuse `Domain=localhost` (spike), so the attribute
     would only lose the cookie. The test suite runs on that path unless a test
     sets a dotted `DOMAIN`.
-27. **Three cookies stay on one host**, because each round trip starts and ends
-    on the same host: the Google/Microsoft state (Flask session), the signup
-    ticket, and four doors' `neoori_hold` (cv only).
+27. **Two cookies stay on one host**, because each round trip starts and ends
+    on the same host: the Google/Microsoft state (Flask session) and the
+    signup ticket. *Amended after the final review:* four doors' `neoori_hold`
+    carries `Domain=DOMAIN`, like the session cookies (decisions 25–26). Its
+    round trip still stays on cv, but four doors makes a sign-out drop the
+    held draft, so that the next person on a shared computer cannot read it
+    at `/held` or claim it — and a cookie left on cv alone never reached a
+    sign-out on voyage.
 28. **The Google/Microsoft callback is on the host the sign-in started on**:
     `https://cv.DOMAIN/api/auth/<provider>/callback` or the `voyage.`
     equivalent, both registered in both provider consoles. `/start` reached on
@@ -559,6 +564,14 @@ decision it touches, and each is open to reversal:
   `allowedDevOrigins`.
 - « Rollout » — `FRONTEND_URL` stays in the prod `.env` until no rollback below
   the split is expected: the previous image builds Stripe's return URL from it.
+
+## Amendments after the final review (2026-10-09)
+
+Found by the whole-branch review; each is folded into what it touches:
+
+- 27 — `neoori_hold` carries `Domain=DOMAIN` like the session cookies, so a
+  sign-out on any host drops the held draft (four doors' shared-computer
+  rule); two cookies stay on one host.
 
 ## Claude's calls
 

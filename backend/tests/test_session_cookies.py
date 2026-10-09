@@ -7,8 +7,10 @@ from flask_jwt_extended import create_refresh_token
 from app import create_app
 from app.config import TestingConfig
 from app.extensions import bcrypt, db
+from app.models.analysis import Analysis
 from app.models.user import User
 from app.utils import auth_links
+from tests.helpers_doors import P1_INPUTS
 
 
 def _set_cookie(res, name: str) -> str:
@@ -86,13 +88,35 @@ def test_refresh_reissues_the_access_cookie_on_the_domain(dotted_app):
     assert "Domain=neoori.test" in _set_cookie(res, "neoori_access")
 
 
-def test_logout_clears_the_session_everywhere_and_the_hold_on_its_host(dotted_app):
+def test_logout_clears_the_session_and_the_hold_everywhere(dotted_app):
     # Review Focus 5: a tab left open on the other host is signed out at its
     # next request, because the cookies it would send are gone domain-wide.
+    # The held draft's key goes the same way (decision 27, as amended).
     res = dotted_app.test_client().post("/api/auth/logout")
     assert res.status_code == 200
-    for name in ("neoori_access", "neoori_refresh"):
+    for name in ("neoori_access", "neoori_refresh", "neoori_hold"):
         line = _set_cookie(res, name)
         assert "Domain=neoori.test" in line
         assert "Expires=Thu, 01 Jan 1970" in line
-    assert "Domain=" not in _set_cookie(res, "neoori_hold")
+
+
+def test_a_sign_out_on_voyage_drops_the_draft_held_on_cv(dotted_app):
+    # Four doors' shared-computer rule, across hosts (decision 27, amended
+    # after the final review): the draft is held on cv, where the form is,
+    # and the next person on this browser must not read it back at /held or
+    # claim it, whichever host the sign-out happened on.
+    client = dotted_app.test_client()
+    hold = client.post("/api/analyses/draft", json={"inputs": P1_INPUTS},
+                       base_url="https://cv.neoori.test")
+    assert hold.status_code == 201
+
+    res = client.post("/api/auth/logout", base_url="https://voyage.neoori.test")
+
+    assert res.status_code == 200
+    db.session.rollback()       # only what the logout committed counts
+    assert Analysis.query.count() == 0
+    assert client.get("/api/analyses/held", base_url="https://cv.neoori.test").status_code == 404
+    assert "Domain=neoori.test" in _set_cookie(hold, "neoori_hold")
+    line = _set_cookie(res, "neoori_hold")
+    assert "Domain=neoori.test" in line
+    assert "Expires=Thu, 01 Jan 1970" in line
