@@ -113,7 +113,7 @@ const PERSONAS = [
     img: "/img/persona-conseiller.jpg",
     icon: Users,
     title: "Conseillers",
-    desc: "Avec votre code, vos bénéficiaires lancent l&rsquo;analyse de leur CV, et le rapport complet arrive dans votre espace conseiller : leurs forces, leurs fragilités, vos préconisations. Vous le reprenez ensemble en entretien, à partir d&rsquo;une même base. Vous gagnez du temps. Eux, de la confiance. Le même code leur ouvre les sessions du voyage — et vous relisez leur portrait avec eux avant qu&rsquo;ils ne le reçoivent.",
+    desc: "Avec votre code, vos bénéficiaires lancent l’analyse de leur CV, et le rapport complet arrive dans votre espace conseiller : leurs forces, leurs fragilités, vos préconisations. Vous le reprenez ensemble en entretien, à partir d’une même base. Vous gagnez du temps. Eux, de la confiance. Le même code leur ouvre les sessions du voyage — et vous relisez leur portrait avec eux avant qu’ils ne le reçoivent.",
     cta: { href: "/inscription-conseiller", label: "Demander un compte conseiller" },
   },
   {
@@ -316,7 +316,7 @@ export default function LandingPage() {
               <span className="font-medium text-navy">Les trois premières sections sont offertes.</span> Rapport complet à 9 €.
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Si vous êtes accompagné par un conseiller, il a peut-être un code : votre analyse complète lui est alors envoyée, gratuitement, pour qu&rsquo;il la reprenne avec vous. Ça vaut la peine de lui demander.
+              Si vous êtes accompagné par un conseiller, il a peut-être un code : votre analyse complète lui est alors envoyée, gratuitement, pour qu’il la reprenne avec vous. Ça vaut la peine de lui demander.
             </p>
           </Reveal>
 
@@ -389,7 +389,7 @@ export default function LandingPage() {
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   Vous découvrez ce que votre parcours montre déjà face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour avancer.
                 </p>
-                <p className="mt-3 text-xs text-muted-foreground">Trois premières sections et verdict de diagnostic inclus, plus la première session du voyage. Aucune carte bancaire demandée, et pas de compte obligatoire pour l&rsquo;analyse.</p>
+                <p className="mt-3 text-xs text-muted-foreground">Trois premières sections et verdict de diagnostic inclus, plus la première session du voyage. Aucune carte bancaire demandée, et pas de compte obligatoire pour l’analyse.</p>
                 <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
                   Je commence maintenant
                 </Button>
@@ -433,7 +433,7 @@ export default function LandingPage() {
                 <h3 className="font-display text-lg font-semibold text-navy">Code conseiller</h3>
                 <p className="mt-2 font-display text-4xl font-extrabold text-navy">Gratuit</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Vous êtes accompagné par un conseiller ? Avec son code, votre analyse complète lui est envoyée pour qu&rsquo;il la reprenne avec vous, et les sessions 1 à 5 du voyage vous sont ouvertes — gratuitement. Ça vaut la peine de lui demander.
+                  Vous êtes accompagné par un conseiller ? Avec son code, votre analyse complète lui est envoyée pour qu’il la reprenne avec vous, et les sessions 1 à 5 du voyage vous sont ouvertes — gratuitement. Ça vaut la peine de lui demander.
                 </p>
                 <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
                   J’ai un code
