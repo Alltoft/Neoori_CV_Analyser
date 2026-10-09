@@ -187,7 +187,11 @@ export function DoorsPanel({
         router.push("/analyse/envoyee")
       } else {
         const res = await submit("anonymous", { consent })
-        router.push(`/rapport#${res.access_token}`)
+        // A page load, not router.push: Next 16 keeps the fragment of the first
+        // visit to a route and appends the next one to it, so a second no-login
+        // run in the same session landed on /rapport#<first>#<second> — a link
+        // that opens no report, and that also carries the first report's key.
+        window.location.assign(`/rapport#${res.access_token}`)
       }
     } catch (e) {
       // A session that lapsed between the page load and the click: sign in

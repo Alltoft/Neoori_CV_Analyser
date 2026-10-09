@@ -27,7 +27,8 @@ const FALLBACK_CEILING = 95
 
 const POLL_INTERVAL_MS = 2000
 const POLL_BACKOFF_MS  = 4000   // on network blip
-const POLL_MAX_MS      = 10 * 60 * 1000   // stop watching after 10 min; the mail takes over
+const POLL_MAX_MS      = 10 * 60 * 1000   // give up after 10 min; a mailed run stops there, the mail takes over
+const STALLED_POLL_MS  = 30_000   // past the give-up, a run with no mail is still watched, slowly
 
 const EASE_INTERVAL_MS = 120    // bar catches up to the reported value
 
@@ -75,8 +76,10 @@ export function RunProgress({
   // Bumped by « Relancer »: the polling effect depends on it, so a relaunch
   // starts a new watch of the same row.
   const [round,      setRound]       = useState(0)
-  // This page stopped watching, not the server: a run past POLL_MAX_MS may
-  // still finish, and its mail says so. Not an error, so not « n'a pas abouti ».
+  // A run past POLL_MAX_MS may still finish, and a mailed one says so by mail;
+  // the page stops watching it. A run with no mail (`mailed` false) is the only
+  // place its result can appear, so there the page keeps watching, slowly. Not
+  // an error either way, so not « n'a pas abouti ».
   const [stalled,    setStalled]     = useState(false)
   const [hint,       setHint]        = useState<string | null>(null)
   const [elapsed,    setElapsed]     = useState(0)
@@ -88,9 +91,11 @@ export function RunProgress({
   // The latest callbacks, read by the polling loop without restarting it.
   const loadRef = useRef(load)
   const doneRef = useRef(onDone)
+  const mailedRef = useRef(mailed)
   useEffect(() => {
     loadRef.current = load
     doneRef.current = onDone
+    mailedRef.current = mailed
   })
 
   useEffect(() => {
@@ -113,6 +118,13 @@ export function RunProgress({
       // past the deadline still asks the server first, so a run that finished
       // meanwhile opens its report instead of « C’est plus long que prévu ».
       const overdue = Date.now() - startRef.current > POLL_MAX_MS
+      // Past the deadline the page says « C’est plus long que prévu ». A mailed
+      // run stops watching there; one with no mail keeps going, so what the
+      // page tells the person to wait for can still arrive.
+      const giveUp = () => {
+        setStalled(true)
+        if (!mailedRef.current) schedule(STALLED_POLL_MS, poll)
+      }
       try {
         const analysis = await loadRef.current()
         if (!alive) return
@@ -120,6 +132,9 @@ export function RunProgress({
         setHint(DURATION_HINT[inputs?._tier ?? ""] ?? null)
 
         if (status === "success") {
+          // A success seen after the give-up: the steps card comes back, all
+          // done, for the moment before the report opens.
+          setStalled(false)
           setDone(true)
           targetRef.current = 100
           setProgress(100)
@@ -138,7 +153,7 @@ export function RunProgress({
         }
         // queued | running → keep polling, until this page has watched long enough
         if (overdue) {
-          setStalled(true)
+          giveUp()
           return
         }
         const pct = typeof reported === "number" ? reported : fallbackPct()
@@ -146,9 +161,9 @@ export function RunProgress({
         schedule(POLL_INTERVAL_MS, poll)
       } catch {
         if (!alive) return
-        // Still unreachable past the deadline: stop watching, as above.
+        // Still unreachable past the deadline: give up, as above.
         if (overdue) {
-          setStalled(true)
+          giveUp()
           return
         }
         // Transient network/proxy blip — back off and retry rather than fail loud

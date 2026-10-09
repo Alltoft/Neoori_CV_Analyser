@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { AppBar } from "@/components/layout/AppBar"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -14,6 +16,7 @@ import {
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate } from "@/lib/format"
+import { held } from "@/lib/held"
 import { getVoyage } from "@/lib/voyage"
 import type { Analysis } from "@/types"
 import type { Voyage } from "@/types/voyage"
@@ -25,18 +28,35 @@ function cardTitle(a: Analysis) {
 }
 
 export default function EspacePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <Espace />
+    </Suspense>
+  )
+}
+
+function Espace() {
   const { user } = useAuth()
+  const garder = useSearchParams().get("garder") === "1"
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
+  const [kept, setKept] = useState(false)
   const [voyage, setVoyage] = useState<Voyage | null>(null)
   const [voyageLoaded, setVoyageLoaded] = useState(false)
 
   useEffect(() => {
-    api.get<{ analyses: Analysis[] }>("/analyses/")
+    // Back from « Créer un compte pour le garder » (four-doors spec, decision
+    // 32): attach the held report to this account before the list is read, so
+    // the first list already holds it. When nothing is held any more — a
+    // password signup's verification link attached it already — the claim
+    // answers 404: no sentence, and the list stands as it is.
+    const claimed = garder ? held.claim().then(() => setKept(true), () => {}) : Promise.resolve()
+    claimed
+      .then(() => api.get<{ analyses: Analysis[] }>("/analyses/"))
       .then((r) => setAnalyses(r.analyses))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [garder])
 
   // The voyage is never required (spec decision 11) — this strip is an offer,
   // so a failed read renders nothing rather than an error (D-S9): voyageLoaded
@@ -140,6 +160,10 @@ export default function EspacePage() {
               </span>
             </div>
           </Link>
+        )}
+
+        {garder && kept && (
+          <Alert className="mb-4"><AlertDescription>Le rapport est maintenant dans votre espace.</AlertDescription></Alert>
         )}
 
         {loading ? (
