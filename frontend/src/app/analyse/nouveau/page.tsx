@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { useForm, Controller } from "react-hook-form"
 import { useAuth } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -403,7 +404,7 @@ function NouvelleAnalyseForm() {
               Le reste de l’analyse s’appuie sur ce que vous avez déjà donné — prénom,
               localisation, situation, contraintes. Ces questions sont posées à
               l’inscription et au fil du{" "}
-              <Link href="/voyage" className="link-underline text-navy">voyage</Link> ; vous
+              <AppLink href="/voyage" className="link-underline text-navy">voyage</AppLink> ; vous
               pouvez les relire dans{" "}
               <Link href="/profil" className="link-underline text-navy">mes informations</Link>.
             </p>

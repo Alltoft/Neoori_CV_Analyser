@@ -23,6 +23,7 @@ from ..extensions import db
 from ..models.analysis import Analysis
 from ..services import tiers, unlock_service
 from ..services.unlock_service import unlock_analysis
+from ..utils import site
 from ..utils.request_body import json_object, text_field
 
 payments_bp = Blueprint("payments", __name__)
@@ -56,12 +57,6 @@ def _stripe():
     import stripe
     stripe.api_key = key
     return stripe
-
-
-def _frontend_base() -> str:
-    # FRONTEND_URL may be a comma-separated list (CORS config) — take the first
-    raw = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    return raw.split(",")[0].strip().rstrip("/")
 
 
 @payments_bp.get("/config")
@@ -108,7 +103,9 @@ def create_checkout():
     if reason:
         return jsonify({"error": reason}), 409
 
-    base = _frontend_base()
+    # The unlock page is cv's, whichever host the payment started on
+    # (subdomain split spec, decision 32).
+    base = site.origin("cv")
     session = stripe.checkout.Session.create(
         mode="payment",
         line_items=[{

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { useSearchParams } from "next/navigation"
 import { AppBar } from "@/components/layout/AppBar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -128,7 +129,7 @@ function Espace() {
                   counselor link, otherwise it is just "continue the voyage". */}
               <Button
                 render={
-                  <Link
+                  <AppLink
                     href={voyage.portrait_status === "validated" ? "/voyage/portrait" : "/voyage"}
                   />
                 }
@@ -147,7 +148,7 @@ function Espace() {
         )}
 
         {voyageLoaded && !voyage && (
-          <Link
+          <AppLink
             href="/voyage"
             className="group mb-6 block overflow-hidden rounded-2xl bg-navy shadow-card transition-shadow hover:shadow-float"
           >
@@ -167,7 +168,7 @@ function Espace() {
                 <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
               </span>
             </div>
-          </Link>
+          </AppLink>
         )}
 
         {garder && claimed && (

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from flask import Flask, current_app
 from .config import config
 from .extensions import db, migrate, jwt, bcrypt, cors
+from .utils import site
 
 # How long a row may sit in 'running' before a restart -- or a read of the row,
 # see reap_if_orphaned() -- is allowed to call it orphaned. Must stay above the
@@ -198,6 +199,9 @@ def create_app(env: str | None = None) -> Flask:
     env = env or os.environ.get("FLASK_ENV", "development")
     app = Flask(__name__)
     app.config.from_object(config.get(env, config["default"]))
+    # The session cookies span every host of DOMAIN (subdomain split spec,
+    # decisions 25–26). Derived here, so DOMAIN stays the one setting.
+    app.config["JWT_COOKIE_DOMAIN"] = site.cookie_domain(app.config["DOMAIN"])
     app.url_map.strict_slashes = False
 
     # Extensions
@@ -209,7 +213,10 @@ def create_app(env: str | None = None) -> Flask:
     oauth_clients.init_app(app)
     cors.init_app(
         app,
-        resources={r"/api/.*": {"origins": app.config["FRONTEND_ORIGINS"]}},
+        # The three origins (subdomain split spec, decision 32). Browser calls
+        # stay same-origin — each host serves its own /api — so this list is
+        # a backstop.
+        resources={r"/api/.*": {"origins": site.origins(app.config)}},
         supports_credentials=True,  # required for httpOnly cookie auth
     )
 
@@ -260,7 +267,7 @@ def create_app(env: str | None = None) -> Flask:
         origin = request.headers.get("Origin", "")
         resp = jsonify(body)
         resp.status_code = status
-        if origin in app.config["FRONTEND_ORIGINS"]:
+        if origin in site.origins(app.config):
             resp.headers["Access-Control-Allow-Origin"] = origin
             resp.headers["Access-Control-Allow-Credentials"] = "true"
         return resp

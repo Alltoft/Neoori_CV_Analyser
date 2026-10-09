@@ -578,7 +578,7 @@ def test_logout_with_no_cookie_and_no_session_answers_as_before(client, app):
     assert res.status_code == 200
     assert res.get_json() == {"message": "Déconnecté."}
     names = {header.split("=", 1)[0] for header in res.headers.getlist("Set-Cookie")}
-    assert {"access_token_cookie", "refresh_token_cookie"} <= names     # the JWT pair still goes
+    assert {"neoori_access", "neoori_refresh"} <= names     # the JWT pair still goes
 
 
 def test_logout_deletes_only_the_draft_its_own_cookie_points_at(client, app):
@@ -607,7 +607,7 @@ def test_logout_still_ends_the_session_when_the_draft_cannot_be_deleted(client, 
     assert res.status_code == 200
     assert res.get_json() == {"message": "Déconnecté."}
     names = {header.split("=", 1)[0] for header in res.headers.getlist("Set-Cookie")}
-    assert {"access_token_cookie", "refresh_token_cookie", held.COOKIE} <= names
+    assert {"neoori_access", "neoori_refresh", held.COOKIE} <= names
     assert _cookie(client) is None          # the browser forgets the key; the row expires
 
 

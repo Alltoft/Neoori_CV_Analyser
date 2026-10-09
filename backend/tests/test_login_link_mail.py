@@ -29,13 +29,13 @@ def _link_mail(app, email="marie@test.fr", user=None, next_path=None):
 
 def test_the_mail_links_to_the_landing_page(app):
     app.config["RESEND_API_KEY"] = "re_test"
-    app.config["APP_URL"] = "https://neoori.tech"
+    app.config["DOMAIN"] = "neoori.tech"
     with patch(SEND, return_value={"id": "1"}) as mock_send:
         assert email_service.send_login_link("marie@test.fr", "", "tok.en") is True
     mail = _sent(mock_send)
     assert mail["to"] == ["marie@test.fr"]
     assert mail["subject"] == "Votre lien de connexion"
-    assert "https://neoori.tech/connexion/lien?token=tok.en" in mail["html"]
+    assert "https://cv.neoori.tech/connexion/lien?token=tok.en" in mail["html"]
     assert "valable 15 minutes" in mail["text"] and "ne sert qu'une fois" in mail["text"]
     assert mail["text"].startswith("Bonjour,")
 

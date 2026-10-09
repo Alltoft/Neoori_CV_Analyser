@@ -104,7 +104,7 @@ def _revoked_profile(reason: str) -> CounselorProfile:
 
 def test_the_ready_mail_links_to_the_espace(app):
     app.config["RESEND_API_KEY"] = "re_test"
-    app.config["APP_URL"] = "https://neoori.tech"
+    app.config["DOMAIN"] = "neoori.tech"
     with patch(SEND, return_value={"id": "1"}) as mock_send:
         assert email_service.send_analysis_ready("marie@test.fr", "Marie", unlocked=False) is True
     mail = _sent(mock_send)
@@ -113,9 +113,9 @@ def test_the_ready_mail_links_to_the_espace(app):
     assert mail["text"].startswith(
         "Bonjour Marie,\n\nVotre analyse est prête. Elle est enregistrée dans votre espace.\n\n"
     )
-    assert 'href="https://neoori.tech/espace"' in mail["html"]
+    assert 'href="https://cv.neoori.tech/espace"' in mail["html"]
     assert "Ouvrir mon espace" in mail["html"]
-    assert "https://neoori.tech/espace" in mail["text"]
+    assert "https://cv.neoori.tech/espace" in mail["text"]
 
 
 def test_the_ready_mail_after_an_unlock_says_complete(app):
@@ -164,7 +164,7 @@ def test_the_failure_mail_after_an_unlock_asks_for_a_reply(app):
 
 def test_the_demande_mail_greets_the_admin_and_links_to_the_queue(app):
     app.config["RESEND_API_KEY"] = "re_test"
-    app.config["APP_URL"] = "https://neoori.tech"
+    app.config["DOMAIN"] = "neoori.tech"
     with patch(SEND, return_value={"id": "1"}) as mock_send:
         assert email_service.send_new_demande("admin@neoori.tech", "Paul") is True
     mail = _sent(mock_send)
@@ -173,7 +173,7 @@ def test_the_demande_mail_greets_the_admin_and_links_to_the_queue(app):
     assert mail["text"].startswith(
         "Bonjour Paul,\n\nUne demande de compte conseiller attend votre décision.\n\n"
     )
-    assert 'href="https://neoori.tech/admin/conseillers"' in mail["html"]
+    assert 'href="https://cv.neoori.tech/admin/conseillers"' in mail["html"]
 
 
 def test_the_revocation_mail_carries_the_reason_escaped(app):
@@ -209,7 +209,7 @@ def test_the_revocation_mail_fails_soft_on_a_post_commit_read(app):
 
 def test_the_password_changed_mail_points_at_a_new_reset(app, make_user):
     app.config["RESEND_API_KEY"] = "re_test"
-    app.config["APP_URL"] = "https://neoori.tech"
+    app.config["DOMAIN"] = "neoori.tech"
     user = make_user(email="marie@test.fr")
     db.session.add(Profile(user_id=user.id, prenom="Marie"))
     db.session.commit()
@@ -225,4 +225,4 @@ def test_the_password_changed_mail_points_at_a_new_reset(app, make_user):
         "Si vous n'êtes pas à l'origine de ce changement, choisissez-en un nouveau "
         "tout de suite.\n\n"
     )
-    assert 'href="https://neoori.tech/mot-de-passe-oublie"' in mail["html"]
+    assert 'href="https://cv.neoori.tech/mot-de-passe-oublie"' in mail["html"]

@@ -1,6 +1,6 @@
 # Manual test plan — CDC v1.2 / Parcours build
 
-Test environment: http://localhost:8080 (docker dev), or production (see DOCKER.md)
+Test environment: the docker dev stack — http://neoori.localhost:8080 (the landing), http://cv.neoori.localhost:8080 and http://voyage.neoori.localhost:8080, in Chrome (§ 14) — or production (see DOCKER.md). A row that names a bare path such as `/analyse/nouveau` works from any of them: the app sends each path to the host that serves it.
 
 Work through in order. Each row is: what to do → what should happen. Anything
 that doesn't match, note the URL and what you saw.
@@ -162,7 +162,7 @@ report (CLAUDE.md, « Les quatre portes »). This replaces the old counselor-vie
 checks: the `/c/<token>` share link, the « Vue conseiller » tab and the
 `VERSION CONSEILLER` badge on the report no longer exist (8.6.4 checks the old
 link; the counselor now reads the report on their own page, § 8.4). Everything
-here goes through nginx, http://localhost:8080.
+here goes through nginx (§ 14 lists the dev addresses).
 
 **Set up once**
 
@@ -215,7 +215,7 @@ and a target of at least 50.
 | 8.2.2 | « Avec mon compte » → « Lancer la version gratuite » (skip if 8.1.7 just did it) | A free report, saved in `/espace` |
 | 8.2.3 | « J'ai un code promo » with a promo code this account has not used (a second code, or the code of 8.1.6 from a second account) → « Lancer l’analyse complète » | A Complet report in `/espace` |
 | 8.2.4 | « J'ai un code conseiller » as a signed-in candidate | Behaves exactly as signed out (8.1.3): the report goes to the counselor, and nothing new appears in the candidate's `/espace` |
-| 8.2.5 | Signed in, on the form: make the access cookie expire. Wait past `JWT_ACCESS_TOKEN_EXPIRES` (1 h), or replace `access_token_cookie` with an expired token in the browser's cookie editor (keep one expired token to paste back for the next rows). **Do not reload.** Click « Enregistrer le brouillon » | « Votre session a expiré : ce brouillon est gardé dans ce navigateur. Connectez-vous pour l’enregistrer dans votre espace. » instead of « Brouillon enregistré » |
+| 8.2.5 | Signed in, on the form: make the access cookie expire. Wait past `JWT_ACCESS_TOKEN_EXPIRES` (1 h), or replace `neoori_access` with an expired token in the browser's cookie editor (keep one expired token to paste back for the next rows). **Do not reload.** Click « Enregistrer le brouillon » | « Votre session a expiré : ce brouillon est gardé dans ce navigateur. Connectez-vous pour l’enregistrer dans votre espace. » instead of « Brouillon enregistré » |
 | 8.2.6 | Cookie expired as in 8.2.5, form not reloaded: click « Générer mon analyse », choose « Avec mon compte » and click « Lancer la version gratuite » (then, separately, the same with « J'ai un code promo » and a valid code) | The server answers 401 and the panel sends you through the sign-in round trip **once**, to `/inscription`: no loop. After signing in you are back on the form with the panel open at that door |
 | 8.2.7 | Cookie expired as in 8.2.5, form not reloaded: « J'ai un code conseiller » with a code that has a free place | It works as in 8.1.3: the advisor door ignores the session |
 | 8.2.8 | Cookie expired, then reload the form | You are a signed-out visitor: four doors, and « Sans compte » works |
@@ -494,6 +494,40 @@ second, ad hoc fixture — an `error` portrait, a failed phrase, a stale
 | 13.25 | Back on the fiche, type in « Mes notes de restitution », click « Enregistrer », reload | The note comes back. Log in as a *different* conseiller and open the same fiche: the note field is empty (notes are per conseiller) |
 | 13.26 | Click « PDF fiche » | The print preview shows the synthesis sheet, the portrait as prose (not as textareas) and the restitution guide. It does **not** show the action bar, the buttons or the notes |
 | 13.27 | `/admin` overview | A « Le voyage » row of four tiles: Voyages commencés / Session 0 terminée / Voyages terminés / Portraits validés, with the counts you would expect from the rows you created |
+
+---
+
+## 14 · Sous-domaines
+
+One app on three hosts (CLAUDE.md, « Sous-domaines »). Locally:
+`neoori.localhost:8080` (the landing), `cv.neoori.localhost:8080`,
+`voyage.neoori.localhost:8080`, in Chrome. Start signed out.
+
+| # | Do | Expect |
+|---|---|---|
+| 14.1 | Open `http://neoori.localhost:8080` | The landing; the address stays `neoori.localhost:8080` |
+| 14.2 | Click « Lancer mon analyse »; go back; click « Commencer le voyage » | The form at `cv.neoori.localhost:8080/analyse/nouveau`; then signup at `voyage.neoori.localhost:8080/inscription?redirect=%2Fvoyage` |
+| 14.3 | Open `http://neoori.localhost:8080/verifier-email?token=abc#x` | `cv.neoori.localhost:8080/verifier-email?token=abc#x` — path, query and fragment kept; the page says the link is not valid |
+| 14.4 | Open `http://cv.neoori.localhost:8080/`, then `http://voyage.neoori.localhost:8080/` | The form; then signup, with the voyage hub as `redirect` |
+| 14.5 | Sign in on `cv.…/connexion`, then open `voyage.…/voyage` | The hub, signed in, no second sign-in |
+| 14.6 | On voyage, app bar menu → « Déconnexion »; then reload a cv tab on `/espace` | Logout lands on the landing at `neoori.localhost:8080`; the cv tab goes to `/connexion` |
+| 14.7 | Signed out, on `voyage.…/connexion`: « Recevoir un lien de connexion » with any address; then `docker compose logs backend --since 2m` | The link printed starts `http://voyage.neoori.localhost:8080/connexion/lien?token=` |
+| 14.8 | The same from `cv.…/connexion`, and « Mot de passe oublié » for an existing account on voyage | Each link names the host it was asked from |
+| 14.9 | Signed out on cv: fill the form, « Avec mon compte », sign up, open the confirmation link from the backend log | Back on the form on cv with the draft (four doors' hold stays on cv) |
+| 14.10 | Signed in as a candidate: app bar « Mon voyage » on cv; « Nouvelle analyse » on voyage; the voyage strip on `/espace`; the form's « voyage » link | Each crosses to the other host, still signed in |
+| 14.11 | Signed out, open `voyage.…/connexion?redirect=%2Fespace` and sign in | `cv.neoori.localhost:8080/espace`, signed in |
+| 14.12 | A candidate signs in on `voyage.…/connexion` with no `redirect` | The voyage hub, not `/espace` |
+| 14.13 | `curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: voyage.neoori.localhost' http://127.0.0.1:8080/icon.svg` | `200`: files are served on every host |
+| 14.14 | `docker compose exec frontend wget -qO- http://127.0.0.1:3001/ \| head -c 60` | The landing's HTML: an unknown host is the root |
+| 14.15 | `docker compose logs nginx --since 5m \| tail -3` | Each access line carries the host after the time |
+
+After the deploy, on production:
+
+| # | Do | Expect |
+|---|---|---|
+| 14.16 | `curl -sI https://neoori.tech https://cv.neoori.tech https://voyage.neoori.tech https://www.neoori.tech \| grep -iE '^(HTTP\|location)'` | `200`; `307` → `/analyse/nouveau`; `307` → `/voyage`; `301` → `https://neoori.tech/` |
+| 14.17 | `curl -sI --resolve x.neoori.tech:443:186.240.157.26 https://x.neoori.tech` | Fails at the TLS handshake: an unknown name is refused |
+| 14.18 | One real sign-in on each subdomain (the email link) | Signed in; the mail's link names the host it was asked from |
 
 ---
 

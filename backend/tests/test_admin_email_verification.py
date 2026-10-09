@@ -7,7 +7,7 @@ from app.extensions import db
 from app.models.counselor_profile import CounselorProfile
 from app.models.user import User
 
-REFRESH_COOKIE = re.compile(r"refresh_token_cookie=([^;]+)")
+REFRESH_COOKIE = re.compile(r"neoori_refresh=([^;]+)")
 
 
 def _demande(make_user, email, verified):
@@ -59,12 +59,12 @@ def test_a_manually_verified_account_logs_in_with_a_working_refresh(client, admi
     login = client.post("/api/auth/login", json=creds)
     assert login.status_code == 200
     match = REFRESH_COOKIE.search(" ".join(login.headers.getlist("Set-Cookie")))
-    assert match, "login set no refresh_token_cookie"
+    assert match, "login set no neoori_refresh"
     # TestingConfig reads JWTs from headers, so the minted token is replayed
     # as a Bearer header.
     refreshed = client.post("/api/auth/refresh", headers={"Authorization": f"Bearer {match.group(1)}"})
     assert refreshed.status_code == 200
-    assert "access_token_cookie" in " ".join(refreshed.headers.getlist("Set-Cookie"))
+    assert "neoori_access" in " ".join(refreshed.headers.getlist("Set-Cookie"))
 
 
 def test_the_users_list_carries_the_flag(client, admin_headers, make_user):

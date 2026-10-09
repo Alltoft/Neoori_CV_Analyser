@@ -157,7 +157,11 @@ the box, so this costs almost nothing and needs no second server.
 - **Own MySQL container and volume.** A prod dump is never restored into it
 - **Seeded fake data** — invented candidates, invented CVs. Needs a seed script
   alongside the existing `seed_prompt_v17.py`
-- `staging.neoori.tech`, added to the existing certificate, own nginx server block
+- A domain of its own — **not** a subdomain of neoori.tech: since the
+  subdomain split, the session cookies span every host of the domain, and a
+  staging stack running unreviewed branches would receive every visitor's
+  production session (CLAUDE.md, « Sous-domaines »). Its own certificate and
+  nginx server block
 - **Basic auth + `noindex`** so it stays out of Google and away from strangers,
   with a shared password the PMs get
 - **Its own secrets, and this matters:** `STRIPE_SECRET_KEY` must be a `sk_test_`
@@ -227,7 +231,7 @@ most of the value** — that is the escape hatch.
 - **Phase 0 — floor.** Tests and lint in CI; branch protection on `initial`;
   `main` deleted or protected. Removes "one push = prod, unreviewed."
 - **Phase 1 — toy shop.** Isolated staging stack on the VPS, fake seed data,
-  `staging.neoori.tech`, basic auth, test-mode Stripe, email off. PMs get the link.
+  a staging domain of its own, basic auth, test-mode Stripe, email off. PMs get the link.
 - **Phase 2 — box discipline.** Branch → PR → auto-deploy to toy shop → merge to
   ship. The loop works with a human doing the triage, exactly as today.
 - **Phase 3 — robot, read-only.** Home machine, digests to the developer only.

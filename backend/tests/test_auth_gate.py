@@ -43,7 +43,7 @@ def test_register_opens_no_session(client, app):
     app.debug = False   # FLASK_DEBUG in a developer's shell must not flip mail_sent
     res = _register(client)
     assert res.status_code == 201
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert res.get_json()["user"]["email_verified"] is False
     assert res.get_json()["mail_sent"] is False      # no key in tests
 
@@ -75,15 +75,15 @@ def test_login_of_an_unverified_account_says_so_only_with_the_right_password(cli
     right = _login(client, "attente@test.fr")
     assert right.status_code == 403
     assert right.get_json()["code"] == "email_unverified"
-    assert "access_token_cookie" not in _cookies(right)
+    assert "neoori_access" not in _cookies(right)
 
 
 def test_login_of_a_verified_account_opens_a_session(client, make_user):
     make_user(email="ok@test.fr")
     res = _login(client, "ok@test.fr")
     assert res.status_code == 200
-    assert "access_token_cookie" in _cookies(res)
-    assert "refresh_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
+    assert "neoori_refresh" in _cookies(res)
 
 
 def test_issue_session_refuses_an_unverified_account(app, make_user):

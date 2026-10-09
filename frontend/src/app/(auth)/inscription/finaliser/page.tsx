@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useAuth } from "@/lib/auth"
 import { homeFor } from "@/lib/home"
+import { useSite } from "@/lib/site-context"
 import { api, ApiError } from "@/lib/api"
 import { TRANCHES_AGE } from "@/lib/profile-options"
 import type { User } from "@/types"
@@ -41,7 +41,7 @@ type Ticket =
  *  consent are asked; the account is created on submit, not before (social
  *  sign-in spec, decisions 1 and 22). */
 export default function FinaliserPage() {
-  const router = useRouter()
+  const { app, go } = useSite()
   const { refresh } = useAuth()
   const [ticket, setTicket] = useState<Ticket>({ kind: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -77,7 +77,7 @@ export default function FinaliserPage() {
       const res = await api.post<{ user: User; next: string | null }>("/auth/signup", fields, { skipRedirect: true })
       await refresh()
       setLeaving(true)
-      router.replace(res.next ?? homeFor(res.user.role))
+      go(res.next ?? homeFor(res.user.role, app), { replace: true })
     } catch (e) {
       const code = e instanceof ApiError ? e.body?.code : undefined
       if (typeof code === "string" && code.startsWith("link_")) setTicket({ kind: "expired" })

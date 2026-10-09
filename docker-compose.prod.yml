@@ -48,6 +48,10 @@ services:
   frontend:
     image: ghcr.io/alltoft/neoori-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    # Read per request (subdomain split spec, decision 21): a domain change is
+    # an .env edit and a recreate, never a rebuild.
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN must be set in .env}
     depends_on:
       - backend
     healthcheck:

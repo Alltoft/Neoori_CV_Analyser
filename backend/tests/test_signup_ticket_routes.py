@@ -62,7 +62,7 @@ def test_finalising_creates_the_account_its_identity_and_its_consent_at_once(cli
     res = _signup(client)
     assert res.status_code == 200
     assert res.get_json()["next"] == "/analyse/nouveau"
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
     user = User.query.one()
     assert user.email == "marie@gmail.com" and user.email_verified_at is not None
     assert AuthIdentity.query.one().subject == "g-1"

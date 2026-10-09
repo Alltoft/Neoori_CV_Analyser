@@ -23,6 +23,7 @@ from flask import current_app, request
 
 from ..extensions import db
 from ..models.analysis import Analysis
+from ..utils import site
 from ..utils.tokens import hash_token, new_access_token
 
 COOKIE = "neoori_hold"
@@ -55,16 +56,24 @@ def _secure() -> bool:
     return bool(current_app.config.get("SESSION_COOKIE_SECURE"))
 
 
+def _domain() -> str | None:
+    # The session cookies' domain, not cv alone: a logout on any host must
+    # drop the draft (subdomain split spec, decision 27 as amended).
+    return site.cookie_domain(current_app.config["DOMAIN"])
+
+
 def set_cookie(response, token: str) -> None:
     response.set_cookie(
         COOKIE, token,
         max_age=current_app.config["HELD_DRAFT_RETENTION_HOURS"] * 3600,
-        path=PATH, httponly=True, samesite="Lax", secure=_secure(),
+        path=PATH, domain=_domain(), httponly=True, samesite="Lax", secure=_secure(),
     )
 
 
 def clear_cookie(response) -> None:
-    response.delete_cookie(COOKIE, path=PATH, httponly=True, samesite="Lax", secure=_secure())
+    response.delete_cookie(
+        COOKIE, path=PATH, domain=_domain(), httponly=True, samesite="Lax", secure=_secure(),
+    )
 
 
 def held_row(*, draft_only: bool = False) -> Analysis | None:

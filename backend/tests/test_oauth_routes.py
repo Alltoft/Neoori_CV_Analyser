@@ -51,15 +51,54 @@ def providers(app, monkeypatch):
                         lambda self: dict(METADATA[self.name]))
 
 
+# Every request in this file is made on cv.localhost unless a test names
+# another host: /start anywhere else hands the sign-in over to cv first, and
+# the state cookie lives on the host that set it (subdomain split spec,
+# decision 28). TestingConfig's DOMAIN is localhost.
+CV = "https://cv.localhost"
+
+
+class _OnCv:
+    """The test client, on cv.localhost by default."""
+
+    def __init__(self, client):
+        self._client = client
+
+    def get(self, *args, **kwargs):
+        kwargs.setdefault("base_url", CV)
+        return self._client.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        kwargs.setdefault("base_url", CV)
+        return self._client.post(*args, **kwargs)
+
+    def get_cookie(self, key, domain="cv.localhost", path="/"):
+        return self._client.get_cookie(key, domain=domain, path=path)
+
+    def session_transaction(self, *args, **kwargs):
+        # Opens its own request context, on localhost unless told otherwise:
+        # the state cookie is host-only, on cv.localhost.
+        kwargs.setdefault("base_url", CV)
+        return self._client.session_transaction(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+@pytest.fixture
+def client(app):
+    return _OnCv(app.test_client())
+
+
 def _cookies(res) -> str:
     return " ".join(res.headers.getlist("Set-Cookie"))
 
 
-def _start(client, provider, next_path=None):
+def _start(client, provider, next_path=None, **request_kwargs):
     path = f"/api/auth/{provider}/start"
     if next_path is not None:
         path += "?next=" + quote(next_path, safe="")
-    return client.get(path)
+    return client.get(path, **request_kwargs)
 
 
 def _query(res) -> dict:
@@ -76,7 +115,7 @@ def _id_claims(provider, nonce, **claims):
     return {**base, **claims}
 
 
-def _callback(client, provider, claims, *, state, seen=None):
+def _callback(client, provider, claims, *, state, seen=None, **request_kwargs):
     """The provider's answer: its token endpoint returns an ID token carrying
     `claims`, which Authlib's claim checks then judge with the options the
     route passed."""
@@ -93,12 +132,14 @@ def _callback(client, provider, claims, *, state, seen=None):
 
     with patch.object(FlaskOAuth2App, "fetch_access_token", fetch_access_token), \
             patch.object(FlaskOAuth2App, "parse_id_token", parse_id_token):
-        return client.get(f"/api/auth/{provider}/callback?code=the-code&state={state}")
+        return client.get(f"/api/auth/{provider}/callback?code=the-code&state={state}",
+                          **request_kwargs)
 
 
-def _sign_in(client, provider, next_path=None, **claims):
-    q = _query(_start(client, provider, next_path))
-    return _callback(client, provider, _id_claims(provider, q["nonce"], **claims), state=q["state"])
+def _sign_in(client, provider, next_path=None, *, base_url=CV, **claims):
+    q = _query(_start(client, provider, next_path, base_url=base_url))
+    return _callback(client, provider, _id_claims(provider, q["nonce"], **claims),
+                     state=q["state"], base_url=base_url)
 
 
 # ── configuration (decision 13) ───────────────────────────────────────────────
@@ -146,13 +187,13 @@ def test_an_unknown_provider_is_a_404(client, providers):
 
 
 def test_google_start_asks_for_an_account_with_pkce_and_a_nonce(client, app, providers):
-    app.config["APP_URL"] = "https://neoori.tech"
-    res = _start(client, "google")
+    app.config["DOMAIN"] = "neoori.tech"
+    res = _start(client, "google", base_url="https://cv.neoori.tech")
     assert res.status_code == 302
     assert res.headers["Location"].startswith(METADATA["google"]["authorization_endpoint"])
     q = _query(res)
     assert q["client_id"] == "google-client"
-    assert q["redirect_uri"] == "https://neoori.tech/api/auth/google/callback"
+    assert q["redirect_uri"] == "https://cv.neoori.tech/api/auth/google/callback"
     assert q["scope"] == "openid email profile"
     assert q["prompt"] == "select_account"
     assert q["code_challenge_method"] == "S256" and q["code_challenge"]
@@ -180,7 +221,7 @@ def test_a_new_google_address_goes_on_to_finalise(client, providers):
     res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com",
                    email_verified=True, given_name="Marie")
     assert res.status_code == 302 and res.headers["Location"] == "/inscription/finaliser"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert User.query.count() == 0
     ticket = auth_links.load_signup_ticket(
         client.get_cookie("signup_ticket", path="/api/auth").value).payload
@@ -192,7 +233,7 @@ def test_a_known_account_is_signed_in_and_sent_home(client, providers, make_user
     make_user(email="marie@gmail.com")
     res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com", email_verified=True)
     assert res.headers["Location"] == "/espace"
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
     assert AuthIdentity.query.one().subject == "g-1"
 
 
@@ -226,7 +267,7 @@ def test_a_work_account_without_proof_cannot_enter_the_account_of_its_address(
     res = _sign_in(client, "microsoft", sub="m-2", email="marie@entreprise.fr", tid=WORK_TENANT)
     assert res.headers["Location"] == "/connexion?erreur=email_non_verifie"
     assert AuthIdentity.query.count() == 0
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 def test_a_proven_work_address_enters(client, providers, make_user):
@@ -276,7 +317,7 @@ def test_a_google_token_from_another_issuer_is_refused(client, providers, make_u
     claims["iss"] = "https://evil.example"
     res = _callback(client, "google", claims, state=q["state"])
     assert res.headers["Location"] == "/connexion?erreur=echec"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 @pytest.mark.parametrize("issuer", ["https://accounts.google.com", "accounts.google.com"])
@@ -307,7 +348,7 @@ def test_a_token_issued_to_another_app_is_refused(client, providers, make_user, 
     claims = _id_claims(provider, q["nonce"], **vouched, aud="someone-else", **extra)
     res = _callback(client, provider, claims, state=q["state"])
     assert res.headers["Location"] == "/connexion?erreur=echec"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 def test_a_token_for_another_sign_in_is_refused(client, providers, make_user):
@@ -422,7 +463,7 @@ def test_a_failure_while_choosing_the_landing_is_a_failure_not_a_500(
     make_user(email="marie@gmail.com")
     res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com", email_verified=True)
     assert res.headers["Location"] == "/connexion?erreur=echec"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 @pytest.mark.parametrize("sub", ["x" * 256, "sujet-é", ""])
@@ -431,7 +472,7 @@ def test_an_unusable_subject_is_a_failure_and_links_nothing(client, providers, m
     res = _sign_in(client, "google", sub=sub, email="marie@gmail.com", email_verified=True)
     assert res.headers["Location"] == "/connexion?erreur=echec"
     assert AuthIdentity.query.count() == 0
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert client.get_cookie("signup_ticket", path="/api/auth") is None
 
 
@@ -516,3 +557,50 @@ def test_the_session_cookie_is_scoped_to_auth(client, providers):
     res = _start(client, "google")
     cookie = next(h for h in res.headers.getlist("Set-Cookie") if h.startswith("session="))
     assert "Path=/api/auth" in [part.strip() for part in cookie.split(";")]
+
+
+# ── hosts (subdomain split spec, decisions 15 and 28) ─────────────────────────
+
+def test_each_subdomain_gets_its_own_callback(client, app, providers):
+    app.config["DOMAIN"] = "neoori.tech"
+    for host in ("cv.neoori.tech", "voyage.neoori.tech"):
+        q = _query(_start(client, "google", base_url=f"https://{host}"))
+        assert q["redirect_uri"] == f"https://{host}/api/auth/google/callback"
+
+
+def test_the_callback_is_built_from_domain_never_copied_from_the_host(client, app, providers):
+    # The Host only selects cv: its case and port never reach the callback.
+    # Every other test starts on the exact name, where a callback copied from
+    # the Host header would look the same. The header is sent as written: the
+    # test client lowercases the name in base_url.
+    app.config["DOMAIN"] = "neoori.tech"
+    host = "CV.Neoori.Tech:8443"
+    q = _query(_start(client, "google", base_url=f"https://{host}", headers={"Host": host}))
+    assert q["redirect_uri"] == "https://cv.neoori.tech/api/auth/google/callback"
+
+
+@pytest.mark.parametrize("host", ["neoori.tech", "www.neoori.tech", "attacker.example"])
+def test_start_anywhere_else_hands_over_to_cv_before_writing_any_state(client, app, providers, host):
+    app.config["DOMAIN"] = "neoori.tech"
+    res = _start(client, "google", "/voyage?a=b", base_url=f"https://{host}")
+    assert res.status_code == 302
+    assert res.headers["Location"] == (
+        "https://cv.neoori.tech/api/auth/google/start?next=%2Fvoyage%3Fa%3Db"
+    )
+    assert "session=" not in _cookies(res)
+
+
+def test_a_start_without_next_hands_over_without_a_query(client, app, providers):
+    app.config["DOMAIN"] = "neoori.tech"
+    res = _start(client, "microsoft", base_url="https://neoori.tech")
+    assert res.headers["Location"] == "https://cv.neoori.tech/api/auth/microsoft/start"
+
+
+@pytest.mark.parametrize("role, home", [
+    ("admin", "/admin"), ("counselor", "/conseiller"), ("candidate", "/voyage"),
+])
+def test_on_voyage_a_candidate_lands_on_the_hub(client, providers, make_user, role, home):
+    make_user(email="marie@gmail.com", role=role)
+    res = _sign_in(client, "google", base_url="https://voyage.localhost",
+                   sub="g-1", email="marie@gmail.com", email_verified=True)
+    assert res.headers["Location"] == home

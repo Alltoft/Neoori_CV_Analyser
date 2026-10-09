@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import {
   ArrowLeft,
   Check,
@@ -396,7 +396,7 @@ export default function VoyageCounselorPage() {
               : "Connectez-vous avec un compte conseiller pour ouvrir cette fiche."}
           </p>
           <Button
-            render={<Link href={user ? "/espace" : `/connexion?redirect=/voyage/c/${token}`} />}
+            render={<AppLink href={user ? "/espace" : `/connexion?redirect=/voyage/c/${token}`} />}
             variant="outline"
             size="lg"
             className="mt-6"
@@ -442,7 +442,7 @@ export default function VoyageCounselorPage() {
     <div className="min-h-screen bg-secondary">
       {/* Action bar */}
       <div className="no-print sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-border bg-secondary/95 px-5 py-3 backdrop-blur-sm sm:px-8">
-        <Button render={<Link href="/espace" />} variant="ghost" size="sm">
+        <Button render={<AppLink href="/espace" />} variant="ghost" size="sm">
           <ArrowLeft className="size-3.5" /> Mon espace
         </Button>
         <Button

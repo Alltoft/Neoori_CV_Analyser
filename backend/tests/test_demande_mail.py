@@ -211,7 +211,7 @@ def test_a_failed_admin_lookup_does_not_block_the_verification(client, make_user
         broken.query.filter_by.side_effect = poison_session
         r = _verify(client, applicant)
     assert r.status_code == 200
-    assert "access_token_cookie" in " ".join(r.headers.getlist("Set-Cookie"))
+    assert "neoori_access" in " ".join(r.headers.getlist("Set-Cookie"))
     # The verification itself survived the failed admin lookup.
     db.session.expire_all()
     assert db.session.get(User, applicant.id).email_verified_at is not None

@@ -1,5 +1,9 @@
 # Phase 2 (NGINX_MODE=https): TLS termination once the ${DOMAIN} certificate
 # has been issued (see DOCKER.md). HTTP only answers ACME + redirects.
+# Four names reach a server block (subdomain split spec, decision 33):
+# ${DOMAIN}, cv.${DOMAIN} and voyage.${DOMAIN}, proxied alike (the app routes
+# by host), and www.${DOMAIN}, which redirects to the apex. Every other name
+# is turned away by the two default servers below.
 
 # Per-IP limits on the auth endpoints (email verification spec, decision 21;
 # social sign-in spec, decision 23).
@@ -47,15 +51,45 @@ limit_req_log_level info;
 
 # Four-doors spec, decision 42: log the path, never the query string or the
 # Referer. Verification and reset tokens, `next` paths and Stripe session ids
-# travel in query strings, and the Referer repeats them.
-log_format neoori_paths '$remote_addr [$time_local] "$request_method $uri" '
+# travel in query strings, and the Referer repeats them. The host goes in
+# (subdomain split spec, decision 38): requests per host are counted from it.
+log_format neoori_paths '$remote_addr [$time_local] $host "$request_method $uri" '
                         '$status $body_bytes_sent $request_time';
 
 limit_req_status 429;
 
+# Any name not listed below (subdomain split spec, decision 33). On 80 the
+# connection is closed (444) — except the ACME challenge, answered for any
+# name, so a certificate for a new domain can be issued before DOMAIN changes
+# (DOCKER.md, « Swapping the domain later »); it serves only what certbot
+# itself wrote. On 443 the TLS handshake is refused, which needs no
+# certificate; a request whose Host matches no name after a valid handshake is
+# closed too (444).
+server {
+    listen 80 default_server;
+    server_name _;
+    access_log /var/log/nginx/access.log neoori_paths;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 444;
+    }
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    access_log /var/log/nginx/access.log neoori_paths;
+    ssl_reject_handshake on;
+    return 444;
+}
+
 server {
     listen 80;
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} cv.${DOMAIN} voyage.${DOMAIN};
     access_log /var/log/nginx/access.log neoori_paths;
 
     location /.well-known/acme-challenge/ {
@@ -87,7 +121,9 @@ server {
 server {
     listen 443 ssl;
     http2 on;
-    server_name ${DOMAIN};
+    # The landing and both apps: one Next.js app and one Flask behind them,
+    # which decide per host (subdomain split spec, decisions 8 and 33).
+    server_name ${DOMAIN} cv.${DOMAIN} voyage.${DOMAIN};
     access_log /var/log/nginx/access.log neoori_paths;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;

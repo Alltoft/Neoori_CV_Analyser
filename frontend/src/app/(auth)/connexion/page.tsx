@@ -1,13 +1,14 @@
 "use client"
 
 import { Suspense, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useAuth } from "@/lib/auth"
 import { homeFor } from "@/lib/home"
+import { useSite } from "@/lib/site-context"
 import { ApiError } from "@/lib/api"
 import { safeRedirect } from "@/lib/safe-redirect"
 import { Button } from "@/components/ui/button"
@@ -36,7 +37,7 @@ const OAUTH_ERRORS = new Map([
 
 function ConnexionForm() {
   const { login } = useAuth()
-  const router = useRouter()
+  const { app, go } = useSite()
   const params = useSearchParams()
   const [error, setError] = useState<string | null>(null)
   // Checked as given by safeRedirect: only a path on this site is followed or
@@ -59,7 +60,7 @@ function ConnexionForm() {
       // Otherwise each role lands on its own home rather than the candidate
       // espace: an admin in Administration, an approved conseiller in their
       // espace conseiller.
-      router.push(redirect ?? homeFor(signedIn.role))
+      go(redirect ?? homeFor(signedIn.role, app))
     } catch (e) {
       if (e instanceof ApiError && e.body?.code === "email_unverified") {
         setUnverified(email)

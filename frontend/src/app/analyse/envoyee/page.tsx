@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { CheckCircle2 } from "lucide-react"
 import { Logo } from "@/components/brand/Logo"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ export default function AnalyseEnvoyeePage() {
         <p className="mt-2 text-sm text-muted-foreground">
           Votre conseiller recevra votre analyse d’ici quelques minutes, dans son espace. Il pourra vous la présenter lors de votre prochain échange.
         </p>
-        <Button render={<Link href="/" />} variant="outline" size="lg" className="mt-6">
+        <Button render={<AppLink href="/" />} variant="outline" size="lg" className="mt-6">
           Retour à l’accueil
         </Button>
       </div>

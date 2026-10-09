@@ -1,10 +1,11 @@
 "use client"
 
 import { Suspense, useEffect, useState, type FormEvent } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth"
 import { homeFor } from "@/lib/home"
+import { useSite } from "@/lib/site-context"
 import { api, ApiError } from "@/lib/api"
 import type { User } from "@/types"
 import { Button } from "@/components/ui/button"
@@ -27,7 +28,7 @@ type LinkState =
  *  alone, opens the account (spec decision 8 — pre-account hijacking). */
 function VerifierEmail() {
   const params = useSearchParams()
-  const router = useRouter()
+  const { app, go } = useSite()
   const { refresh } = useAuth()
   const token = params.get("token") ?? ""
   const [state, setState] = useState<LinkState>(() =>
@@ -85,7 +86,7 @@ function VerifierEmail() {
       // `next` is the landing path the server signed into the link, followed
       // exactly as given. replace, not push: Back must not reopen the spent
       // link. The button stays disabled until this page unmounts.
-      router.replace(res.next ?? homeFor(res.user.role))
+      go(res.next ?? homeFor(res.user.role, app), { replace: true })
     } catch (err) {
       const code = err instanceof ApiError ? err.body?.code : undefined
       if (code === "wrong_password") setError("Mot de passe incorrect.")
