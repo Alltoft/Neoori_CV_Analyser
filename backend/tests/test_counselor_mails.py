@@ -64,3 +64,13 @@ def test_the_mail_names_nobody_and_links_to_the_counselor_space(app):
     assert params["subject"] == "Une analyse est prête"
     assert "Zoé" not in params["html"] and "Durand" not in params["text"]
     assert "/conseiller" in params["text"]
+
+
+def test_the_failed_mail_uses_typographic_apostrophe_and_links_to_conseiller(app):
+    app.config["RESEND_API_KEY"] = "re_test"
+    with patch(SEND, return_value={"id": "1"}) as send:
+        assert email_service.send_counselor_analysis_failed("c@test.fr") is True
+    params = send.call_args[0][0]
+    assert params["subject"] == "Une analyse n’a pas abouti"
+    assert "son analyse n’a pas abouti. Vous pouvez la relancer depuis votre espace conseiller." in params["text"]
+    assert "/conseiller" in params["text"]

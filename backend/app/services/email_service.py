@@ -341,18 +341,18 @@ def send_counselor_analysis_ready(to: str) -> bool:
 
 
 def send_counselor_analysis_failed(to: str) -> bool:
-    """« Une analyse n'a pas abouti » — the counselor can relaunch it; the
+    """« Une analyse n’a pas abouti » — the counselor can relaunch it; the
     candidate, who left with /analyse/envoyee, cannot."""
     try:
         body, text = _mail(
             [
                 "Bonjour,",
-                "Un bénéficiaire a utilisé votre code : son analyse n'a pas abouti. "
+                "Un bénéficiaire a utilisé votre code : son analyse n’a pas abouti. "
                 "Vous pouvez la relancer depuis votre espace conseiller.",
             ],
             button=("Ouvrir mon espace conseiller", f"{_app_url()}/conseiller"),
         )
-        return send(to, "Une analyse n'a pas abouti", _layout("Analyse interrompue", body), text)
+        return send(to, "Une analyse n’a pas abouti", _layout("Analyse interrompue", body), text)
     except Exception:
         current_app.logger.exception("Could not build/send the counselor analysis-failed mail.")
         return False
