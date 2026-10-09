@@ -1,9 +1,10 @@
 # Le découpage en sous-domaines — Design Spec
 Date: 2026-10-09
 Status: design approved in conversation 2026-10-09, one section at a time;
-written spec awaiting the developer's review. Decisions made while writing,
-which the conversation did not cover, are marked **Claude's call** and listed
-again at the end.
+written spec approved by the developer the same day (no changes asked).
+Decisions made while writing, which the conversation did not cover, are
+marked **Claude's call** and listed again at the end. Refinements found while
+writing the plan are folded in and listed under « Amendments while planning ».
 
 ## Overview
 
@@ -22,16 +23,16 @@ that works on every host. The base domain is written in exactly one setting,
 This is sub-project 3 of 3 (2026-10-08 app split):
 
 1. Retire parcours 2 and 3 — merged and deployed.
-2. Four doors at submit — `docs/superpowers/specs/2026-10-08-four-doors-design.md`
-   and its plan, on `feat/four-doors`, being built.
+2. Four doors at submit — `docs/superpowers/specs/2026-10-08-four-doors-design.md`,
+   merged and deployed (0825e27).
 3. **This spec.**
 
-**Base.** The build starts from `initial` once four doors is merged: it
-changes `proxy.ts`, the mails and the report pages, and adds `/rapport`,
-`/analyse/envoyee`, `/conseiller/analyses/[id]` and the `neoori_hold` cookie.
-This spec is written against `initial` at fd2f47f (parcours 2/3 gone, social
-sign-in live) plus the four-doors spec and plan. Line numbers are indicative;
-the plan re-reads them after that merge.
+**Base.** Written against `initial` at fd2f47f plus the four-doors spec and
+plan; four doors then merged (0825e27), this branch was rebased on it, and the
+plan (`docs/superpowers/plans/2026-10-09-subdomain-split.md`) reads its line
+numbers from that code. Four doors changed `proxy.ts`, the mails and the
+report pages, and added `/rapport`, `/analyse/envoyee`,
+`/conseiller/analyses/[id]` and the `neoori_hold` cookie.
 
 **Not in this spec:** the two landings (designed later — each one replaces its
 subdomain's day-one redirect), and keeping old links alive when the domain is
@@ -150,7 +151,11 @@ swapped some day (see « Out of scope »).
 17. *Claude's call.* **Files and Next's own assets are served on every host.**
     `proxy.ts` already skips `_next/static`, `_next/image`, `favicon.ico` and
     `.png`; any other path whose last segment has an extension (svg, jpg, webp,
-    ico, txt) passes through without host routing.
+    ico, txt) passes through without host routing. *Amended while planning:*
+    so do `/api` and `/api/*` (nginx sends them to Flask before Next sees
+    them, but a direct request to the frontend's port must not be redirected)
+    and Next's internal paths, `/_next/*` and `/__nextjs*` (the dev server's
+    hot-reload socket, on every host).
 18. **An unknown host is treated as the root**: `/` serves the landing there,
     instead of the host being redirected to `DOMAIN`. That covers the container
     health check (`wget http://127.0.0.1:3000/`), access by IP in the http
@@ -218,7 +223,10 @@ swapped some day (see « Out of scope »).
     the shared cookie means the person is already signed in.
 30. **Standing rule: no subdomain of `DOMAIN` may be served by anything but this
     stack** — no blog, status page, Resend click-tracking domain, or any CNAME to
-    an outside service. Such a host would receive the session cookie, and since
+    an outside service. *Amended while planning:* nor a staging copy of the
+    app, which would run unreviewed branches with every visitor's production
+    session in hand; `AUTOMATION-PLAN.md` proposes `staging.neoori.tech` and
+    gets a note to use a separate domain. Such a host would receive the session cookie, and since
     `cv.` and `voyage.` count as the same site to a browser, `SameSite=Lax`
     would not stop it from sending signed-in requests either (CSRF protection is
     off: `config.py:31`). Written into CLAUDE.md and DOCKER.md beside the AAAA
@@ -258,7 +266,12 @@ swapped some day (see « Out of scope »).
     away every other name: on 80, `return 444` (closes the connection); on 443,
     `ssl_reject_handshake on` (refuses the TLS handshake, no certificate
     needed). The rate-limit zones are untouched: they key on the visitor's
-    address and are shared across hosts.
+    address and are shared across hosts. *Amended while planning (Claude's
+    call):* the port-80 default server still answers the ACME challenge, for
+    any name, and closes the connection for everything else. Without that, a
+    certificate for a new domain could not be issued before `DOMAIN` changes
+    (« Swapping the domain later », step 2). It serves only the files certbot
+    itself writes, so a stranger pointing a name at the VPS gains nothing.
 34. *Claude's call.* **The http template and `dev.conf` keep their catch-all**:
     the http phase exists for IP smoke tests, and dev is reached by
     `localhost:8080` too. The app's own host check (decisions 18, 31) covers
@@ -283,6 +296,14 @@ swapped some day (see « Out of scope »).
     `go(path)` — the router for this host, a full page load otherwise. An
     `AppLink` component renders `next/link` or a plain `<a>` accordingly. Every
     link and post-sign-in navigation listed in « Frontend » uses them.
+    *Amended while planning:* `AppLink` always renders `next/link` with the
+    resolved href — `next/link` already hands an other-origin href to the
+    browser, a full page load that is never prefetched
+    (`next/dist/client/app-dir/link.js`, `linkClicked`) — and it is a client
+    component, so the server-rendered footer, auth layout and landing can use
+    it. `homeFor` stays in `lib/home.ts`. The proxy's sign-in gate moves,
+    unchanged except for decision 14, into `lib/sign-in-gate.ts`, a pure
+    function the same tests load.
 
 ### Measuring the outcome
 
@@ -321,22 +342,25 @@ redirects stay relative, as Next writes them today.
 | `routes/auth_oauth.py` | `_redirect_uri` from `site.request_origin()`; `/start` on a host other than cv or voyage redirects to cv's `/start` (decision 28); `_home_path(role)` gives `/voyage` to a candidate on voyage. |
 | `services/email_service.py` | `_app_url()` goes; each mail names its origin per decision 31 (`site.request_origin()` or `site.origin("cv")`), including the counselor mails four doors adds. |
 | `routes/payments.py` | `_frontend_base()` becomes `site.origin("cv")`. |
-| Tests | The ~25 assertions on `access_token_cookie` / `refresh_token_cookie` move to the new names; the six fixtures that set `APP_URL` set `DOMAIN` instead. New tests below. |
+| Tests | The ~25 assertions on `access_token_cookie` / `refresh_token_cookie` move to the new names; the seven fixtures that set `APP_URL` set `DOMAIN` instead. New tests below. |
 
 ## Frontend
 
 | File | Change |
 |---|---|
 | `src/lib/site.ts` (new) | Decision 37's pure functions. |
-| `src/lib/site.test.ts` (new) | Node's built-in runner (`node --test`, no new package); `package.json` gets a `test` script. |
+| `src/lib/sign-in-gate.ts` (new) | The proxy's sign-in gate as a pure function; `/voyage` exact joins signup-first. |
+| `src/lib/site.test.ts`, `src/lib/home.test.ts` (new) | Node's built-in runner (`node --test`, no new package); `package.json` gets a `test` script, `tsconfig.json` `allowImportingTsExtensions` (the tests import `./site.ts`). |
 | `src/lib/site-context.tsx` (new) | The client context: `useSite()`, `href`, `go`; `AppLink`. |
-| `src/proxy.ts` | Decision 37: `route()` first, then the sign-in gate on `neoori_access`; `/voyage` exact joins signup-first. |
+| `src/lib/site-server.ts` (new) | `currentSite()`: runtime `DOMAIN` + the request's host, for the root layout. |
+| `src/proxy.ts` | Decision 37: `route()` first, then the sign-in gate on `neoori_access`. |
 | `src/app/layout.tsx` | `generateMetadata()` from runtime `DOMAIN` + host; wraps children in the site context. `NEXT_PUBLIC_SITE_URL` goes. |
 | `src/lib/home.ts` | `homeFor(role, app)`; every caller passes the app. |
 | `components/layout/AppBar.tsx`, `SiteNav.tsx`, `SiteFooter.tsx`, `AuthLayout.tsx` | Links through `AppLink`; landing anchors and the logo go to the root (decision 16). |
 | `app/page.tsx` (the root landing) | CTAs go straight to `cv.` / `voyage.` (`/analyse`, `/voyage`), anchors stay local. |
-| `app/espace/page.tsx`, `app/analyse/nouveau/page.tsx`, `app/voyage/c/[token]/page.tsx`, `app/conseiller/page.tsx` (and four doors' counselor pages) | Cross-links through `AppLink`. |
+| `app/espace/page.tsx`, `app/analyse/nouveau/page.tsx`, `app/voyage/c/[token]/page.tsx`, `app/admin/layout.tsx` (logout, « Retour à mon espace »), `app/analyse/envoyee/page.tsx` and `app/c/[token]/page.tsx` (« Retour à l'accueil ») | Cross-links through `AppLink` / `go`. `app/conseiller/page.tsx` and four doors' counselor page link only to shared paths: unchanged (checked while planning). |
 | `app/(auth)/connexion`, `connexion/lien`, `inscription/finaliser`, `verifier-email`, `reinitialiser-mot-de-passe` | Post-sign-in navigation through `go()`, so a `next` owned by the other app is a full page load. |
+| `next.config.ts` | `allowedDevOrigins` from `DOMAIN`: Next 16 refuses its dev resources (the hot-reload socket) to an origin it does not know, and its default `*.localhost` covers one label, not `cv.neoori.localhost`. |
 
 Share links built from `window.location.origin` (the voyage's counselor link,
 four doors' « Copier le lien ») already name the right host: they are built on
@@ -372,8 +396,11 @@ the page that owns them.
 - **Four doors' hold round trip** stays on cv from start to claim; « Garder »
   returns to `/espace?garder=1`, which cv owns.
 - **A Next client-side navigation to another host's path that bypassed
-  `AppLink`**: the proxy answers a cross-origin 307 to a router fetch. The plan
-  checks what Next 16 does with it (expected: a full page load); every known
+  `AppLink`**: the proxy answers a cross-origin 307 to a router fetch. Checked
+  in Next 16.2.6's source while planning
+  (`next/dist/client/components/router-reducer/fetch-server-response.js`):
+  the fetch fails the cross-origin check and the router falls back to a full
+  page load of the same URL, which the proxy then redirects. Every known
   cross-link uses `AppLink` / `go`, so this is a safety net only.
 - **`/api/*` on the root** still reaches Flask: the landing asks `/auth/me` for
   its nav, and the Stripe webhook URL is on the root.
@@ -439,21 +466,28 @@ Each step outside the repo waits for the developer's go.
 4. **Push**, which deploys. What people notice: they are signed out once; the
    root shows the landing and every other page moves to `cv.` or `voyage.`;
    links in mails already sent keep working through the redirects.
-5. **Afterwards:** delete `APP_URL` and `FRONTEND_URL` from
-   `/srv/neoori/.env`, and the GitHub variable `SITE_URL`.
+5. **Afterwards, once no rollback below this deploy is expected:** delete
+   `APP_URL` and `FRONTEND_URL` from `/srv/neoori/.env`, and the GitHub
+   variable `SITE_URL`.
 
 **Rollback:** `IMAGE_TAG=<previous sha>`. The old app then answers on all three
 names, each with its own sign-in, as before the split. The new nginx config
-and the expanded certificate work with the old image; nothing else to undo.
+and the expanded certificate work with the old image. *Amended while
+planning:* the previous image still reads `APP_URL` and `FRONTEND_URL` — the
+latter for Stripe's return URL, whose fallback is `http://localhost:3000` — so
+a rollback after step 5 also puts `FRONTEND_URL=https://neoori.tech` back in
+`/srv/neoori/.env`.
 
 ## Swapping the domain later
 
 Each time the base domain changes:
 
 1. DNS for the new root, `www`, `cv` and `voyage` (A records only).
-2. A certificate for the new domain, four names.
-3. `DOMAIN=<new>` in `/srv/neoori/.env`, then `up -d` — nginx re-renders, no
-   rebuild.
+2. A certificate for the new domain, four names. The port-80 default server
+   answers the ACME challenge for names nginx does not serve yet (decision 33).
+3. `DOMAIN=<new>` in `/srv/neoori/.env`, then recreate the backend, frontend
+   and nginx containers (`up -d --force-recreate backend frontend nginx`) —
+   nginx re-renders, nothing is rebuilt.
 4. Google and Microsoft: the new callback URLs.
 5. Stripe: the webhook URL.
 6. Resend: verify the new domain, then change `MAIL_FROM` (decision 23).
@@ -500,10 +534,31 @@ DOCKER.md carries this list.
    column recording which host an account, an analysis or a voyage started on
    (a small migration); an analytics tool (a consent question under CNIL rules,
    and possibly a cost).
-2. **Timing:** the build waits for four doors to merge.
+2. ~~**Timing:** the build waits for four doors to merge.~~ Merged 2026-10-09
+   (0825e27).
 3. **Provider keys before the split:** if they go live first, register the
    root's callback URLs then, add cv and voyage at the split, and remove the
    root's afterwards.
+
+## Amendments while planning (2026-10-09)
+
+Found while reading the merged code for the plan; each is folded into the
+decision it touches, and each is open to reversal:
+
+- 17 — `/api/*` and Next's internal paths pass through on every host, like
+  files.
+- 30 — a staging copy of the app counts as « anything but this stack ».
+- 33 — the port-80 default server answers the ACME challenge for any name
+  (Claude's call), so a domain swap can issue its certificate first.
+- 37 — `AppLink` always renders `next/link`; the sign-in gate becomes
+  `lib/sign-in-gate.ts`; `homeFor` stays in `lib/home.ts`.
+- « Errors and edge cases » — Next 16's fallback for a cross-origin redirect
+  during a client navigation, checked in its source: a full page load.
+- « Frontend » — the counselor pages need no change; the admin layout,
+  `/analyse/envoyee` and `/c/[token]` do; `next.config.ts` gets
+  `allowedDevOrigins`.
+- « Rollout » — `FRONTEND_URL` stays in the prod `.env` until no rollback below
+  the split is expected: the previous image builds Stripe's return URL from it.
 
 ## Claude's calls
 
