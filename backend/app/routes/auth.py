@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -11,11 +11,16 @@ from flask_jwt_extended import (
 )
 from datetime import datetime
 
+from sqlalchemy.exc import IntegrityError
+
 from ..extensions import db, bcrypt
+from ..models.auth_identity import AuthIdentity
 from ..models.counselor_profile import CounselorProfile
-from ..models.profile import ACCEPTED_AGE_BRACKETS, CONSENT_VERSION, Profile
+from ..models.profile import (
+    ACCEPTED_AGE_BRACKETS, AGE_BRACKETS, CONSENT_VERSION, PRENOM_MAX_LENGTH, Profile,
+)
 from ..models.user import User
-from ..services import auth_mail, demande_mail, email_service
+from ..services import auth_mail, demande_mail, email_service, sign_in
 from ..utils import auth_links
 from ..utils.request_body import json_object, text_field, raw_text_field
 
@@ -54,11 +59,9 @@ def register():
     seed = {field: text_field(data, field) for field in SEED_FIELDS}
     seed = {field: value for field, value in seed.items() if value}
     if seed:
-        if data.get("consent") is not True:
-            return jsonify({"error": "Le consentement est requis."}), 400
-        bracket = seed.get("tranche_age")
-        if bracket and bracket not in ACCEPTED_AGE_BRACKETS:
-            return jsonify({"error": "Valeur invalide pour tranche_age."}), 400
+        problem = _seed_problem(seed, data.get("consent"))
+        if problem:
+            return jsonify({"error": problem}), 400
 
     user = User(
         email=email,
@@ -68,12 +71,7 @@ def register():
     db.session.flush()  # user.id, for the profile's FK
 
     if seed:
-        db.session.add(Profile(
-            user_id=user.id,
-            consent_at=datetime.utcnow(),
-            consent_version=CONSENT_VERSION,
-            **seed,
-        ))
+        _add_seeded_profile(user, seed)
 
     db.session.commit()
 
@@ -82,6 +80,85 @@ def register():
     # where they were heading.
     mail_sent = auth_mail.verification_if_due(user, text_field(data, "next") or None)
     return jsonify({"user": user.to_dict(), "mail_sent": mail_sent}), 201
+
+
+@auth_bp.get("/signup")
+def signup_details():
+    """What « Finaliser votre inscription » shows: the address the ticket
+    proves, and the prénom the provider gave, to prefill."""
+    ticket, code = sign_in.live_signup_ticket()
+    if code:
+        return _link_error(code)
+    return jsonify({
+        "email": ticket["email"],
+        "prenom": ticket.get("prenom_hint") or "",
+        "method": ticket["method"],
+    }), 200
+
+
+@auth_bp.post("/signup")
+def signup():
+    """The account a signup ticket was waiting for, created with its consent
+    in one commit (social sign-in spec, decisions 1 and 19). Nothing exists
+    before this: no users row, no session."""
+    ticket, code = sign_in.live_signup_ticket()
+    if code:
+        return _link_error(code)
+
+    data = json_object()
+    seed = {field: text_field(data, field) for field in SEED_FIELDS}
+    if not seed["prenom"]:
+        return jsonify({"error": "Prénom requis."}), 400
+    if not seed["tranche_age"]:
+        return jsonify({"error": "Tranche d'âge requise."}), 400
+    # The seven brackets the form offers: the legacy one is never asked again.
+    problem = _seed_problem(seed, data.get("consent"), AGE_BRACKETS)
+    if problem:
+        return jsonify({"error": problem}), 400
+
+    provider = None if ticket["method"] == "email" else ticket["method"]
+    sub = ticket.get("sub")
+    email = ticket["email"]
+    # Another tab, or a double click, may have finished first: what it made
+    # is entered, and this form overwrites nothing (decision 19).
+    user = sign_in.existing_account(provider, sub, email)
+    if user is None and sign_in.address_in_use(email):
+        # Held already: by a racing submit that has just committed (look
+        # again and enter it), or by an account whose address only collates
+        # equal to this one (refuse: it is someone else's). Under MySQL's
+        # default REPEATABLE READ the second look reads the same snapshot as
+        # the first, so a racing twin is in practice entered by the
+        # IntegrityError fallback below; the re-look helps only under READ
+        # COMMITTED.
+        user = sign_in.existing_account(provider, sub, email)
+        if user is None:
+            return jsonify({"error": ADDRESS_UNAVAILABLE, "code": "address_unavailable"}), 409
+    if user is None:
+        user = User(
+            email=email,
+            password_hash=sign_in.unusable_password_hash(),
+            email_verified_at=datetime.utcnow(),   # the ticket is the proof
+        )
+        db.session.add(user)
+        try:
+            db.session.flush()   # user.id, for the identity and the profile
+            if provider:
+                db.session.add(AuthIdentity(user_id=user.id, provider=provider, subject=sub))
+            _add_seeded_profile(user, seed)
+            db.session.commit()
+        except IntegrityError:
+            # A concurrent submit committed the same address first — or, on
+            # MySQL, a lookalike account appeared since the look above.
+            current_app.logger.warning("POST /signup fell back after an IntegrityError.", exc_info=True)
+            db.session.rollback()
+            user = sign_in.existing_account(provider, sub, email)
+            if user is None:
+                return jsonify({"error": ADDRESS_UNAVAILABLE, "code": "address_unavailable"}), 409
+
+    response = jsonify({"user": user.to_dict(), "next": _landing(user, ticket)})
+    sign_in.clear_signup_ticket(response)
+    _issue_session(response, user)
+    return response, 200
 
 
 @auth_bp.post("/login")
@@ -164,6 +241,14 @@ LINK_ERRORS = {
 # stranger whether an address has an account (spec decision 11).
 RESEND_MESSAGE = "Si cette adresse attend une confirmation, un nouveau lien vient d'être envoyé."
 FORGOT_MESSAGE = "Si un compte existe pour cette adresse, un email vient d'être envoyé."
+# A sign-in proved an address the database already files under another,
+# only collation-equal account (« marie@gmaïl.com » for « marie@gmail.com »).
+# Entering it would hand one person's account to another; creating a new one
+# would collide with the unique index. Wording provisional (PM may reword).
+ADDRESS_UNAVAILABLE = (
+    "Cette adresse ne peut pas être utilisée pour se connecter. "
+    "Répondez à l'email reçu pour nous écrire."
+)
 
 
 @auth_bp.post("/verify-email/check")
@@ -316,6 +401,38 @@ def _password_bytes(password: str) -> int | None:
         return len(password.encode("utf-8"))
     except UnicodeEncodeError:
         return None
+
+
+def _seed_problem(seed: dict, consent, brackets=ACCEPTED_AGE_BRACKETS) -> str | None:
+    """Why a signup's profile seed cannot be stored, as the sentence to show,
+    or None. register and signup share it: they are the two signup doors
+    that write a first consent (social sign-in spec, decision 20). PUT
+    /api/profile writes one too, without this length check (a known,
+    separate gap). The length check is the one SQLite never makes and MySQL
+    answers with an error."""
+    if consent is not True:
+        return "Le consentement est requis."
+    bracket = seed.get("tranche_age")
+    if bracket and bracket not in brackets:
+        return "Valeur invalide pour tranche_age."
+    prenom = seed.get("prenom", "")
+    if len(prenom) > PRENOM_MAX_LENGTH:
+        return f"Le prénom est trop long : {PRENOM_MAX_LENGTH} caractères maximum."
+    try:
+        prenom.encode("utf-8")
+    except UnicodeEncodeError:
+        return "Le prénom contient un caractère non pris en charge."
+    return None
+
+
+def _add_seeded_profile(user: User, seed: dict) -> None:
+    """The Profil de base row a signup opens, with the consent just given."""
+    db.session.add(Profile(
+        user_id=user.id,
+        consent_at=datetime.utcnow(),
+        consent_version=CONSENT_VERSION,
+        **seed,
+    ))
 
 
 def _link_error(code: str):

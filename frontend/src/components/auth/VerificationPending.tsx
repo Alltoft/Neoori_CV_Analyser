@@ -1,12 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { api, ApiError } from "@/lib/api"
+import { useCooldown } from "@/lib/useCooldown"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-
-/** Mirrors auth_mail.COOLDOWN on the server: one account mail a minute. */
-const COOLDOWN_S = 60
 
 interface Props {
   email: string
@@ -31,16 +29,10 @@ export function VerificationPending({
   restartLabel = "Mauvaise adresse ? Recommencer",
 }: Props) {
   const justSent = variant === "sent" && mailSent
-  const [wait, setWait] = useState(justSent ? COOLDOWN_S : 0)
+  const { wait, restart } = useCooldown(justSent)
   const [failed, setFailed] = useState(variant === "sent" && !mailSent)
   const [notice, setNotice] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-
-  useEffect(() => {
-    if (wait <= 0) return
-    const t = setTimeout(() => setWait((s) => s - 1), 1000)
-    return () => clearTimeout(t)
-  }, [wait])
 
   const resend = async () => {
     setSending(true)
@@ -55,7 +47,7 @@ export function VerificationPending({
       // send, an address with nothing to confirm), so how sure to sound is
       // the server's call, not this screen's.
       setNotice(`${res?.message ?? "Demande prise en compte."} Pensez à regarder dans les courriers indésirables.`)
-      setWait(COOLDOWN_S)
+      restart()
     } catch (e) {
       setNotice(e instanceof ApiError ? e.message : "Erreur lors de l’envoi.")
     } finally {

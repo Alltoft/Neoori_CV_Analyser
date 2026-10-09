@@ -334,6 +334,58 @@ refresh tokens (an access token already issued lives up to 1 h).
 
 Spec: `docs/superpowers/specs/2026-09-29-email-verification-design.md`
 
+## Connexion Google / Microsoft / lien
+
+Three password-less ways in, beside the password signup: « Continuer avec
+Google », « Continuer avec Microsoft » and « Recevoir un lien de connexion ».
+All three end in `routes/auth._issue_session()`.
+
+- **No provider script on our pages.** A provider button is a plain link to
+  `/api/auth/<provider>/start`. Flask runs the authorization-code round trip
+  with Authlib (`services/oauth_clients.py`, `routes/auth_oauth.py`). The
+  checks are state + PKCE + nonce, and on the ID token `iss`, `aud` and `exp`.
+  One Tap or a hosted widget would bring a CNIL consent banner with it.
+- **No `users` row before the CGV consent.** An unknown identity, or a link
+  for an address with no account, gets a signed `signup_ticket` cookie (30
+  min, `Path=/api/auth`) and lands on `/inscription/finaliser`. The account,
+  its identity and its consent are created there in one commit. Nothing needs
+  a consent gate because nothing exists before it.
+- **An address is believed only when the provider proves it**
+  (`services/sign_in.trusted_email`). Google: `email_verified`. Microsoft: the
+  personal-account tenant, or `xms_edov`. A work tenant's `email` claim can be
+  any address its admin types (nOAuth). Without that proof, and with no
+  identity already linked, a sign-in enters nothing and creates nothing.
+  `xms_edov` is added in the Entra app's manifest; the portal no longer lists
+  it.
+- **Addresses are ASCII, and an account is entered only under its own
+  address.** `email_shape_ok` refuses non-ASCII addresses, and
+  `sign_in.account_of` compares the stored address after normalising it.
+  MySQL's `utf8mb4_unicode_ci` treats « gmaïl » as « gmail », and the email
+  link is mailed to the address as typed. Without those two checks a
+  lookalike registration could catch the real owner's sign-in. An address
+  the database files only under a lookalike account is refused: the
+  callback redirects with `email_non_verifie`, and the link consume and the
+  finalise step answer 409 `address_unavailable`.
+- **The ID token's `sub` is screened before anything is written.** It must
+  be ASCII, non-empty and at most 255 characters, because `resolve_oauth`
+  commits identity links. The callback also checks `aud` and the issuer
+  itself. Authlib checks `aud` only when told to, and Microsoft's `iss`
+  must name the token's own `tid`.
+- **Entering an unverified account replaces its password** with an unusable
+  hash, since a stranger may have set it. Password-less accounts carry such a
+  hash too: every typed password fails like a wrong one, and « Mot de passe
+  oublié » sets a real one.
+- **The email link is spent by a click, never by opening the page.** Mail
+  scanners open links. `/connexion/lien` checks the token on load and consumes
+  it only on « Continuer ». `login_links` makes it single-use and keeps an
+  HMAC of the address, never the address.
+- **Keys.** `GOOGLE_CLIENT_ID/SECRET` and `MICROSOFT_CLIENT_ID/SECRET` live in
+  `/srv/neoori/.env`. A provider's button shows only once both its keys are
+  set (`GET /api/auth/providers`). The Microsoft secret expires: see DOCKER.md,
+  « Google / Microsoft sign-in keys ».
+
+Spec: `docs/superpowers/specs/2026-10-03-social-login-design.md`
+
 ## Mails transactionnels
 
 Every mail is built in `services/email_service.py`, leaves after the commit
@@ -352,6 +404,7 @@ approval and rejection mails, which predate it and are HTML-only.
 |---|---|---|
 | Confirmez votre adresse | the account | signup, conseiller demande, resend — `services/auth_mail.py` |
 | Réinitialiser votre mot de passe | the account | « mot de passe oublié » — `services/auth_mail.py` |
+| Votre lien de connexion | the address typed, account or not | « Recevoir un lien de connexion » — `services/auth_mail.login_link_if_due` |
 | Votre mot de passe a été modifié | the account | `auth.reset_password`, after its commit |
 | Votre analyse est prête / n'a pas abouti | the analysis owner, verified only | `anthropic_service._notify_outcome`, at every final status `_run_analysis` writes |
 | Nouvelle demande de compte conseiller | the addresses in `ADMIN_NOTIFY_EMAIL`; every verified admin when it is unset | `services/demande_mail.notify_if_visible` |
@@ -368,7 +421,8 @@ approval and rejection mails, which predate it and are HTML-only.
   manual.
 - **The admin mail fires when a demande enters the queue**: a signed-in
   applicant applies, or an applicant's address is proven for the first time,
-  by its verification link or by a reset link. Admin « Marquer comme vérifié »
+  by its verification link, by a reset link, or by a Google / Microsoft /
+  email-link sign-in (`sign_in.enter`). Admin « Marquer comme vérifié »
   does not send it. Production sets `ADMIN_NOTIFY_EMAIL` in
   `/srv/neoori/.env` (comma-separated; today `ouakouriimran@gmail.com`): the
   shared admin login, `admin@neoori.dev`, has no mailbox — neoori.dev has no

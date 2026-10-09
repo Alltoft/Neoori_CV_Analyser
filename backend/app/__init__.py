@@ -141,6 +141,8 @@ def create_app(env: str | None = None) -> Flask:
     migrate.init_app(app, db)
     jwt.init_app(app)
     bcrypt.init_app(app)
+    from .services import oauth_clients
+    oauth_clients.init_app(app)
     cors.init_app(
         app,
         resources={r"/api/.*": {"origins": app.config["FRONTEND_ORIGINS"]}},
@@ -151,6 +153,7 @@ def create_app(env: str | None = None) -> Flask:
     from .models import (  # noqa: F401
         user, analysis, prompt_version, counselor_note, counselor_code,
         counselor_profile, code_redemption, profile, price_feedback, voyage,
+        auth_identity, login_link,
     )
 
     # Blueprints
@@ -164,6 +167,8 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.voyage import voyage_bp
     from .routes.payments import payments_bp
     from .routes.counselor_space import counselor_space_bp
+    from .routes.auth_link import auth_link_bp
+    from .routes.auth_oauth import auth_oauth_bp
 
     app.register_blueprint(payments_bp, url_prefix="/api/payments")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -175,6 +180,8 @@ def create_app(env: str | None = None) -> Flask:
     app.register_blueprint(profile_bp, url_prefix="/api/profile")
     app.register_blueprint(voyage_bp, url_prefix="/api/voyage")
     app.register_blueprint(counselor_space_bp, url_prefix="/api/counselor")
+    app.register_blueprint(auth_link_bp, url_prefix="/api/auth")
+    app.register_blueprint(auth_oauth_bp, url_prefix="/api/auth")
 
     @app.route("/api/health")
     def health():

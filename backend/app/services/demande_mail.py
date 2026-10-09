@@ -2,12 +2,14 @@
 
 A demande becomes admin work when its address is proven —
 admin.list_counselor_applications filters on email_verified_at (email
-verification spec, decision 16). That happens at one of three doors, and each
+verification spec, decision 16). That happens at one of four doors, and each
 calls notify_if_visible() after its own commit:
 
   counselor_space.apply()   a signed-in, hence verified, applicant
   auth.verify_email()       the email_verified_at None -> set write
   auth.reset_password()     the same write, made by a reset link
+  sign_in.enter()           the same write, made by a Google / Microsoft /
+                            email-link sign-in (social sign-in spec, decision 9)
 
 email_verified_at goes None -> set once per account, and an account holds one
 demande, so each demande mails the admins once (transactional mails spec,
