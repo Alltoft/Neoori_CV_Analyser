@@ -63,7 +63,8 @@ limit_req_status 429;
 # name, so a certificate for a new domain can be issued before DOMAIN changes
 # (DOCKER.md, « Swapping the domain later »); it serves only what certbot
 # itself wrote. On 443 the TLS handshake is refused, which needs no
-# certificate.
+# certificate; a request whose Host matches no name after a valid handshake is
+# closed too (444).
 server {
     listen 80 default_server;
     server_name _;
@@ -81,7 +82,9 @@ server {
 server {
     listen 443 ssl default_server;
     server_name _;
+    access_log /var/log/nginx/access.log neoori_paths;
     ssl_reject_handshake on;
+    return 444;
 }
 
 server {
