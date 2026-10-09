@@ -162,21 +162,23 @@ def test_create_prompt_survives_malformed_body(client, body, admin_headers):
 
 
 @pytest.mark.parametrize("body", MALFORMED_BODIES)
-def test_checkout_survives_malformed_body(client, body, monkeypatch):
+def test_checkout_survives_malformed_body(client, body, monkeypatch, auth):
     # Checkout is disabled (503) without a Stripe key, which is the test
     # environment's default and already crash-proof. Set one so this test
-    # actually exercises the request-body guard the fix added.
+    # actually exercises the request-body guard the fix added. Signed in, too:
+    # checkout and verify are the owner's, and a signed-out caller is stopped
+    # at 401 before either body is read.
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
-    res = client.post("/api/payments/checkout", json=body)
+    res = client.post("/api/payments/checkout", json=body, headers=auth)
     assert res.status_code != 500
     assert res.status_code == 400
     assert res.get_json()["error"] == "analysis_id requis."
 
 
 @pytest.mark.parametrize("body", MALFORMED_BODIES)
-def test_verify_survives_malformed_body(client, body, monkeypatch):
+def test_verify_survives_malformed_body(client, body, monkeypatch, auth):
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
-    res = client.post("/api/payments/verify", json=body)
+    res = client.post("/api/payments/verify", json=body, headers=auth)
     assert res.status_code != 500
     assert res.status_code == 400
     assert res.get_json()["error"] == "session_id requis."

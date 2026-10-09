@@ -112,6 +112,14 @@ def rig(client, app, monkeypatch):
     forwards a non-string session_id/analysis_id to Stripe still fails here,
     the way it would against the real API.
 
+    Checkout and verify are the owner's alone (401 signed out, 403 for anyone
+    else), so both rows post as the candidate: checkout names an analysis the
+    candidate owns, and the stub session's metadata makes verify name that
+    same one. Without that, both would fuzz the gate instead of the body --
+    and still pass, since a 401 is not a 5xx. The guard test below the route
+    table (the payment rigs reaching their body) keeps that from happening
+    unseen.
+
     The candidate gets a pre-existing, already-consented Profile so
     PUT /api/profile fuzzing exercises the field-assignment code: the
     "consentement requis" gate only fires while creating a first profile,
@@ -168,10 +176,17 @@ def rig(client, app, monkeypatch):
     _db.session.commit()
 
     analysis = _analysis(share_token="fuzz-share-token")
-    # /unlock is the owner's alone and the price probe is for whoever may read
-    # the report (401 / 403 before the body is read), so both rows need an
-    # analysis the candidate owns.
+    # /unlock, checkout and verify are the owner's alone and the price probe is
+    # for whoever may read the report (401 / 403 before the body is read), so
+    # those rows need an analysis the candidate owns.
     owned_analysis = _analysis(owner=candidate)
+    # What verify unlocks is the report its session's metadata names -- stripe
+    # v15 metadata is an object with .to_dict(), as the route reads it. The
+    # unlock's own run is patched out like create_analysis's above.
+    _FakeSession.metadata = stripe.StripeObject.construct_from(
+        {"analysis_id": owned_analysis.id, "tier": "paid"}, "sk_test",
+    )
+    monkeypatch.setattr("app.services.unlock_service.start_analysis", lambda *a, **kw: None)
 
     # POST /api/auth/signup reads its body only behind a live ticket. Every
     # fuzzed call leaves at least one field invalid but one (consent=True),
@@ -334,18 +349,22 @@ ROUTES = [
         ],
     ),
     dict(
+        # The owner's, on the candidate's own report: signed out or on anyone
+        # else's, it never reads the body.
         name="checkout",
         method="post",
         path=lambda rig: "/api/payments/checkout",
-        headers=lambda rig: {},
-        base=lambda rig: {"analysis_id": rig["analysis_id"], "tier": "paid"},
+        headers=lambda rig: rig["candidate_headers"],
+        base=lambda rig: {"analysis_id": rig["owned_analysis_id"], "tier": "paid"},
         fields=["analysis_id", "tier"],
     ),
     dict(
+        # The owner's too: the stub session's metadata names the candidate's
+        # own report (see `rig`).
         name="verify",
         method="post",
         path=lambda rig: "/api/payments/verify",
-        headers=lambda rig: {},
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {"session_id": "cs_test_fuzz"},
         fields=["session_id"],
     ),
@@ -436,6 +455,16 @@ def test_the_price_probe_rig_reaches_its_body(client, rig):
     body must be accepted, or the probe's rows would be fuzzing the access
     check instead of the body."""
     route = next(r for r in ROUTES if r["name"] == "price_feedback")
+    res = _call(client, route, rig, body=route["base"](rig))
+    assert res.status_code == 200
+
+
+@pytest.mark.parametrize("name", sorted(PAYMENT_ROUTE_NAMES))
+def test_the_payment_rigs_reach_their_body(client, rig, name):
+    """Same guard for checkout and verify, which are the owner's alone: their
+    base body must get through the sign-in and the owner check, or their rows
+    would be fuzzing the gate -- and passing on its 401 / 403."""
+    route = next(r for r in ROUTES if r["name"] == name)
     res = _call(client, route, rig, body=route["base"](rig))
     assert res.status_code == 200
 

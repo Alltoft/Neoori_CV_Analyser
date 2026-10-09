@@ -101,8 +101,11 @@ def test_payments_config_disabled_without_key(client, app, monkeypatch):
 
 def test_checkout_503_without_key(client, app, monkeypatch):
     monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
-    a = _make_analysis()
-    r = client.post("/api/payments/checkout", json={"analysis_id": a.id})
+    # Checkout is the owner's: signed out it answers 401 before it looks for
+    # the key, so the 503 is only reachable as the owner.
+    owner = user()
+    a = _make_analysis(owner=owner)
+    r = client.post("/api/payments/checkout", json={"analysis_id": a.id}, headers=bearer(owner))
     assert r.status_code == 503
 
 
