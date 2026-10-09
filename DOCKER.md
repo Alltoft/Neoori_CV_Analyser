@@ -96,11 +96,11 @@ the old cookie names).
 
 ## TLS
 
-**Done 23/08** — `neoori.tech` + `www.neoori.tech`, cert expires 21/11/2026.
-The site is live at https://neoori.tech; www 301s to the apex; plain http 301s
-to https. The subdomain split adds `cv.` and `voyage.` to the same
-certificate (« Adding cv. and voyage. », below). Steps kept for a re-issue or
-a second domain:
+**Done 23/08** — `neoori.tech` + `www.neoori.tech`; **expanded 09/10/2026** to
+`cv.neoori.tech` and `voyage.neoori.tech` (« Adding cv. and voyage. », below),
+cert expires 07/01/2027 and renews itself. The site is live at
+https://neoori.tech; www 301s to the apex; plain http 301s to https. Steps
+kept for a re-issue or a second domain:
 
 ```bash
 # 1. DNS A records for the apex, www, cv and voyage -> 186.240.157.26;
