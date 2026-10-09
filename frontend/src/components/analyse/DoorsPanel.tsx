@@ -16,6 +16,9 @@ import type { Analysis } from "@/types"
 
 export type DoorId = "account" | "advisor" | "promo" | "anonymous"
 
+/** The panel's id: « Générer mon analyse » names it in aria-controls. */
+export const DOORS_PANEL_ID = "doors-panel"
+
 /** The promo code survives the sign-in round trip in this browser — the
  *  verification link opens a new tab, so not sessionStorage — for two hours,
  *  and never rides in a URL or a mail (four-doors spec, decision 34). */
@@ -121,8 +124,15 @@ export function DoorsPanel({
   // The panel opens under the form's button, which on most screens is past the
   // fold: without this, « Générer mon analyse » seems to do nothing. The
   // global scroll-behavior (smooth, off under reduced motion) applies.
+  // Focus moves with it, to the heading: a keyboard or screen-reader user
+  // would otherwise stay on the form's button, with nothing saying that a
+  // panel opened below. preventScroll leaves the scrolling to the line above.
   const panel = useRef<HTMLElement>(null)
-  useEffect(() => { panel.current?.scrollIntoView({ block: "start" }) }, [])
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    panel.current?.scrollIntoView({ block: "start" })
+    heading.current?.focus({ preventScroll: true })
+  }, [])
 
   /** Open a door. The error and the consent were given at the door they belong
    *  to, so neither follows the person to another one. */
@@ -285,9 +295,11 @@ export function DoorsPanel({
   }
 
   return (
-    <section ref={panel} aria-labelledby="doors-title" className="scroll-mt-24 rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10">
+    <section id={DOORS_PANEL_ID} ref={panel} aria-labelledby="doors-title" className="scroll-mt-24 rounded-2xl bg-card p-5 shadow-soft ring-1 ring-foreground/10">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 id="doors-title" className="font-display text-lg font-bold text-navy">Comment voulez-vous continuer ?</h2>
+        {/* A focus target (the effect above), not a control: tabIndex -1 keeps
+            it out of the Tab order, outline-none keeps a ring off the title. */}
+        <h2 ref={heading} id="doors-title" tabIndex={-1} className="font-display text-lg font-bold text-navy outline-none">Comment voulez-vous continuer ?</h2>
         {/* Not while a request is out: closing and reopening would release `busy` and allow a second submit. */}
         <Button variant="ghost" size="icon-sm" aria-label="Fermer" onClick={onClose} disabled={busy}><X className="size-4" /></Button>
       </div>

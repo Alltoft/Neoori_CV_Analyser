@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { AppBar } from "@/components/layout/AppBar"
-import { DoorsPanel, type DoorId } from "@/components/analyse/DoorsPanel"
+import { DOORS_PANEL_ID, DoorsPanel, type DoorId } from "@/components/analyse/DoorsPanel"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { SectionCard } from "@/components/ui/section-card"
@@ -428,7 +428,7 @@ function NouvelleAnalyseForm() {
             )}
 
             {/* sm:ml-auto keeps it on the right when the draft button is not there (signed out). */}
-            <Button type="submit" size="xl" className="sm:ml-auto">
+            <Button type="submit" size="xl" className="sm:ml-auto" aria-expanded={panelOpen} aria-controls={DOORS_PANEL_ID}>
               Générer mon analyse <ArrowRight />
             </Button>
           </div>
