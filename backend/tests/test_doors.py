@@ -22,6 +22,13 @@ def test_the_table(door, tier, code_kind, folds, consent, identity, token):
     assert plan.always_new_row is (door == "advisor")
 
 
+def test_consent_message_has_curly_apostrophe():
+    """The CONSENT message must use U+2019 (curly apostrophe), not U+0027."""
+    assert doors.CONSENT == "Merci d’accepter les CGV et la politique de confidentialité."
+    # Verify it's the curly apostrophe by checking the codepoint
+    assert '’' in doors.CONSENT
+
+
 @pytest.mark.parametrize("door,user_id,expected", [
     ("account", "u1", None), ("account", None, (doors.SIGN_IN, 401)),
     ("promo", "u1", None), ("promo", None, (doors.SIGN_IN, 401)),
@@ -50,15 +57,38 @@ def _log(door, user_id=None, hours_ago=0):
                           created_at=datetime.utcnow() - timedelta(hours=hours_ago)))
 
 
-def test_the_account_cap_counts_the_last_24_hours_of_this_account(app):
-    for _ in range(5):
-        _log("account", "u1")
-    _log("account", "u1", hours_ago=25)
-    _log("account", "u2")
+def test_account_cap_respects_24_hour_window_and_door_filter(app):
+    """Account cap must count only the last 24 hours of 'account' door for this user."""
+    # Log 4 recent account runs for u1
+    for _ in range(4):
+        _log("account", "u1", hours_ago=0)
+    # Log 2 old account runs for u1 (25 hours ago) — should not count
+    for _ in range(2):
+        _log("account", "u1", hours_ago=25)
     db.session.commit()
     plan = doors.PLANS["account"]
+    # With 4 recent runs, should be None (under limit of 5)
+    assert doors.over_cap(plan, "u1") is None
+
+    # Log a 5th recent account run for u1
+    _log("account", "u1", hours_ago=0)
+    db.session.commit()
+    # Now with 5 recent runs, should trigger cap
     assert doors.over_cap(plan, "u1") == doors.ACCOUNT_CAP.format(n=5)
-    assert doors.over_cap(plan, "u2") is None
+
+
+def test_account_cap_does_not_count_other_doors(app):
+    """Account cap counts only 'account' door, not 'promo' or other doors."""
+    # Log 4 recent account runs for u1
+    for _ in range(4):
+        _log("account", "u1", hours_ago=0)
+    # Log several recent promo runs for u1 (should not count toward account cap)
+    for _ in range(3):
+        _log("promo", "u1", hours_ago=0)
+    db.session.commit()
+    plan = doors.PLANS["account"]
+    # With 4 account runs + 3 promo runs, still under account limit (5)
+    assert doors.over_cap(plan, "u1") is None
 
 
 def test_deleting_reports_never_lowers_the_count(app):
@@ -72,12 +102,30 @@ def test_deleting_reports_never_lowers_the_count(app):
     assert doors.over_cap(doors.PLANS["account"], "u1") is not None
 
 
-def test_the_anonymous_cap_counts_every_no_login_run(app):
+def test_anonymous_cap_respects_24_hour_window_and_door_filter(app):
+    """Anonymous cap must count only the last 24 hours of 'anonymous' door."""
     app.config["ANONYMOUS_RUNS_PER_DAY"] = 3
+    # Log 2 recent anonymous runs
+    for _ in range(2):
+        _log("anonymous", hours_ago=0)
+    # Log 2 old anonymous runs (25 hours ago) — should not count
+    for _ in range(2):
+        _log("anonymous", hours_ago=25)
+    # Log several recent runs on other doors (should not count)
     for _ in range(3):
-        _log("anonymous")
+        _log("account", "u1", hours_ago=0)
+    for _ in range(2):
+        _log("advisor", hours_ago=0)
     db.session.commit()
-    assert doors.over_cap(doors.PLANS["anonymous"], None) == doors.ANONYMOUS_CAP
+    plan = doors.PLANS["anonymous"]
+    # With 2 recent anonymous runs + 5 on other doors, should be None (under limit of 3)
+    assert doors.over_cap(plan, None) is None
+
+    # Log a 3rd recent anonymous run
+    _log("anonymous", hours_ago=0)
+    db.session.commit()
+    # Now with 3 recent anonymous runs, should trigger cap
+    assert doors.over_cap(plan, None) == doors.ANONYMOUS_CAP
 
 
 def test_promo_and_advisor_have_no_daily_cap(app):
@@ -87,3 +135,23 @@ def test_promo_and_advisor_have_no_daily_cap(app):
     db.session.commit()
     assert doors.over_cap(doors.PLANS["promo"], "u1") is None
     assert doors.over_cap(doors.PLANS["advisor"], None) is None
+
+
+def test_account_cap_per_user_isolation(app):
+    """Account cap must be per-user, not global."""
+    # Log 5 account runs for u1 (at cap)
+    for _ in range(5):
+        _log("account", "u1", hours_ago=0)
+    db.session.commit()
+    plan = doors.PLANS["account"]
+    # u1 should be at cap
+    assert doors.over_cap(plan, "u1") is not None
+    # u2 should not be capped (0 runs)
+    assert doors.over_cap(plan, "u2") is None
+    # Log 4 runs for u2 (under cap)
+    for _ in range(4):
+        _log("account", "u2", hours_ago=0)
+    db.session.commit()
+    # u1 still capped, u2 still under cap
+    assert doors.over_cap(plan, "u1") is not None
+    assert doors.over_cap(plan, "u2") is None
