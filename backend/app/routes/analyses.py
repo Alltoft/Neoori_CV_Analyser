@@ -1,24 +1,31 @@
+import hmac
 import os
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
+from ..models.counselor_note import CounselorNote
 from ..models.price_feedback import BUCKETS, PriceFeedback
 from ..models.profile import Profile, prompt_context
 from ..models.voyage import Voyage
 from ..services.voyage.scoring import STAGE_S0, STAGE_VALIDATED
 from ..services.voyage.scoring import prompt_context as voyage_prompt_context
-from ..utils.tokens import generate_share_token
+from ..utils.tokens import generate_share_token, hash_token
 from ..utils.request_body import json_object, text_field, dict_field
 from ..services import code_service
+from ..services import doors
 from ..services import section_registry as registry
 from ..services import tiers
 from ..services import unlock_service
 from ..services.anthropic_service import start_analysis
 
 analyses_bp = Blueprint("analyses", __name__)
+
+# The key to a no-login report travels in this header, never in a URL the
+# server would log (four-doors spec, decision 30).
+TOKEN_HEADER = "X-Analysis-Token"
 
 # ── TEMPORARY: force every analysis to one tier ──────────────────────────────
 # While the PM reviews report *content*, the free tier's three sections aren't
@@ -172,16 +179,27 @@ def list_analyses():
     return jsonify({"analyses": [a.to_dict() for a in analyses]}), 200
 
 
+@analyses_bp.get("/by-token")
+def get_by_token():
+    """A no-login report, by the key in its link. A held draft is read through
+    /held, by its cookie: its key never leaves the cookie."""
+    presented = _header_token_hash()
+    row = Analysis.query.filter_by(access_token_hash=presented).first() if presented else None
+    if row is None or row.status == "draft":
+        return jsonify({"error": "Ce lien n'est plus valide."}), 404
+    return jsonify({"analysis": row.to_dict()}), 200
+
+
 @analyses_bp.get("/<analysis_id>")
 def get_analysis(analysis_id):
     """Poll status / fetch a result.
 
-    Not @jwt_required, although creating an analysis now needs an account
-    (email verification spec, decision 13): analyses created anonymously
-    before that have no owner and stay readable by whoever holds their id.
-    An analysis that *has* an owner is readable only by that owner —
-    previously any caller could read any analysis, inputs included: CV text,
-    name, location, and the bloc 5 context folded in from the profile.
+    Not @jwt_required: a no-login report has no session to check, so it is
+    read with its token header, and an ownerless row stays readable by id only
+    when the four-doors migration marked it `legacy`. An analysis that *has*
+    an owner is readable only by that owner — previously any caller could read
+    any analysis, inputs included: CV text, name, location, and the bloc 5
+    context folded in from the profile. _may_access has the whole order.
     """
     analysis = Analysis.query.get_or_404(analysis_id)
     if not _may_access(analysis):
@@ -280,6 +298,11 @@ def delete_analysis(analysis_id):
     if not _may_access(analysis):
         return jsonify({"error": "Accès non autorisé."}), 403
 
+    # price_feedback's and counselor_notes' foreign keys carry no ON DELETE, so
+    # a report someone rated, or a counselor annotated, cannot be deleted until
+    # those rows are: without these two lines the delete is a 500.
+    PriceFeedback.query.filter_by(analysis_id=analysis.id).delete()
+    CounselorNote.query.filter_by(analysis_id=analysis.id).delete()
     db.session.delete(analysis)
     db.session.commit()
     return jsonify({"message": "Analyse supprimée."}), 200
@@ -368,18 +391,36 @@ def _merge_voyage(inputs: dict, user_id: str | None) -> None:
     )
 
 
-def _may_access(analysis: Analysis) -> bool:
-    """Owner-only once an analysis has an owner.
+def _header_token_hash() -> str | None:
+    """The hash of the X-Analysis-Token header, or None. The page reads the
+    token from its URL fragment and sends it here as a header, so it never
+    lands in an access log (four-doors spec, decision 30)."""
+    raw = request.headers.get(TOKEN_HEADER, "")
+    return hash_token(raw) if raw else None
 
-    An ownerless analysis — created anonymously, before accounts were
-    required — stays reachable by anyone holding its id: the UUID4 *is* the
-    capability there, and there is no account to check against. No new one
-    can be created (create_analysis is @jwt_required), so this branch serves
-    only those older rows.
+
+def _may_access(analysis: Analysis) -> bool:
+    """Who may read or change an analysis on the candidate-facing routes —
+    the spec's « Who may read an analysis », in its order.
+
+    1. An advisor-door report is the counselor's alone (ruling 2), and its
+       counselor reads it through /api/counselor, never here. `door` is tested
+       as well as `counselor_id`, so erasing a counselor never opens one.
+    2. A token row opens with its token, and only with it.
+    3. An owned row opens for its owner.
+    4. A legacy row — ownerless, written before accounts were required, marked
+       by the four-doors migration — stays open by id, as it always was.
+    5. Anything else is closed. A row that loses its owner some other way must
+       not become readable by whoever has its id.
     """
-    if analysis.user_id is None:
-        return True
-    return analysis.user_id == _optional_user_id()
+    if analysis.door == doors.ADVISOR or analysis.counselor_id is not None:
+        return False
+    if analysis.access_token_hash is not None:
+        presented = _header_token_hash()
+        return presented is not None and hmac.compare_digest(presented, analysis.access_token_hash)
+    if analysis.user_id is not None:
+        return analysis.user_id == _optional_user_id()
+    return analysis.door == doors.LEGACY
 
 
 def _optional_user_id() -> str | None:

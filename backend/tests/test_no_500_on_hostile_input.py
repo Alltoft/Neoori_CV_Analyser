@@ -165,8 +165,9 @@ def rig(client, app, monkeypatch):
     _db.session.commit()
 
     analysis = _analysis(share_token="fuzz-share-token")
-    # /unlock is the owner's alone (401 / 403 before the body is read), so its
-    # row needs an analysis the candidate owns.
+    # /unlock is the owner's alone and the price probe is for whoever may read
+    # the report (401 / 403 before the body is read), so both rows need an
+    # analysis the candidate owns.
     owned_analysis = _analysis(owner=candidate)
 
     # POST /api/auth/signup reads its body only behind a live ticket. Every
@@ -268,8 +269,8 @@ ROUTES = [
     dict(
         name="price_feedback",
         method="post",
-        path=lambda rig: f"/api/analyses/{rig['analysis_id']}/price-feedback",
-        headers=lambda rig: {},
+        path=lambda rig: f"/api/analyses/{rig['owned_analysis_id']}/price-feedback",
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {"bucket": "5_10", "useful": True},
         fields=["bucket", "useful"],
     ),
@@ -387,6 +388,15 @@ def _call(client, route, rig, *, body=..., raw=None):
         headers["Content-Type"] = "application/json"
         return client.open(path, method=route["method"].upper(), data=raw, headers=headers)
     return method(path, json=body, headers=headers)
+
+
+def test_the_price_probe_rig_reaches_its_body(client, rig):
+    """The fuzz below only asks for « no 5xx », which a 403 meets too. Its base
+    body must be accepted, or the probe's rows would be fuzzing the access
+    check instead of the body."""
+    route = next(r for r in ROUTES if r["name"] == "price_feedback")
+    res = _call(client, route, rig, body=route["base"](rig))
+    assert res.status_code == 200
 
 
 @pytest.mark.parametrize("route", ROUTES, ids=lambda r: r["name"])

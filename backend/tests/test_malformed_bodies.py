@@ -117,9 +117,11 @@ def test_unlock_with_code_survives_malformed_body(client, candidate, auth, body)
 
 
 @pytest.mark.parametrize("body", MALFORMED_BODIES)
-def test_price_feedback_survives_malformed_body(client, body):
-    a = _analysis()
-    res = client.post(f"/api/analyses/{a.id}/price-feedback", json=body)
+def test_price_feedback_survives_malformed_body(client, candidate, auth, body):
+    # The probe answers 403 before it reads the body unless the caller may read
+    # the report: the owner's bearer header keeps the body what is tested.
+    a = _analysis(owner=candidate)
+    res = client.post(f"/api/analyses/{a.id}/price-feedback", json=body, headers=auth)
     assert res.status_code != 500
     assert res.status_code == 400
     assert res.get_json()["error"] == "Réponse invalide."
@@ -205,9 +207,9 @@ def test_unlock_rejects_non_string_code(client, candidate, auth, value):
 
 
 @pytest.mark.parametrize("value", NON_STRING_VALUES)
-def test_price_feedback_rejects_non_string_bucket(client, value):
-    a = _analysis()
-    res = client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": value})
+def test_price_feedback_rejects_non_string_bucket(client, candidate, auth, value):
+    a = _analysis(owner=candidate)
+    res = client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": value}, headers=auth)
     assert res.status_code == 400
     assert res.get_json()["error"] == "Réponse invalide."
 

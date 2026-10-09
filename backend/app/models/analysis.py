@@ -1,5 +1,8 @@
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timedelta
+
+from flask import current_app
+
 from ..extensions import db
 from ..services import section_registry as registry
 
@@ -112,6 +115,14 @@ class Analysis(db.Model):
         """Registry id for this analysis. Legacy 'A' rows and retired ids read as parcours 1."""
         return registry.normalize((self.inputs or {}).get("_path"))
 
+    def _access_expires_at(self) -> str | None:
+        """When an unclaimed no-login report's link stops working (four-doors
+        spec, decision 32). None for every other row."""
+        if self.door != "anonymous" or self.user_id is not None or self.created_at is None:
+            return None
+        days = current_app.config.get("ANONYMOUS_RETENTION_DAYS", 30)
+        return (self.created_at + timedelta(days=days)).isoformat()
+
     def to_dict(self, audience: str = "candidate"):
         parcours = self.parcours
         data = {
@@ -126,6 +137,8 @@ class Analysis(db.Model):
             "voyage_id": self.voyage_id,
             "unlock_method": self.unlock_method,
             "unlocked_at": self.unlocked_at.isoformat() if self.unlocked_at else None,
+            "door": self.door,
+            "access_expires_at": self._access_expires_at(),
             "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
