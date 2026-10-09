@@ -17,8 +17,7 @@ export default function CgvPage() {
       <h2>2. Description du service</h2>
       <p>
         L&apos;offre gratuite comprend les trois premières sections du rapport d&apos;analyse,
-        ainsi qu&apos;un verdict de diagnostic. L&apos;offre payante débloque le rapport complet,
-        ainsi que l&apos;export conseiller. Il compte 9 sections, incluant les points à renforcer,
+        ainsi qu&apos;un verdict de diagnostic. Elle est accessible avec ou sans compte ; sans compte, le rapport n&apos;est accessible que par un lien privé, pendant 30 jours, sauf si l&apos;utilisateur crée un compte pour le conserver. L&apos;offre payante débloque le rapport complet. Il compte 9 sections, incluant les points à renforcer,
         les préconisations terrain, un exemple de réécriture, la synthèse, les pistes
         d&apos;évolution et une proposition de CV retravaillé. Le rapport est généré par
         intelligence artificielle à partir des informations fournies par l&apos;utilisateur ; il
@@ -48,12 +47,20 @@ export default function CgvPage() {
         recueilli par une case à cocher au moment de l&apos;achat.
       </p>
 
-      <h2>6. Bénéficiaires accompagnés (code conseiller)</h2>
+      <h2>6. Codes conseiller et codes promotionnels</h2>
       <p>
         Les bénéficiaires d&apos;un accompagnement Cap Emploi, France Travail, Mission Locale ou CEP
-        peuvent obtenir le rapport complet gratuitement, et accéder aux sessions 1 à 5 du voyage,
-        au moyen d&apos;un code fourni par leur conseiller. Ce code est strictement personnel à la
-        structure qui le délivre.
+        peuvent, au moyen d&apos;un code fourni par leur conseiller, faire réaliser gratuitement une
+        analyse complète et accéder aux sessions 1 à 5 du voyage. Le rapport de cette analyse est
+        transmis au seul conseiller titulaire du code, et non au bénéficiaire ; il est conservé 12 mois
+        dans l&apos;espace de ce conseiller. Ce code est strictement personnel à la structure qui le
+        délivre.
+      </p>
+      <p>
+        neoori peut remettre des codes promotionnels. Un code promotionnel donne accès gratuitement,
+        une fois par compte, au rapport complet d&apos;une analyse ; il nécessite un compte. Il peut
+        être limité en nombre d&apos;utilisations et dans le temps, et neoori peut le désactiver à tout
+        moment.
       </p>
 
       <h2>7. Réclamations et remboursement</h2>

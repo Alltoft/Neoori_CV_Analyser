@@ -28,13 +28,18 @@ export default function ConfidentialitePage() {
           choisissez de communiquer.
         </li>
         <li>
+          <strong>Analyse sans compte</strong> : le contenu de votre CV et la cible visée, conservés
+          30 jours puis supprimés, sauf si vous créez un compte pour garder le rapport. Le lien privé
+          du rapport en est la seule clé : nous ne pouvons pas le retrouver pour vous.
+        </li>
+        <li>
           <strong>Le voyage</strong> : vos réponses aux sessions, la phrase et le portrait
           rédigés à partir de ces réponses, la date de votre accord et votre attestation
           d&apos;avoir 15 ans ou plus.
         </li>
         <li>
           <strong>Notes du conseiller</strong> : les notes qu&apos;un conseiller prend sur votre
-          analyse ou votre voyage pour préparer l&apos;entretien.
+          voyage, ou sur une analyse lancée avec son code, pour préparer l&apos;entretien.
         </li>
         <li><strong>Paiement</strong> : traité par Stripe ; neoori ne voit jamais votre carte.</li>
       </ul>
@@ -42,6 +47,7 @@ export default function ConfidentialitePage() {
       <h2>3. Finalités et bases légales</h2>
       <ul>
         <li>Génération du rapport d&apos;analyse — exécution du contrat.</li>
+        <li>Analyse sans compte, ou avec le code de votre conseiller — exécution du contrat (CGV acceptées à l&apos;envoi).</li>
         <li>
           Le voyage : conservation de vos réponses, rédaction de la phrase et du portrait, prise
           en compte dans vos analyses — consentement, que vous retirez en supprimant votre voyage.
@@ -77,13 +83,12 @@ export default function ConfidentialitePage() {
         <li>Resend (envoi des emails transactionnels, États-Unis — clauses contractuelles types)</li>
       </ul>
       <p>
-        Le lien de partage conseiller (« /c/… ») donne accès à une synthèse de votre analyse à
-        toute personne disposant du lien : ne le transmettez qu&apos;à votre conseiller.
-      </p>
-      <p>
-        Le lien conseiller du voyage (« /voyage/c/… ») ne s&apos;ouvre que pour un compte
-        conseiller connecté. Il donne accès à la synthèse de vos réponses et à votre portrait,
-        que le conseiller relit avec vous avant que vous le receviez.
+        Si vous lancez une analyse avec le code de votre conseiller, le rapport complet, votre prénom,
+        votre nom, votre CV et la cible visée sont transmis à ce conseiller, dans son espace, et à lui
+        seul ; vous n&apos;en recevez pas de copie. Ce rapport est supprimé 12 mois après sa création,
+        ou plus tôt si le conseiller le supprime. Pour en obtenir une copie ou sa suppression,
+        adressez-vous à votre conseiller ou écrivez-nous. Lorsque vous utilisez son code pour le
+        voyage, le conseiller voit votre prénom, votre email et la date d&apos;utilisation.
       </p>
 
       <h2>6. Profil de base, voyage et conservation</h2>
