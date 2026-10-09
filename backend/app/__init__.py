@@ -213,7 +213,10 @@ def create_app(env: str | None = None) -> Flask:
     oauth_clients.init_app(app)
     cors.init_app(
         app,
-        resources={r"/api/.*": {"origins": app.config["FRONTEND_ORIGINS"]}},
+        # The three origins (subdomain split spec, decision 32). Browser calls
+        # stay same-origin — each host serves its own /api — so this list is
+        # a backstop.
+        resources={r"/api/.*": {"origins": site.origins(app.config)}},
         supports_credentials=True,  # required for httpOnly cookie auth
     )
 
@@ -264,7 +267,7 @@ def create_app(env: str | None = None) -> Flask:
         origin = request.headers.get("Origin", "")
         resp = jsonify(body)
         resp.status_code = status
-        if origin in app.config["FRONTEND_ORIGINS"]:
+        if origin in site.origins(app.config):
             resp.headers["Access-Control-Allow-Origin"] = origin
             resp.headers["Access-Control-Allow-Credentials"] = "true"
         return resp

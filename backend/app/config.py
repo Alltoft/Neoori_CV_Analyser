@@ -62,9 +62,6 @@ class Config:
     # sets neither.
     PUBLIC_SCHEME = os.environ.get("PUBLIC_SCHEME", "").strip() or "https"
     PUBLIC_PORT = os.environ.get("PUBLIC_PORT", "").strip()
-    # Public origin every account mail links to (verification, reset,
-    # conseiller). The dev compose file points it at http://localhost:8080.
-    APP_URL = os.environ.get("APP_URL", "https://neoori.tech").rstrip("/")
     # Who the « Nouvelle demande de compte conseiller » mail goes to, comma-
     # separated. Production names a real inbox: the shared admin login
     # (admin@neoori.dev) has no mailbox. Unset, every verified admin gets it.
@@ -83,11 +80,6 @@ class Config:
     # /api/auth/<provider>/start and /callback; nothing else uses it, so it
     # need not ride on every page and asset request.
     SESSION_COOKIE_PATH = "/api/auth"
-    FRONTEND_ORIGINS = [
-        o.strip()
-        for o in os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:3001").split(",")
-        if o.strip()
-    ]
 
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — CV PDF cap
 
