@@ -1,10 +1,15 @@
 # Local development stack: MySQL + Flask (hot reload) + Next.js (hot reload)
-# behind nginx on http://localhost:8080 (port 80 is taken by the TaifOr dev
-# stack on this machine). Source is bind-mounted; images only need a rebuild
-# when requirements.txt / package-lock.json change.
+# behind nginx on port 8080 (port 80 is taken by the TaifOr dev stack on this
+# machine). Source is bind-mounted; images only need a rebuild when
+# requirements.txt / package-lock.json change.
 #
 #   docker compose up -d
-#   open http://localhost:8080     (nginx: / -> frontend, /api -> backend)
+#   open http://neoori.localhost:8080           the landing
+#        http://cv.neoori.localhost:8080        « J'ai une cible »
+#        http://voyage.neoori.localhost:8080    le voyage
+#   (nginx: / -> frontend, /api -> backend). Chrome resolves *.localhost to
+#   the loopback by itself; Safari does not. Plain localhost:8080 shows the
+#   landing too, and its links lead to the three names above.
 #
 # Direct access (matches the old non-docker ports): frontend :3001, backend :5001.
 name: neoori
@@ -35,8 +40,11 @@ services:
     environment:
       FLASK_ENV: development
       DATABASE_URL: mysql+pymysql://neoori:neoori_dev@db:3306/neoori?charset=utf8mb4
-      FRONTEND_URL: http://localhost:8080,http://localhost:3001
-      APP_URL: http://localhost:8080
+      # The one setting and the two dev-only ones (subdomain split spec,
+      # decisions 19–20). The frontend gets the same three.
+      DOMAIN: neoori.localhost
+      PUBLIC_SCHEME: http
+      PUBLIC_PORT: "8080"
     volumes:
       - ./backend:/app
     ports:
@@ -55,6 +63,10 @@ services:
       # next.config.ts rewrite target when hitting :3001 directly (nginx routes
       # /api itself, so this only matters for direct-port access).
       BACKEND_URL: http://backend:5001
+      # Same three as the backend: the proxy routes by host with them.
+      DOMAIN: neoori.localhost
+      PUBLIC_SCHEME: http
+      PUBLIC_PORT: "8080"
     volumes:
       - ./frontend:/app
       - /app/node_modules

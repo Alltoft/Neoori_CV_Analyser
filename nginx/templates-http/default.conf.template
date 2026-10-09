@@ -49,13 +49,17 @@ limit_req_log_level info;
 
 # Four-doors spec, decision 42: log the path, never the query string or the
 # Referer. Verification and reset tokens, `next` paths and Stripe session ids
-# travel in query strings, and the Referer repeats them.
-log_format neoori_paths '$remote_addr [$time_local] "$request_method $uri" '
+# travel in query strings, and the Referer repeats them. The host goes in
+# (subdomain split spec, decision 38): requests per host are counted from it.
+log_format neoori_paths '$remote_addr [$time_local] $host "$request_method $uri" '
                         '$status $body_bytes_sent $request_time';
 
 limit_req_status 429;
 
 server {
+    # A catch-all on purpose (subdomain split spec, decision 34): this phase
+    # serves IP smoke tests. The app routes by host itself and treats a name
+    # it does not know as the root.
     listen 80 default_server;
     server_name ${DOMAIN};
     access_log /var/log/nginx/access.log neoori_paths;
