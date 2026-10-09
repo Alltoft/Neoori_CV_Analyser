@@ -167,7 +167,12 @@ No output means the access logs are clean. Two limits: nginx's *error* log
 still prints the request line of a failed request, query string included
 (`limit_req_log_level info` keeps the rate-limit refusals out of it), and the
 gunicorn format belongs to the production image only — the local backend runs
-Flask's own server, which logs query strings.
+Flask's own server, which logs query strings. An upstream failure is such a
+request, so for the few seconds of every deploy in which the backend is
+recreated the error log can hold a request line with its query string, though
+the Referer it records beside it now carries only the origin
+(`Referrer-Policy "strict-origin"` in the https template): a token page's own
+requests no longer repeat its token there.
 
 ## Google / Microsoft sign-in keys
 
