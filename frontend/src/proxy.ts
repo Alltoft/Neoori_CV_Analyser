@@ -24,7 +24,9 @@ export function proxy(req: NextRequest) {
   if (!PROTECTED.some((p) => pathname.startsWith(p))) return NextResponse.next()
 
   // Presence only — the signature and the role are enforced server-side.
-  const hasToken = req.cookies.has("access_token_cookie")
+  // backend/app/config.py JWT_ACCESS_COOKIE_NAME (subdomain split spec,
+  // decision 25).
+  const hasToken = req.cookies.has("neoori_access")
   if (!hasToken) {
     const url = req.nextUrl.clone()
     url.pathname = SIGNUP_FIRST.some((p) => pathname.startsWith(p)) ? "/inscription" : "/connexion"

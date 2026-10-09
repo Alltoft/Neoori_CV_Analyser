@@ -64,7 +64,7 @@ def test_link_and_password_verify_and_sign_in(client, make_user):
     assert res.status_code == 200
     assert res.get_json()["next"] == "/analyse/nouveau"
     assert res.get_json()["user"]["email_verified"] is True
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
     assert _fresh(user).email_verified_at is not None
 
 
@@ -84,7 +84,7 @@ def test_the_wrong_password_changes_nothing(client, make_user):
     res = _verify(client, auth_links.make_verify_token(user), "pasLeBon123")
     assert res.status_code == 401
     assert res.get_json()["code"] == "wrong_password"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert _fresh(user).email_verified_at is None
 
 
@@ -103,7 +103,7 @@ def test_a_second_use_is_a_login(client, make_user):
     assert _verify(client, token).status_code == 200
     again = _verify(client, token)
     assert again.status_code == 200
-    assert "access_token_cookie" in _cookies(again)
+    assert "neoori_access" in _cookies(again)
 
 
 def test_a_link_for_an_address_the_account_no_longer_holds_is_invalid(client, make_user):
@@ -235,7 +235,7 @@ def test_reset_sets_the_password_and_signs_in(client, make_user):
     user = make_user(email="reset@test.fr")
     res = _reset(client, auth_links.make_reset_token(user))
     assert res.status_code == 200
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
     login = client.post("/api/auth/login", json={"email": "reset@test.fr", "password": "nouveau-mdp1"})
     assert login.status_code == 200
 
@@ -325,4 +325,4 @@ def test_a_reset_survives_a_mail_outage(client, app, make_user):
     with patch(SEND, side_effect=RuntimeError("resend down")):
         res = _reset(client, auth_links.make_reset_token(user))
     assert res.status_code == 200
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)

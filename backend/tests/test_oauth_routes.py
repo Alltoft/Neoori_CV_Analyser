@@ -180,7 +180,7 @@ def test_a_new_google_address_goes_on_to_finalise(client, providers):
     res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com",
                    email_verified=True, given_name="Marie")
     assert res.status_code == 302 and res.headers["Location"] == "/inscription/finaliser"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert User.query.count() == 0
     ticket = auth_links.load_signup_ticket(
         client.get_cookie("signup_ticket", path="/api/auth").value).payload
@@ -192,7 +192,7 @@ def test_a_known_account_is_signed_in_and_sent_home(client, providers, make_user
     make_user(email="marie@gmail.com")
     res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com", email_verified=True)
     assert res.headers["Location"] == "/espace"
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
     assert AuthIdentity.query.one().subject == "g-1"
 
 
@@ -226,7 +226,7 @@ def test_a_work_account_without_proof_cannot_enter_the_account_of_its_address(
     res = _sign_in(client, "microsoft", sub="m-2", email="marie@entreprise.fr", tid=WORK_TENANT)
     assert res.headers["Location"] == "/connexion?erreur=email_non_verifie"
     assert AuthIdentity.query.count() == 0
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 def test_a_proven_work_address_enters(client, providers, make_user):
@@ -276,7 +276,7 @@ def test_a_google_token_from_another_issuer_is_refused(client, providers, make_u
     claims["iss"] = "https://evil.example"
     res = _callback(client, "google", claims, state=q["state"])
     assert res.headers["Location"] == "/connexion?erreur=echec"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 @pytest.mark.parametrize("issuer", ["https://accounts.google.com", "accounts.google.com"])
@@ -307,7 +307,7 @@ def test_a_token_issued_to_another_app_is_refused(client, providers, make_user, 
     claims = _id_claims(provider, q["nonce"], **vouched, aud="someone-else", **extra)
     res = _callback(client, provider, claims, state=q["state"])
     assert res.headers["Location"] == "/connexion?erreur=echec"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 def test_a_token_for_another_sign_in_is_refused(client, providers, make_user):
@@ -422,7 +422,7 @@ def test_a_failure_while_choosing_the_landing_is_a_failure_not_a_500(
     make_user(email="marie@gmail.com")
     res = _sign_in(client, "google", sub="g-1", email="marie@gmail.com", email_verified=True)
     assert res.headers["Location"] == "/connexion?erreur=echec"
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
 
 
 @pytest.mark.parametrize("sub", ["x" * 256, "sujet-é", ""])
@@ -431,7 +431,7 @@ def test_an_unusable_subject_is_a_failure_and_links_nothing(client, providers, m
     res = _sign_in(client, "google", sub=sub, email="marie@gmail.com", email_verified=True)
     assert res.headers["Location"] == "/connexion?erreur=echec"
     assert AuthIdentity.query.count() == 0
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert client.get_cookie("signup_ticket", path="/api/auth") is None
 
 

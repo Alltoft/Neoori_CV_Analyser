@@ -216,7 +216,7 @@ def test_a_new_account_demande_opens_no_session(client, app):
     app.debug = False   # FLASK_DEBUG in a developer's shell must not flip mail_sent
     r = client.post("/api/counselor/apply", json=PAYLOAD)
     assert r.status_code == 201
-    assert "access_token_cookie" not in " ".join(r.headers.getlist("Set-Cookie"))
+    assert "neoori_access" not in " ".join(r.headers.getlist("Set-Cookie"))
     assert r.get_json()["mail_sent"] is False      # no key in tests
     assert r.get_json()["user"]["email_verified"] is False
 

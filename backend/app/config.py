@@ -35,6 +35,15 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_COOKIE_CSRF_PROTECT = False
+    # Subdomain split spec, decision 25: one session for every host. The
+    # cookies carry Domain=DOMAIN (create_app sets JWT_COOKIE_DOMAIN from
+    # site.cookie_domain), under new names: browsers still hold the old
+    # host-only `access_token_cookie` on the root, and under the same name the
+    # root would receive two cookies and Flask would read whichever came
+    # first. frontend/src/lib/sign-in-gate.ts SESSION_COOKIE names the access
+    # cookie too: keep the two in step.
+    JWT_ACCESS_COOKIE_NAME = "neoori_access"
+    JWT_REFRESH_COOKIE_NAME = "neoori_refresh"
 
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
     RESEND_API_KEY = os.environ.get("RESEND_API_KEY")

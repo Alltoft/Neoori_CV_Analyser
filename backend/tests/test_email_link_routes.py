@@ -133,7 +133,7 @@ def test_a_link_for_an_account_signs_it_in(client, app, make_user):
     assert res.status_code == 200
     assert res.get_json()["next"] == "/analyse/nouveau"
     assert res.get_json()["user"]["email"] == "marie@test.fr"
-    assert "access_token_cookie" in _cookies(res)
+    assert "neoori_access" in _cookies(res)
 
 
 def test_a_link_is_single_use(client, app, make_user):
@@ -181,7 +181,7 @@ def test_an_address_without_an_account_goes_on_to_finalise(client, app):
     _, token = _request_link(client, app, next="/analyse/nouveau")
     res = _consume(client, token)
     assert res.status_code == 200 and res.get_json() == {"signup": True}
-    assert "access_token_cookie" not in _cookies(res)
+    assert "neoori_access" not in _cookies(res)
     assert User.query.count() == 0      # decision 1: no account before consent
     ticket = auth_links.load_signup_ticket(
         client.get_cookie("signup_ticket", path="/api/auth").value
