@@ -1,6 +1,15 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
 
-type ApiOptions = RequestInit & { skipRedirect?: boolean }
+type ApiOptions = RequestInit & {
+  skipRedirect?: boolean
+  /** A no-login report's key, sent as X-Analysis-Token (four-doors spec,
+   *  decision 30) — never in a URL, so never in an access log. */
+  token?: string
+}
+
+/** Pages a signed-out visitor uses on purpose: a 401 there is an answer for
+ *  the page to show, never a reason to leave for /connexion. */
+const PUBLIC_PAGES = ["/analyse/nouveau", "/analyse/envoyee", "/rapport"]
 
 /** A same-origin URL for a full-page navigation to the API — the OAuth start,
  *  which must leave the app for the provider's page, as fetch() cannot. */
@@ -23,9 +32,10 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const { skipRedirect, ...init } = options
+  const { skipRedirect, token, ...init } = options
 
   const isFormData = init.body instanceof FormData
+  const tokenHeader: Record<string, string> = token ? { "X-Analysis-Token": token } : {}
   let res: Response
   try {
     res = await fetch(`${BASE}/api${path}`, {
@@ -33,15 +43,18 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
       credentials: "include",
       // FormData: let browser set Content-Type with correct multipart boundary
       headers: isFormData
-        ? { ...(init.headers as Record<string, string>) }
-        : { "Content-Type": "application/json", ...(init.headers as Record<string, string>) },
+        ? { ...(init.headers as Record<string, string>), ...tokenHeader }
+        : { "Content-Type": "application/json", ...(init.headers as Record<string, string>), ...tokenHeader },
     })
   } catch {
     // Network failure — most often the free-tier backend waking from sleep
     throw new ApiError(0, "Connexion au serveur impossible. Il démarre peut-être — réessayez dans 30 secondes.")
   }
 
-  if (res.status === 401 && !skipRedirect && typeof window !== "undefined") {
+  if (
+    res.status === 401 && !skipRedirect && typeof window !== "undefined"
+    && !PUBLIC_PAGES.includes(window.location.pathname)
+  ) {
     window.location.href = "/connexion"
     return null as T
   }
@@ -77,6 +90,9 @@ export const api = {
 
   put:    <T>(path: string, body?: unknown, opts?: ApiOptions) =>
     request<T>(path, { method: "PUT",  body: JSON.stringify(body), ...opts }),
+
+  patch:  <T>(path: string, body?: unknown, opts?: ApiOptions) =>
+    request<T>(path, { method: "PATCH", body: JSON.stringify(body), ...opts }),
 
   delete: <T>(path: string, opts?: ApiOptions) =>
     request<T>(path, { method: "DELETE", ...opts }),

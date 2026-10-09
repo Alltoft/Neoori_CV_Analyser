@@ -32,6 +32,10 @@ const STATUT_VARIANT: Record<CodeStatut, "success" | "secondary" | "warning"> = 
   revoque: "secondary",
 }
 
+/** « 0 analyse », « 1 analyse », « 2 analyses »: in French a noun takes its
+ *  plural from two up, and zero stays singular. */
+const counted = (n: number, noun: string) => `${n} ${noun}${n >= 2 ? "s" : ""}`
+
 export default function ConseillerPage() {
   const { user, loading: authLoading, refresh: refreshAuth } = useAuth()
   const router = useRouter()
@@ -260,6 +264,7 @@ export default function ConseillerPage() {
                 <p className="mb-4 text-xs text-muted-foreground">
                   Un code par personne, valable 90 jours. Pour un atelier, indiquez le nombre
                   de places{stats?.max_uses_per_code != null ? ` (${stats.max_uses_per_code} maximum)` : ""}.
+                  {" "}1 analyse et 1 voyage par place.
                 </p>
 
                 <div className="w-full overflow-x-auto">
@@ -278,7 +283,14 @@ export default function ConseillerPage() {
                         <tr key={c.id} className="border-b border-border/60 last:border-0">
                           <td className="py-3 pr-4"><span className="select-all font-mono font-medium text-navy">{c.code}</span></td>
                           <td className="py-3 pr-4 text-navy">{c.label}</td>
-                          <td className="py-3 pr-4"><Badge variant={STATUT_VARIANT[c.statut]}>{STATUT_LABEL[c.statut]}</Badge></td>
+                          <td className="py-3 pr-4">
+                            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                              <Badge variant={STATUT_VARIANT[c.statut]}>{STATUT_LABEL[c.statut]}</Badge>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {counted(c.uses_by_kind.analysis, "analyse")} · {counted(c.uses_by_kind.voyage, "voyage")}
+                              </span>
+                            </div>
+                          </td>
                           <td className="py-3 pr-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{fmtDate(c.expires_at)}</td>
                           <td className="py-3">
                             <div className="flex items-center justify-end gap-1.5">
@@ -287,7 +299,7 @@ export default function ConseillerPage() {
                                   ? <><Check className="size-3.5 text-success" />Copié</>
                                   : <><Copy className="size-3.5" />Copier</>}
                               </Button>
-                              {c.statut === "actif" && (
+                              {c.statut === "actif" && c.uses_by_kind.analysis + c.uses_by_kind.voyage === 0 && (
                                 <Button size="sm" variant="ghost" onClick={() => handleRevoke(c.id)}
                                         className="text-destructive hover:bg-destructive/10 hover:text-destructive">
                                   <Ban className="size-3.5" />Révoquer
@@ -321,15 +333,21 @@ export default function ConseillerPage() {
                       <tr className="border-b border-border text-left">
                         <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Prénom</th>
                         <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Email</th>
-                        <th className="eyebrow pb-2 font-medium text-muted-foreground">Utilisé le</th>
+                        <th className="eyebrow pb-2 pr-4 font-medium text-muted-foreground">Utilisé le</th>
+                        <th className="eyebrow pb-2 font-medium text-muted-foreground">Analyse</th>
                       </tr>
                     </thead>
                     <tbody>
                       {people.map((p, i) => (
-                        <tr key={`${p.email ?? "anon"}-${i}`} className="border-b border-border/60 last:border-0">
-                          <td className="py-2.5 pr-4 text-navy">{p.prenom ?? "—"}</td>
-                          <td className="py-2.5 pr-4 text-navy">{p.email ?? "Bénéficiaire anonyme"}</td>
-                          <td className="py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap">{fmtDate(p.redeemed_at)}</td>
+                        <tr key={`${p.redeemed_at}-${i}`} className="border-b border-border/60 last:border-0">
+                          <td className="py-2.5 pr-4 text-navy">{[p.prenom, p.nom].filter(Boolean).join(" ") || "—"}</td>
+                          <td className="py-2.5 pr-4 text-navy">{p.email ?? (p.analysis_id ? "—" : "Bénéficiaire anonyme")}</td>
+                          <td className="py-2.5 pr-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{fmtDate(p.redeemed_at)}</td>
+                          <td className="py-2.5 text-xs">
+                            {p.analysis_id
+                              ? <Link href={`/conseiller/analyses/${p.analysis_id}`} className="text-navy underline underline-offset-2">Voir l’analyse</Link>
+                              : "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

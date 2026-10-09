@@ -24,9 +24,10 @@ def _headers(user):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _analysis(owner=None):
+def _analysis(owner=None, door=None):
     a = Analysis(
         user_id=owner.id if owner else None,
+        door=door,
         inputs={"_path": "1", "cv_text": "confidentiel", "prenom": "Marie"},
         status="success",
     )
@@ -58,11 +59,14 @@ def test_anonymous_caller_cannot_read_an_owned_analysis(client, app):
     assert client.get(f"/api/analyses/{a.id}").status_code == 403
 
 
-def test_ownerless_analysis_stays_readable(client, app):
-    """The anonymous flow polls its own analysis before any account exists;
-    the UUID is the capability there. Phase 1 removes this branch."""
-    a = _analysis(owner=None)
-    assert client.get(f"/api/analyses/{a.id}").status_code == 200
+def test_only_a_legacy_ownerless_analysis_stays_readable(client, app):
+    """The four-doors migration marks the ownerless rows written before
+    accounts were required `legacy`, and only those keep their by-id access
+    (decision 44). An ownerless row without the mark is closed to everyone."""
+    legacy = _analysis(door="legacy")
+    unmarked = _analysis()
+    assert client.get(f"/api/analyses/{legacy.id}").status_code == 200
+    assert client.get(f"/api/analyses/{unmarked.id}").status_code == 403
 
 
 def test_another_user_cannot_delete_it(client, app):
@@ -87,7 +91,7 @@ def test_another_user_cannot_burn_a_code_against_it(client, app):
 # ── willingness-to-pay probe ─────────────────────────────────────────────────
 
 def test_price_feedback_is_recorded(client, app):
-    a = _analysis(owner=None)
+    a = _analysis(door="legacy")
     res = client.post(f"/api/analyses/{a.id}/price-feedback",
                       json={"bucket": "5_10", "useful": True})
     assert res.status_code == 200
@@ -95,7 +99,7 @@ def test_price_feedback_is_recorded(client, app):
 
 
 def test_price_feedback_rejects_an_unknown_bucket(client, app):
-    a = _analysis(owner=None)
+    a = _analysis(door="legacy")
     res = client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": "1000_eur"})
     assert res.status_code == 400
 
@@ -103,7 +107,7 @@ def test_price_feedback_rejects_an_unknown_bucket(client, app):
 def test_price_feedback_replaces_rather_than_stacks(client, app):
     """One answer per analysis, so resubmitting can't skew the distribution."""
     from app.models.price_feedback import PriceFeedback
-    a = _analysis(owner=None)
+    a = _analysis(door="legacy")
     client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": "moins_5"})
     client.post(f"/api/analyses/{a.id}/price-feedback", json={"bucket": "plus_20"})
     rows = PriceFeedback.query.filter_by(analysis_id=a.id).all()

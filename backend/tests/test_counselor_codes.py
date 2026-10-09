@@ -5,6 +5,7 @@ their ceiling (a code for one person) and never higher.
 """
 from datetime import datetime, timedelta
 
+import pytest
 from flask_jwt_extended import create_access_token
 
 from app.extensions import db
@@ -100,12 +101,42 @@ def test_the_list_shows_real_use_counts_and_a_status(client, app):
     code = CounselorCode(label="Karim", owner_id=user.id, max_uses=1)
     db.session.add(code)
     db.session.commit()
-    db.session.add(CodeRedemption(code_id=code.id, target_type="voyage", target_id="v-1"))
+    # A single-use code opens one analysis AND one voyage: it is spent once
+    # both places are.
+    db.session.add(CodeRedemption(code_id=code.id, target_type="voyage", target_id="v-1", slot=1))
+    db.session.add(CodeRedemption(code_id=code.id, target_type="analysis", target_id="a-1", slot=1))
     db.session.commit()
 
     rows = client.get("/api/counselor/codes", headers=headers).get_json()["codes"]
-    assert rows[0]["uses"] == 1
+    assert rows[0]["uses"] == 2
+    assert rows[0]["uses_by_kind"] == {"analysis": 1, "voyage": 1}
     assert rows[0]["statut"] == "utilise"
+
+
+@pytest.mark.parametrize("spent", ["analysis", "voyage"])
+def test_a_single_use_code_is_still_active_while_the_other_kind_has_its_place(client, app, spent):
+    """Either kind alone leaves the code in circulation: the status is read
+    off the kind with the most places left, not off the one that was used."""
+    user, headers = _conseiller()
+    code = CounselorCode(label="Karim", owner_id=user.id, max_uses=1)
+    db.session.add(code)
+    db.session.commit()
+    db.session.add(CodeRedemption(code_id=code.id, target_type=spent, target_id="x-1", slot=1))
+    db.session.commit()
+
+    row = client.get("/api/counselor/codes", headers=headers).get_json()["codes"][0]
+    assert row["statut"] == "actif"
+    assert row["uses"] == 1
+    assert row["uses_by_kind"] == {"analysis": 0, "voyage": 0, spent: 1}
+    stats = client.get("/api/counselor/stats", headers=headers).get_json()
+    assert stats["codes_en_circulation"] == 1
+
+
+def test_a_freshly_minted_code_reports_no_uses_in_either_kind(client, app):
+    _user, headers = _conseiller()
+    code = client.post("/api/counselor/codes", json={"label": "Karim"}, headers=headers).get_json()["code"]
+    assert code["uses"] == 0
+    assert code["uses_by_kind"] == {"analysis": 0, "voyage": 0}
 
 
 def test_an_expired_code_reads_as_expired(client, app):

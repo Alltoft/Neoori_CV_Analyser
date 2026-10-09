@@ -1,13 +1,13 @@
 """The conseiller's own surface: /api/counselor/*.
 
-Not to be confused with routes/counselor.py, mounted at /api/c — that one
-serves an analysis share link to whoever holds the token, with no account at
-all. This blueprint is the account.
+routes/counselor.py, mounted at /api/c, served an analysis share link until
+the four-doors spec retired it. This blueprint is the account: its codes, its
+beneficiaires and the advisor-door reports sent to it.
 """
 import re
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
@@ -16,19 +16,24 @@ from flask_jwt_extended import (
 from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt import PyJWTError
 
+from .. import reap_if_orphaned
 from ..extensions import bcrypt, db
+from ..models.analysis import Analysis
 from ..models.code_redemption import CodeRedemption
 from ..models.counselor_code import CounselorCode
+from ..models.counselor_note import CounselorNote
 from ..models.counselor_profile import (
     DOMAINES,
     TYPE_SIRET_OPTIONAL,
     TYPES_STRUCTURE,
     CounselorProfile,
 )
+from ..models.price_feedback import PriceFeedback
 from ..models.profile import Profile
 from ..models.user import User
 from ..models.voyage import Voyage
-from ..services import auth_mail, code_service, demande_mail
+from ..services import auth_mail, code_service, demande_mail, doors
+from ..services.anthropic_service import start_analysis
 from ..utils.decorators import approved_counselor_required
 from ..utils.request_body import json_object, raw_text_field, text_field
 from .auth import password_problem
@@ -231,30 +236,23 @@ def _profile_or_none():
     return CounselorProfile.query.filter_by(user_id=get_jwt_identity()).first()
 
 
-def _code_row(code: CounselorCode, uses: int) -> dict:
-    """The code, its real use count, and one French status for the table."""
+_NO_USES = {"analysis": 0, "voyage": 0}
+
+
+def _code_row(code: CounselorCode, uses: dict[str, int]) -> dict:
+    """The code, its real use counts per kind, and one French status.
+
+    « utilisé » once BOTH kinds are spent: a single-use code opens one
+    analysis and one voyage (four-doors spec, ruling 10)."""
     if code.revoked_at is not None or not code.is_active:
         statut = "revoque"
-    elif code.max_uses is not None and uses >= code.max_uses:
+    elif code.max_uses is not None and min(uses.values()) >= code.max_uses:
         statut = "utilise"
     elif code.expires_at is not None and code.expires_at <= datetime.utcnow():
         statut = "expire"
     else:
         statut = "actif"
-    return {**code.to_dict(), "uses": uses, "statut": statut}
-
-
-def _use_counts(code_ids: list[str]) -> dict[str, int]:
-    """One grouped query instead of a count per row."""
-    if not code_ids:
-        return {}
-    rows = (
-        db.session.query(CodeRedemption.code_id, db.func.count(CodeRedemption.id))
-        .filter(CodeRedemption.code_id.in_(code_ids))
-        .group_by(CodeRedemption.code_id)
-        .all()
-    )
-    return {code_id: count for code_id, count in rows}
+    return {**code.to_dict(), "uses": sum(uses.values()), "uses_by_kind": uses, "statut": statut}
 
 
 @counselor_space_bp.get("/codes")
@@ -266,8 +264,8 @@ def list_codes():
         .order_by(CounselorCode.created_at.desc())
         .all()
     )
-    counts = _use_counts([c.id for c in codes])
-    return jsonify({"codes": [_code_row(c, counts.get(c.id, 0)) for c in codes]}), 200
+    counts = code_service.use_counts_by_kind([c.id for c in codes])
+    return jsonify({"codes": [_code_row(c, counts.get(c.id, dict(_NO_USES))) for c in codes]}), 200
 
 
 @counselor_space_bp.post("/codes")
@@ -281,10 +279,11 @@ def create_code():
     smaller version of "one more code".
     """
     # A row lock on the profile, mirroring code_service.resolve(). The same
-    # caveat applies: MySQL's REPEATABLE READ snapshot is fixed before the lock
-    # is taken, so the count below can be stale and two overlapped mints can
-    # both pass. This narrows the window rather than closing it — max_codes is
-    # enforced against sequential minting, not against a deliberate race.
+    # caveat applies, as code_service.redeem()'s docstring describes it:
+    # MySQL's REPEATABLE READ snapshot is fixed before the lock is taken, so
+    # the count below can be stale and two overlapped mints can both pass.
+    # This narrows the window rather than closing it — max_codes is enforced
+    # against sequential minting, not against a deliberate race.
     # SQLite (tests) omits the clause silently; the check itself still runs.
     profile = (
         CounselorProfile.query
@@ -329,7 +328,7 @@ def create_code():
     )
     db.session.add(code)
     db.session.commit()
-    return jsonify({"code": _code_row(code, 0)}), 201
+    return jsonify({"code": _code_row(code, dict(_NO_USES))}), 201
 
 
 @counselor_space_bp.delete("/codes/<code_id>")
@@ -346,7 +345,7 @@ def revoke_code(code_id):
     code.is_active = False
     code.revoked_at = datetime.utcnow()
     db.session.commit()
-    return jsonify({"code": _code_row(code, 0)}), 200
+    return jsonify({"code": _code_row(code, dict(_NO_USES))}), 200
 
 
 def _my_code_ids(user_id: str) -> list[str]:
@@ -368,7 +367,7 @@ def stats():
     user_id = profile.user_id
 
     codes = CounselorCode.query.filter_by(owner_id=user_id).all()
-    counts = _use_counts([c.id for c in codes])
+    counts = code_service.use_counts_by_kind([c.id for c in codes])
     now = datetime.utcnow()
 
     in_circulation = sum(
@@ -377,11 +376,11 @@ def stats():
         if c.is_active
         and c.revoked_at is None
         and (c.expires_at is None or c.expires_at > now)
-        and (c.max_uses is None or counts.get(c.id, 0) < c.max_uses)
+        and (c.max_uses is None or min(counts.get(c.id, _NO_USES).values()) < c.max_uses)
     )
 
     return jsonify({
-        "beneficiaires": sum(counts.values()),
+        "beneficiaires": sum(sum(v.values()) for v in counts.values()),
         "accompagnements": Voyage.query.filter_by(validated_by_id=user_id).count(),
         "codes_crees": len(codes),
         "max_codes": profile.max_codes,
@@ -396,12 +395,12 @@ def stats():
 @counselor_space_bp.get("/beneficiaires")
 @approved_counselor_required
 def beneficiaires():
-    """Who used my codes, and when. Nothing they wrote.
-
-    Reaching a voyage or a report still requires the person to hand over their
-    own token — spec decision 9. No id and no token leaves this route.
-    """
-    code_ids = _my_code_ids(get_jwt_identity())
+    """Who used my codes, and when — and, for an analysis sent through the
+    advisor door, the report itself (four-doors spec, ruling 2, which reverses
+    conseiller spec decision 9). A voyage is still reached only through the
+    token the person hands over."""
+    me = get_jwt_identity()
+    code_ids = _my_code_ids(me)
     if not code_ids:
         return jsonify({"beneficiaires": []}), 200
 
@@ -413,12 +412,163 @@ def beneficiaires():
         .order_by(CodeRedemption.redeemed_at.desc())
         .all()
     )
-    return jsonify({"beneficiaires": [
-        {
-            "prenom": profile.prenom if profile else None,
+    analysis_ids = [r.target_id for r, _u, _p in rows if r.target_type == "analysis"]
+    mine = {
+        a.id: a for a in Analysis.query.filter(
+            Analysis.id.in_(analysis_ids), Analysis.counselor_id == me, Analysis.door == doors.ADVISOR,
+        ).all()
+    } if analysis_ids else {}
+
+    people = []
+    for redemption, user, profile in rows:
+        report = mine.get(redemption.target_id) if redemption.target_type == "analysis" else None
+        inputs = (report.inputs or {}) if report is not None else {}
+        people.append({
+            "prenom": inputs.get("prenom") or (profile.prenom if profile else None),
+            "nom": inputs.get("nom"),
             "email": user.email if user else None,
             "target_type": redemption.target_type,
             "redeemed_at": redemption.redeemed_at.isoformat(),
+            "analysis_id": report.id if report is not None else None,
+        })
+    return jsonify({"beneficiaires": people}), 200
+
+
+NOTE_MAX = 20_000
+
+
+def _my_report(analysis_id: str) -> Analysis | None:
+    """An advisor-door report this counselor owns, or None. Another
+    counselor's, a candidate's own, or a missing one all answer the same 404."""
+    row = db.session.get(Analysis, analysis_id)
+    if row is None or row.door != doors.ADVISOR or row.counselor_id != get_jwt_identity():
+        return None
+    return row
+
+
+def _code_labels(analysis_ids: list[str]) -> dict[str, str]:
+    """Which code each report came through, by its label — how a counselor
+    tells reports apart beside prénom and nom (ruling 9)."""
+    if not analysis_ids:
+        return {}
+    rows = (
+        db.session.query(CodeRedemption.target_id, CounselorCode.label)
+        .join(CounselorCode, CounselorCode.id == CodeRedemption.code_id)
+        .filter(CodeRedemption.target_type == "analysis", CodeRedemption.target_id.in_(analysis_ids))
+        .all()
+    )
+    return dict(rows)
+
+
+_NOT_FOUND = ({"error": "Analyse introuvable."}, 404)
+
+
+@counselor_space_bp.get("/analyses")
+@approved_counselor_required
+def my_reports():
+    rows = (
+        Analysis.query.filter_by(counselor_id=get_jwt_identity(), door=doors.ADVISOR)
+        .order_by(Analysis.created_at.desc())
+        .all()
+    )
+    labels = _code_labels([r.id for r in rows])
+    return jsonify({"analyses": [
+        {
+            "id": r.id,
+            "prenom": (r.inputs or {}).get("prenom"),
+            "nom": (r.inputs or {}).get("nom"),
+            "code_label": labels.get(r.id),
+            "status": r.status,
+            "created_at": r.created_at.isoformat(),
         }
-        for redemption, user, profile in rows
+        for r in rows
     ]}), 200
+
+
+@counselor_space_bp.get("/analyses/<analysis_id>")
+@approved_counselor_required
+def my_report(analysis_id):
+    row = _my_report(analysis_id)
+    if row is None:
+        return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
+    # A run a restart orphaned reads as the failure it is, so « Relancer » is
+    # offered (decision 27).
+    reap_if_orphaned(row)
+    return jsonify({"analysis": row.to_dict(), "code_label": _code_labels([row.id]).get(row.id)}), 200
+
+
+@counselor_space_bp.delete("/analyses/<analysis_id>")
+@approved_counselor_required
+def delete_my_report(analysis_id):
+    row = _my_report(analysis_id)
+    if row is None:
+        return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
+    # counselor_notes' foreign key has no ON DELETE: the notes go first.
+    CounselorNote.query.filter_by(analysis_id=row.id).delete()
+    PriceFeedback.query.filter_by(analysis_id=row.id).delete()
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"message": "Analyse supprimée."}), 200
+
+
+@counselor_space_bp.post("/analyses/<analysis_id>/relaunch")
+@approved_counselor_required
+def relaunch_my_report(analysis_id):
+    """« Relancer » (decision 27): the same row, the same inputs, no new code
+    use — the candidate left with /analyse/envoyee and cannot retry. Only a
+    failed run: a second click while the first is queued is a 409, so one
+    failure never becomes two paid runs."""
+    row = _my_report(analysis_id)
+    if row is None:
+        return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
+    # A conditional update, not read-then-write: two clicks that arrive
+    # together both read 'error', and only one of them may start a run.
+    claimed = (
+        Analysis.query
+        .filter(Analysis.id == row.id, Analysis.status.in_(("error", "timeout")))
+        .update({"status": "queued", "progress": 0}, synchronize_session=False)
+    )
+    db.session.commit()
+    if claimed != 1:
+        return jsonify({"error": "Cette analyse n'a pas besoin d'être relancée."}), 409
+    start_analysis(row.id, current_app._get_current_object())
+    return jsonify({"analysis": row.to_dict()}), 200
+
+
+def _my_note(row: Analysis) -> CounselorNote | None:
+    return CounselorNote.query.filter_by(analysis_id=row.id, counselor_id=get_jwt_identity()).first()
+
+
+@counselor_space_bp.get("/analyses/<analysis_id>/notes")
+@approved_counselor_required
+def my_report_note(analysis_id):
+    row = _my_report(analysis_id)
+    if row is None:
+        return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
+    note = _my_note(row)
+    return jsonify({"note": (note.body or "") if note else ""}), 200
+
+
+@counselor_space_bp.put("/analyses/<analysis_id>/notes")
+@approved_counselor_required
+def save_my_report_note(analysis_id):
+    row = _my_report(analysis_id)
+    if row is None:
+        return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
+    # A body without a string « note » is refused, never read as "": that
+    # would clear the stored note and answer 200 — the defect the retired
+    # /api/c notes route shipped with (tests/test_malformed_bodies.py, class C).
+    # An explicit "" is still the way to clear it.
+    data = json_object()
+    if not isinstance(data.get("note"), str):
+        return jsonify({"error": "Note invalide."}), 400
+    body = raw_text_field(data, "note")
+    if len(body) > NOTE_MAX:
+        return jsonify({"error": "Note trop longue (20 000 caractères maximum)."}), 400
+    note = _my_note(row)
+    if note is None:
+        note = CounselorNote(analysis_id=row.id, counselor_id=get_jwt_identity())
+        db.session.add(note)
+    note.body = body
+    db.session.commit()
+    return jsonify({"note": note.body}), 200

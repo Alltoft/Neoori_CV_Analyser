@@ -56,14 +56,11 @@ _P1 = [
 ]
 
 
-# `counselor` is the 5-minute synthesis a Cap Emploi / Mission Locale
-# counselor sees at /c/<share_token>, fixed by the spec (§1, §4, §5).
 # Parcours 2 and 3 were retired on 2026-10-08; the dict keeps its shape.
 PARCOURS = {
     "1": {
         "label": "J'ai une cible",
         "sections": _P1,
-        "counselor": ("1", "4", "5"),
     },
 }
 
@@ -107,10 +104,6 @@ def section_keys(parcours: str, tier: str | None = None) -> list[str]:
 def titles(parcours: str) -> dict[str, str]:
     """key → title, for resolving titles the model didn't return."""
     return {s["key"]: s["title"] for s in sections(parcours)}
-
-
-def counselor_keys(parcours: str) -> tuple[str, ...]:
-    return PARCOURS[normalize(parcours)]["counselor"]
 
 
 def sections_meta(parcours: str, tier: str | None = None) -> list[dict]:

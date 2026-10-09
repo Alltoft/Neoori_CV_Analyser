@@ -6,16 +6,22 @@ Flow:
   2b. Success URL returns to /debloquer?session_id=… → POST /verify → unlock
       (covers webhook lag on free-tier cold starts; unlock is idempotent)
 
+/checkout and /verify are the report owner's alone: signed in, caller ==
+analysis.user_id. /checkout also refuses whenever the unlock would
+(unlock_service.refusal), so nobody pays for an unlock that then refuses. The
+webhook carries no session cookie — Stripe signs it instead.
+
 When STRIPE_SECRET_KEY is absent, /config reports disabled and /checkout
 returns 503 — the rest of the app works without payment.
 """
 import os
 
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..extensions import db
 from ..models.analysis import Analysis
-from ..services import tiers
+from ..services import tiers, unlock_service
 from ..services.unlock_service import unlock_analysis
 from ..utils.request_body import json_object, text_field
 
@@ -32,7 +38,7 @@ _OFFERS = {
     tiers.PAID: {
         "cents": PRICE_EUR_CENTS,
         "name": "neoori — analyse complète",
-        "description": "Déblocage du rapport complet + export conseiller",
+        "description": "Déblocage du rapport complet",
     },
     tiers.PREMIUM: {
         "cents": PREMIUM_PRICE_EUR_CENTS,
@@ -72,6 +78,7 @@ def config():
 
 
 @payments_bp.post("/checkout")
+@jwt_required()
 def create_checkout():
     stripe = _stripe()
     if stripe is None:
@@ -91,11 +98,15 @@ def create_checkout():
     offer = _OFFERS[tier]
 
     analysis = Analysis.query.get_or_404(analysis_id)
-    # unlock_method is the sentinel for a report someone already unlocked.
-    if analysis.unlock_method:
-        return jsonify({"error": "Cette analyse est déjà débloquée."}), 409
-    if analysis.status != "success":
-        return jsonify({"error": "L'analyse doit être terminée avant le déblocage."}), 409
+    # The owner pays for their own report, and only for an unlock that will
+    # happen: the same refusal unlock_analysis applies (four-doors spec,
+    # decision 41). Without it, a report that already had §5 could be paid
+    # for and then refuse to unlock.
+    if analysis.user_id is None or analysis.user_id != get_jwt_identity():
+        return jsonify({"error": "Accès non autorisé."}), 403
+    reason = unlock_service.refusal(analysis)
+    if reason:
+        return jsonify({"error": reason}), 409
 
     base = _frontend_base()
     session = stripe.checkout.Session.create(
@@ -119,9 +130,13 @@ def create_checkout():
 
 
 @payments_bp.post("/verify")
+@jwt_required()
 def verify_session():
     """Called by the frontend when Stripe redirects back with session_id.
-    Source of truth is Stripe's session state, not the redirect itself."""
+    Source of truth is Stripe's session state, not the redirect itself.
+
+    Owner only: the session id travels in a logged URL, so holding it is not
+    proof the report is yours, and the response carries the whole analysis."""
     stripe = _stripe()
     if stripe is None:
         return jsonify({"error": "Paiement indisponible pour le moment."}), 503
@@ -144,6 +159,10 @@ def verify_session():
 
     md = (session["metadata"].to_dict() if session["metadata"] else {})
     analysis = Analysis.query.get_or_404(md.get("analysis_id"))
+    # Before the unlock, not after: a stranger replaying a session id must not
+    # start the paid run on someone else's report.
+    if analysis.user_id is None or analysis.user_id != get_jwt_identity():
+        return jsonify({"error": "Accès non autorisé."}), 403
 
     ok, reason = unlock_analysis(
         analysis, method="payment", stripe_session_id=session["id"],

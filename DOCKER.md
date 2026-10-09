@@ -79,6 +79,7 @@ GitHub repo → Settings → Secrets → Actions:
 `VPS_HOST` = `186.240.157.26` · `VPS_USER` = `root` · `VPS_SSH_KEY` = contents of `/tmp/neoori_deploy` (then delete the local copy).
 
 Rollback to any commit: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` on the VPS.
+Not to a commit below the four-doors migration, though: that takes four commands in a fixed order, see « Rolling back below the four-doors migration » under Purge.
 
 ## TLS
 
@@ -136,6 +137,42 @@ nginx as client `172.18.0.1`. `neoori.tech` has no AAAA record today, so all
 traffic arrives over IPv4 and the limits see real clients. Keep it that way
 until the compose network has IPv6 enabled (`enable_ipv6` + a subnet) and the
 templates `listen [::]:80` / `[::]:443`.
+
+The open analysis form adds two more per-address limits, in the same templates.
+The `analyses` zone (10 r/min, burst 40) and the `codes` zone (10 r/min, burst
+20) limit the open form's POSTs per address; the polling GETs are not limited.
+The `analyses` zone covers `POST /api/analyses/`, `/api/analyses/draft` and the
+two PDF upload endpoints; the `codes` zone covers `POST /api/codes/check`, an
+analysis unlock and the voyage unlock. The numbers are sized for a workshop
+room behind one address: fifteen people, about four requests each, within
+minutes. Both zones key on the client address like the auth ones, so the
+warning above applies to them too: behind a shared IPv6 address every visitor
+would draw on one 10 r/min bucket.
+
+### Access logs record the path only
+
+nginx and gunicorn log the path only (`log_format neoori_paths` in the nginx
+templates, `--access-logformat` in `backend/entrypoint.sh`): sign-in links,
+`next` paths and Stripe session ids travel in query strings, and the Referer
+repeats them. An access line carries the address, the time, the method, the
+path, the status, the size and the duration, nothing more. To check on the VPS
+after a deploy and a few requests:
+
+```bash
+cd /srv/neoori
+docker compose -f docker-compose.prod.yml logs --since 10m nginx backend | grep -E 'token=|session_id=|redirect=|next='
+```
+
+No output means the access logs are clean. Two limits: nginx's *error* log
+still prints the request line of a failed request, query string included
+(`limit_req_log_level info` keeps the rate-limit refusals out of it), and the
+gunicorn format belongs to the production image only — the local backend runs
+Flask's own server, which logs query strings. An upstream failure is such a
+request, so for the few seconds of every deploy in which the backend is
+recreated the error log can hold a request line with its query string, though
+the Referer it records beside it now carries only the origin
+(`Referrer-Policy "strict-origin"` in the https template): a token page's own
+requests no longer repeat its token there.
 
 ## Google / Microsoft sign-in keys
 
@@ -198,3 +235,138 @@ $C sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "drop database neoori_re
 ```
 
 Last verified 23/08: 9/9 tables restored, `prompt_versions` = v1.7 (now v1.8).
+
+## Purge
+
+Rows that live on a clock, not an account (four-doors spec, decision 46):
+held drafts after 48 h, unclaimed no-login reports after 30 days, advisor-door
+reports after 12 months, `run_log` after 2 days. Script in the repo:
+`scripts/neoori-purge.sh`, installed like the backup. From the laptop, in this
+order:
+
+```bash
+# 1. Look at the crontab first (see the note below the block).
+ssh neoori 'crontab -l'
+
+# 2. Put the script on the VPS and make it executable. Do this step again after
+#    any edit to the script; nothing else needs redoing.
+scp scripts/neoori-purge.sh neoori:/usr/local/bin/neoori-purge.sh
+ssh neoori 'chmod +x /usr/local/bin/neoori-purge.sh'
+
+# 3. Add the job, once only (a second run adds a duplicate), then look again.
+ssh neoori '(crontab -l; echo "30 3 * * * /usr/local/bin/neoori-purge.sh") | crontab -'
+ssh neoori 'crontab -l'
+
+# 4. First run, by hand, counting only; then read the log.
+ssh neoori '/usr/local/bin/neoori-purge.sh --dry-run'
+ssh neoori 'tail -n 6 /var/log/neoori-purge.log'
+```
+
+Log: `/var/log/neoori-purge.log`. Before adding the cron line, `crontab -l`
+must already show the backup's `0 3 * * *` line — add beside it, never replace.
+Writing a crontab replaces the whole table, which is why step 1 looks first:
+every line you see there (the backup, the nginx reload `0 4 * * *`) must still
+be there after step 3, with the purge line added (03:30, half an hour after the
+03:00 backup).
+
+What step 4 should show: the script passes its arguments to
+`flask purge-expired` (it runs `cd /srv/neoori && docker compose -f
+docker-compose.prod.yml exec -T backend flask purge-expired --dry-run` and logs
+the command), and `--dry-run` deletes nothing. The last six log lines are the
+command, four counts (`held_drafts`, `anonymous`, `advisor`, `run_log`) and
+`dry run — nothing deleted`. Anything else means the script did not run: the
+error is in the log, or printed by `ssh` if the script never started.
+
+What the job selects, and nothing else: a held draft (a form saved before
+signing in, with no owner) older than 48 h; a no-login report (`door` =
+`anonymous`) that no account has claimed, older than 30 days; any `advisor`
+report older than 365 days; `run_log` rows older than 2 days. Ages count from
+`created_at`, which a submit sets to the time of the run. The first three
+ages are the env settings `HELD_DRAFT_RETENTION_HOURS`,
+`ANONYMOUS_RETENTION_DAYS` and `ADVISOR_RETENTION_DAYS`; the 2 days of
+`run_log` is fixed in `backend/app/services/purge.py`. Owned, claimed and
+`legacy` rows are never selected. Counselor notes and price feedback go with
+their report. The cron run, with no argument, really deletes: the next
+morning's log shows the same four counts and `deleted`.
+
+### Rolling back below the four-doors migration
+
+Rollback past this revision is not the plain `IMAGE_TAG=<sha> … up -d` of the
+CI/CD section. The four-doors migration is `c1d2e3f4a5b6`, on top of
+`b0c1d2e3f4a5`. Two things get in the way:
+
+- The previous image cannot start against a database at this revision: its
+  entrypoint runs `flask db upgrade` under `set -e`
+  (`backend/entrypoint.sh:24`) and does not know `c1d2e3f4a5b6`.
+- A downgrade alone drops the columns that keep some rows private. Advisor-door
+  reports, unclaimed no-login reports and held drafts would become plain
+  ownerless rows — reports and drafts that belong to no account — and the
+  previous image serves an ownerless row to anyone holding its id.
+
+So those rows go first, after a backup. Every command below runs on the VPS,
+in `/srv/neoori`: the first two lines take you there, as in the restore test
+under « Backups ». In order, with the new image still running:
+
+```bash
+ssh neoori
+cd /srv/neoori
+/usr/local/bin/neoori-backup.sh                   # 0. a fresh dump, before anything else
+ls -lh /backups/neoori-$(date +%F).sql.gz
+gzip -dc /backups/neoori-$(date +%F).sql.gz | head -c 200 | wc -c     # 100 or more
+C="docker compose -f docker-compose.prod.yml exec -T backend"
+$C flask purge-expired --before-rollback          # 1. counts only
+$C flask purge-expired --before-rollback --apply  # 2. deletes
+$C flask db downgrade b0c1d2e3f4a5                # 3. the revision before c1d2e3f4a5b6
+IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d   # 4. FORCE_ANALYSIS_TIER first
+```
+
+(`<sha>` is the commit of the image you are going back to.)
+
+0. The backup comes first because command 2 cannot be undone: it deletes
+   every advisor report (the counselors' only copy: the candidate never
+   received one), every unclaimed no-login report and every held draft, and
+   this dump is the only way back. The script checks its own dump, as every
+   night: its last line is `backup: wrote /backups/neoori-<date>.sql.gz
+   (<size>)`, followed by the off-box warning while no rclone remote is set
+   (« Backups »). If it says `backup: dump looks empty` instead, or `ls` finds
+   no file for today, stop here: nothing has been touched yet. The `gzip` line
+   repeats the script's own test, the first 200 bytes of the dump: 100 or more
+   means it holds SQL.
+1. `--before-rollback` alone deletes nothing. It prints three counts —
+   `held_drafts`, `anonymous`, `advisor` — and `dry run — nothing deleted`.
+   Read them: they are the rows the next command destroys. Every `advisor`
+   report counts, whatever its age, and so does every unclaimed `anonymous`
+   report and every held draft. A no-login report that an account has kept
+   is owned, so it stays.
+2. `--before-rollback --apply` deletes them, with their counselor notes and
+   price feedback. It cannot be undone, and the advisor reports are the
+   counselors' only copy: the candidate never received one. Check: command 1
+   again now prints zeros.
+3. `flask db downgrade b0c1d2e3f4a5` removes the four-doors columns, keys and
+   the `run_log` table. Check: `$C flask db current` names `b0c1d2e3f4a5`.
+   `b0c1d2e3f4a5` is the head of the image that was live just before the
+   four-doors deploy. Going back further, to an older image, needs that
+   image's own head instead. Read it from the image itself, before command 3:
+   `IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml run --rm
+   --no-deps -e DATABASE_URL=sqlite:// backend flask db heads` prints it (an
+   in-memory SQLite: the command only reads the image's migration files and
+   never touches the database).
+4. Before `up -d`, look at `FORCE_ANALYSIS_TIER` in `/srv/neoori/.env`. The
+   four-doors image ignores it, but every image from `46f7380` (2026-07-30) to
+   the one before four-doors reads it with `paid` as its default —
+   `os.getenv("FORCE_ANALYSIS_TIER", "paid")`, `backend/app/routes/analyses.py:30`
+   at `fd2f47f`. With no line in `.env`, every new analysis runs on the paid
+   tier again after the rollback. Write `FORCE_ANALYSIS_TIER=paid` only if
+   that is what you want back; `FORCE_ANALYSIS_TIER=` (empty) gives the
+   normal tiers. `up -d` then starts the previous image with that setting,
+   and its `flask db upgrade` finds nothing to do. Check:
+   `curl -s https://neoori.tech/api/health` prints `{"status":"ok"}` (plain
+   `http://` only redirects while `NGINX_MODE=https`).
+
+Run commands 3 and 4 back to back: between them the running (new) code expects
+columns the downgrade has just removed, so its requests fail. Keep the gap
+between commands 2 and 3 short too: a row a visitor submits in it survives as
+an ownerless row. For a rollback that must leave none, stop nginx before
+command 0 (`docker compose -f docker-compose.prod.yml stop nginx`), so the
+dump also holds every row command 2 deletes; the `up -d` of command 4 starts
+it again.

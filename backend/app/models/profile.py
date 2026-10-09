@@ -22,7 +22,8 @@ from ..utils import crypto
 # Which wording the person agreed to. Here rather than on the route: two
 # entry points now write a consent — the signup seed and PUT /api/profile —
 # and a version that lived in one of them would be the other's import.
-CONSENT_VERSION = "v1.2"
+# v1.3: CGV §2 and §6 for the four doors (four-doors spec, decision 48).
+CONSENT_VERSION = "v1.3"
 
 # Bloc 5 and the OETH flag carry their own consent, versioned apart from the
 # CGV: the questions behind it can change without reopening the whole contract,

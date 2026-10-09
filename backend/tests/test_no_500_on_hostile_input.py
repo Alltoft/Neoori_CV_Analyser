@@ -39,6 +39,7 @@ from flask_jwt_extended import create_access_token
 from app.extensions import bcrypt as _bcrypt
 from app.extensions import db as _db
 from app.models.analysis import Analysis
+from app.models.counselor_profile import CounselorProfile
 from app.models.profile import Profile
 from app.models.user import User
 from app.utils import auth_links
@@ -112,6 +113,14 @@ def rig(client, app, monkeypatch):
     forwards a non-string session_id/analysis_id to Stripe still fails here,
     the way it would against the real API.
 
+    Checkout and verify are the owner's alone (401 signed out, 403 for anyone
+    else), so both rows post as the candidate: checkout names an analysis the
+    candidate owns, and the stub session's metadata makes verify name that
+    same one. Without that, both would fuzz the gate instead of the body --
+    and still pass, since a 401 is not a 5xx. The guard test below the route
+    table (the payment rigs reaching their body) keeps that from happening
+    unseen.
+
     The candidate gets a pre-existing, already-consented Profile so
     PUT /api/profile fuzzing exercises the field-assignment code: the
     "consentement requis" gate only fires while creating a first profile,
@@ -125,6 +134,9 @@ def rig(client, app, monkeypatch):
     """
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
     monkeypatch.setattr("app.routes.analyses.start_analysis", lambda *a, **kw: None)
+    # A fuzz loop makes several valid runs with one account: past the daily cap
+    # the later ones would answer 429, a pass that tests nothing.
+    app.config["FREE_RUNS_PER_ACCOUNT_PER_DAY"] = 10_000
 
     import stripe
 
@@ -162,9 +174,25 @@ def rig(client, app, monkeypatch):
     profile.consent_at = datetime.utcnow()
     profile.consent_version = "v1.2"
     _db.session.add(profile)
+    # The counselor routes are for an approved conseiller, and a report is its
+    # counselor's alone: the notes row needs both to reach its body.
+    _db.session.add(CounselorProfile(
+        user_id=counselor.id, structure="s", fonction="f", telephone="t", status="approved",
+    ))
     _db.session.commit()
 
-    analysis = _analysis(share_token="fuzz-share-token")
+    counselor_report = _analysis(door="advisor", counselor_id=counselor.id)
+    # /unlock, checkout and verify are the owner's alone and the price probe is
+    # for whoever may read the report (401 / 403 before the body is read), so
+    # those rows need an analysis the candidate owns.
+    owned_analysis = _analysis(owner=candidate)
+    # What verify unlocks is the report its session's metadata names -- stripe
+    # v15 metadata is an object with .to_dict(), as the route reads it. The
+    # unlock's own run is patched out like create_analysis's above.
+    _FakeSession.metadata = stripe.StripeObject.construct_from(
+        {"analysis_id": owned_analysis.id, "tier": "paid"}, "sk_test",
+    )
+    monkeypatch.setattr("app.services.unlock_service.start_analysis", lambda *a, **kw: None)
 
     # POST /api/auth/signup reads its body only behind a live ticket. Every
     # fuzzed call leaves at least one field invalid but one (consent=True),
@@ -181,8 +209,8 @@ def rig(client, app, monkeypatch):
         "counselor_headers": _headers(counselor),
         "candidate_email": candidate.email,
         "admin_id": admin.id,
-        "analysis_id": analysis.id,
-        "share_token": analysis.share_token,
+        "owned_analysis_id": owned_analysis.id,
+        "counselor_report_id": counselor_report.id,
     }
 
 
@@ -234,16 +262,44 @@ ROUTES = [
         headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {
             "inputs": {"_path": "1", "cv_text": "x" * 250, "cible_visee": "y" * 60},
-            "tier": "free",
+            "tier": "free", "door": "account",
         },
         fields=[
-            "inputs", "tier",
+            # `tier` is never read since the doors; a stale form still posts it.
+            "inputs", "tier", "door", "draft_id",
             "inputs.cv_text", "inputs.cible_visee", "inputs._path", "inputs._chemin",
-            # R1: _voyage / _voyage_id are server-only -- _merge_voyage pops
-            # both before any lookup, so a hostile shape here must never
-            # reach _voyage_block() or the Analysis(voyage_id=...) commit.
+            # R1: _voyage / _voyage_id are server-only -- the allow-list drops
+            # both (and _merge_voyage pops them again, as defence in depth),
+            # so a hostile shape here must never reach _voyage_block() or the
+            # Analysis(voyage_id=...) commit.
             "inputs._voyage", "inputs._voyage_id",
         ],
+    ),
+    dict(
+        # The same route through the advisor door, signed out: the code, the
+        # identity and the consent are all body fields.
+        name="create_analysis_advisor",
+        method="post",
+        path=lambda rig: "/api/analyses/",
+        headers=lambda rig: {},
+        base=lambda rig: {
+            "inputs": {"cv_text": "x" * 250, "cible_visee": "y" * 60},
+            "door": "advisor", "code": "AAAA1111",
+            "prenom": "Rig", "nom": "Fuzz", "consent": True,
+        },
+        fields=["door", "code", "prenom", "nom", "consent", "draft_id"],
+    ),
+    dict(
+        # And through the no-login door: a consent and nothing else.
+        name="create_analysis_anonymous",
+        method="post",
+        path=lambda rig: "/api/analyses/",
+        headers=lambda rig: {},
+        base=lambda rig: {
+            "inputs": {"cv_text": "x" * 250, "cible_visee": "y" * 60},
+            "door": "anonymous", "consent": True,
+        },
+        fields=["door", "consent", "inputs"],
     ),
     dict(
         name="save_draft",
@@ -254,18 +310,28 @@ ROUTES = [
         fields=["inputs", "draft_id"],
     ),
     dict(
+        # The same route signed out: the held draft, read through the
+        # neoori_hold cookie, with the allow-listed keys fuzzed one by one.
+        name="save_draft_signed_out",
+        method="post",
+        path=lambda rig: "/api/analyses/draft",
+        headers=lambda rig: {},
+        base=lambda rig: {"inputs": {"cv_text": "x" * 250, "cible_visee": "y" * 60, "_chemin": "A"}},
+        fields=["inputs", "inputs.cv_text", "inputs.cible_visee", "inputs._chemin"],
+    ),
+    dict(
         name="unlock_with_code",
         method="post",
-        path=lambda rig: f"/api/analyses/{rig['analysis_id']}/unlock",
-        headers=lambda rig: {},
+        path=lambda rig: f"/api/analyses/{rig['owned_analysis_id']}/unlock",
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {"code": "AAAA1111"},
         fields=["code"],
     ),
     dict(
         name="price_feedback",
         method="post",
-        path=lambda rig: f"/api/analyses/{rig['analysis_id']}/price-feedback",
-        headers=lambda rig: {},
+        path=lambda rig: f"/api/analyses/{rig['owned_analysis_id']}/price-feedback",
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {"bucket": "5_10", "useful": True},
         fields=["bucket", "useful"],
     ),
@@ -288,18 +354,22 @@ ROUTES = [
         ],
     ),
     dict(
+        # The owner's, on the candidate's own report: signed out or on anyone
+        # else's, it never reads the body.
         name="checkout",
         method="post",
         path=lambda rig: "/api/payments/checkout",
-        headers=lambda rig: {},
-        base=lambda rig: {"analysis_id": rig["analysis_id"], "tier": "paid"},
+        headers=lambda rig: rig["candidate_headers"],
+        base=lambda rig: {"analysis_id": rig["owned_analysis_id"], "tier": "paid"},
         fields=["analysis_id", "tier"],
     ),
     dict(
+        # The owner's too: the stub session's metadata names the candidate's
+        # own report (see `rig`).
         name="verify",
         method="post",
         path=lambda rig: "/api/payments/verify",
-        headers=lambda rig: {},
+        headers=lambda rig: rig["candidate_headers"],
         base=lambda rig: {"session_id": "cs_test_fuzz"},
         fields=["session_id"],
     ),
@@ -331,12 +401,15 @@ ROUTES = [
         fields=["version_label", "system_prompt_text", "path", "activate"],
     ),
     dict(
-        name="upsert_counselor_notes",
+        # The counselor's private note on a report sent through their code. A
+        # report is its counselor's alone (404 for anyone else), so this posts
+        # as the counselor who owns the rig's report.
+        name="save_counselor_note",
         method="put",
-        path=lambda rig: f"/api/c/{rig['share_token']}/notes",
+        path=lambda rig: f"/api/counselor/analyses/{rig['counselor_report_id']}/notes",
         headers=lambda rig: rig["counselor_headers"],
-        base=lambda rig: {"body": "note de test"},
-        fields=["body"],
+        base=lambda rig: {"note": "note de test"},
+        fields=["note"],
     ),
     dict(
         name="email_link",
@@ -383,6 +456,34 @@ def _call(client, route, rig, *, body=..., raw=None):
         headers["Content-Type"] = "application/json"
         return client.open(path, method=route["method"].upper(), data=raw, headers=headers)
     return method(path, json=body, headers=headers)
+
+
+def test_the_price_probe_rig_reaches_its_body(client, rig):
+    """The fuzz below only asks for « no 5xx », which a 403 meets too. Its base
+    body must be accepted, or the probe's rows would be fuzzing the access
+    check instead of the body."""
+    route = next(r for r in ROUTES if r["name"] == "price_feedback")
+    res = _call(client, route, rig, body=route["base"](rig))
+    assert res.status_code == 200
+
+
+def test_the_counselor_note_rig_reaches_its_body(client, rig):
+    """Same guard for the counselor's note, which is its counselor's alone: its
+    base body must be accepted, or the row would be fuzzing the access check
+    and passing on its 404."""
+    route = next(r for r in ROUTES if r["name"] == "save_counselor_note")
+    res = _call(client, route, rig, body=route["base"](rig))
+    assert res.status_code == 200
+
+
+@pytest.mark.parametrize("name", sorted(PAYMENT_ROUTE_NAMES))
+def test_the_payment_rigs_reach_their_body(client, rig, name):
+    """Same guard for checkout and verify, which are the owner's alone: their
+    base body must get through the sign-in and the owner check, or their rows
+    would be fuzzing the gate -- and passing on its 401 / 403."""
+    route = next(r for r in ROUTES if r["name"] == name)
+    res = _call(client, route, rig, body=route["base"](rig))
+    assert res.status_code == 200
 
 
 @pytest.mark.parametrize("route", ROUTES, ids=lambda r: r["name"])

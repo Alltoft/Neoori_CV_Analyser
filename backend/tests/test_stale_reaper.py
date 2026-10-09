@@ -51,3 +51,54 @@ def test_reaper_only_touches_running_rows(app):
     db.session.refresh(done)
     assert queued.status == "queued"
     assert done.status == "success"
+
+
+def test_the_reaper_reads_started_at_not_created_at(app):
+    """A counselor's « Relancer » re-runs a row created days ago (four-doors
+    spec, decision 47): it must survive a boot while it streams."""
+    old, now = datetime.utcnow() - timedelta(days=3), datetime.utcnow()
+    relaunched = Analysis(status="running", created_at=old, started_at=now, inputs={})
+    stuck = Analysis(status="running", created_at=old, started_at=old, inputs={})
+    before_the_column = Analysis(status="running", created_at=old, inputs={})
+    db.session.add_all([relaunched, stuck, before_the_column])
+    db.session.commit()
+
+    assert reap_stale_running() == 2
+    db.session.expire_all()
+    assert db.session.get(Analysis, relaunched.id).status == "running"
+
+
+def test_a_run_commits_started_at_with_running_before_it_streams(app):
+    """Both reapers read started_at (above), so _run_analysis must commit it
+    with `running`, before the model is called. A relaunched row still
+    carries its previous run's started_at until then: without the write, the
+    reapers would take a live run for an orphan as soon as it is read."""
+    from unittest.mock import MagicMock, patch
+
+    from app.models.prompt_version import PromptVersion
+    from app.services import anthropic_service as svc
+
+    db.session.add(PromptVersion(version_label="test", system_prompt_text="x", is_active=True, path="1"))
+    days_ago = datetime.utcnow() - timedelta(days=3)
+    row = Analysis(status="queued", created_at=days_ago, started_at=days_ago,
+                   inputs={"_path": "1", "_tier": "free", "cv_text": "c" * 300, "cible_visee": "t" * 60})
+    db.session.add(row)
+    db.session.commit()
+    row_id = row.id
+    seen = {}
+
+    def stream(**_request):
+        # The run released its session before calling the model, so this
+        # reads what it committed.
+        current = db.session.get(Analysis, row_id)
+        seen["status"], seen["started_at"] = current.status, current.started_at
+        raise RuntimeError("no model in tests")
+
+    client = MagicMock()
+    client.messages.stream.side_effect = stream
+    before = datetime.utcnow()
+    with patch.object(svc, "_get_client", return_value=client):
+        svc._run_analysis(row_id, app)
+
+    assert seen["status"] == "running"
+    assert seen["started_at"] is not None and seen["started_at"] >= before

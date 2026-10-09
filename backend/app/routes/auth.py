@@ -11,7 +11,7 @@ from flask_jwt_extended import (
 )
 from datetime import datetime
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..extensions import db, bcrypt
 from ..models.auth_identity import AuthIdentity
@@ -20,7 +20,7 @@ from ..models.profile import (
     ACCEPTED_AGE_BRACKETS, AGE_BRACKETS, CONSENT_VERSION, PRENOM_MAX_LENGTH, Profile,
 )
 from ..models.user import User
-from ..services import auth_mail, demande_mail, email_service, sign_in
+from ..services import auth_mail, demande_mail, email_service, held, sign_in
 from ..utils import auth_links
 from ..utils.request_body import json_object, text_field, raw_text_field
 
@@ -75,10 +75,21 @@ def register():
 
     db.session.commit()
 
+    next_path = text_field(data, "next") or None
+
+    # A draft this browser holds waits for this account (four-doors spec,
+    # decision 34): marked now, attached only once the signup password proves
+    # the address at verify-email (decision 36). Only when this signup is the
+    # round trip that holding it started (held.ROUND_TRIPS): any other signup
+    # in this browser may be someone else's. Never for an address that
+    # already had an account — that answered 409 above.
+    if held.mark_for(user.id, next_path):
+        db.session.commit()
+
     # No session: the account opens once its address is proven (spec decision
     # 2). `next` rides in the link, so the email round-trip lands them back
     # where they were heading.
-    mail_sent = auth_mail.verification_if_due(user, text_field(data, "next") or None)
+    mail_sent = auth_mail.verification_if_due(user, next_path)
     return jsonify({"user": user.to_dict(), "mail_sent": mail_sent}), 201
 
 
@@ -218,8 +229,24 @@ def refresh():
 
 @auth_bp.post("/logout")
 def logout():
+    # A draft saved after the session lapsed is held by this browser's cookie,
+    # not by the account (decision 38: expired means signed out). Left behind,
+    # the next person on a shared computer could read it back at /held or claim
+    # it into their own account, so it goes with the session. A held no-login
+    # report is not touched: its own link still reaches it. No session is
+    # needed, so a lapsed one can log out too.
+    try:
+        if held.drop_held_draft():
+            db.session.commit()
+    except SQLAlchemyError:
+        # Best effort: ending the session must not depend on the database,
+        # which logout never touched before. The cookie is cleared below
+        # either way, so the browser forgets the key and the row expires.
+        db.session.rollback()
+        current_app.logger.warning("Logout could not delete the held draft.", exc_info=True)
     response = jsonify({"message": "Déconnecté."})
     unset_jwt_cookies(response)
+    held.clear_cookie(response)
     return response, 200
 
 
@@ -282,6 +309,9 @@ def verify_email():
 
     if user.email_verified_at is None:
         user.email_verified_at = datetime.utcnow()
+        # The link AND the signup password: the registrant. What signup marked
+        # for this account is theirs.
+        held.attach_pending(user.id)
         db.session.commit()
         # This address's first proof: a demande waiting on it joins the admin
         # queue now. A second use of the link is a login and skips this.
@@ -333,6 +363,9 @@ def reset_password():
     newly_verified = user.email_verified_at is None
     if newly_verified:
         user.email_verified_at = datetime.utcnow()
+        # Proven without the signup password: whoever registered this address
+        # may have been someone else (four-doors spec, decision 36).
+        held.unmark(user.id)
     db.session.commit()
 
     # After the commit, like every mail. It reaches the address's owner even

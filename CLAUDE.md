@@ -1,7 +1,7 @@
 # neoori — Module Analyse CV (bêta)
 
 ## What this is
-French-language CV analysis tool. Candidate uploads CV + 8 context fields → AI returns structured strategic analysis → two exports from one analysis object (candidate full report, counselor synthesis).
+French-language CV analysis tool. Candidate uploads CV + 8 context fields → AI returns structured strategic analysis → one analysis object, read by the candidate or, through the advisor door, by their counselor (see Les quatre portes).
 
 ## Language rule
 - App UI: **French** (all strings, labels, copy)
@@ -55,19 +55,66 @@ Do NOT use handwritten fonts (Caveat, Patrick Hand, etc.) — wireframes only.
 | 1 | Lecture stratégique du parcours | ✓ |
 | 2 | Forces du profil pour la cible | ✓ |
 | 3 | Compétences transférables (tag cloud) | ✓ |
-| 4 | Ce qui reste à renforcer | ✓ |
+| — | Verdict (free only) | ✓ |
+| 4 | Ce qui reste à renforcer | Paid only |
 | 5 | Préconisations terrain | Paid only |
 | 6 | Exemple de réécriture | Paid only |
 | 7 | Synthèse | Paid only |
 | 8 | Pistes d'évolution | Paid only |
 | 9 | Proposition de CV retravaillé | Paid only |
 
-## Counselor view — sections 1, 4, 5 only
-- Same analysis object, no regeneration
-- Header badge: `VERSION CONSEILLER`
-- Key facts strip: Cible visée, Mobilité, Posture actuelle, Points sensibles
-- Private counselor notes field (not shared with candidate)
-- Public share URL: `/c/[share_token]`
+## Les quatre portes
+
+The parcours 1 form is open to everyone; « Générer mon analyse » leads to four
+doors (three once signed in: « Sans compte » is hidden). `services/doors.py`
+decides each door's tier and recipient — the browser never chooses a tier, and
+`FORCE_ANALYSIS_TIER` is gone. Spec:
+`docs/superpowers/specs/2026-10-08-four-doors-design.md`.
+
+| Door | Account | Runs | The report goes to |
+|---|---|---|---|
+| `account` « Avec mon compte » | required | free (§1–3 + verdict) | the account; 9 € / 24 € unlock as before |
+| `promo` « J'ai un code promo » | required | Complet (§1–9) | the account; once per account |
+| `advisor` « J'ai un code conseiller » | never asked | Complet (§1–9) | **only** the counselor who owns the code, at `/conseiller/analyses/<id>` |
+| `anonymous` « Sans compte » | none | free | a private link `/rapport#<token>`, 30 days |
+
+- **A code's kind is its owner**: none = promo (admin-minted), one = conseiller.
+  Uses count per kind — a single-use conseiller code opens one analysis and one
+  voyage. The database holds the ceiling (`code_redemptions.slot` + unique
+  keys); `code_service.redeem()` commits before the run starts.
+- **Who may read an analysis** is `_may_access()` in `routes/analyses.py`:
+  advisor rows never on candidate routes; token rows by the `X-Analysis-Token`
+  header; owned rows by their owner; `legacy` rows (ownerless, from before
+  accounts were required) by id; anything else closed.
+- **The counselor's shared view is gone.** An advisor-door report is read on
+  the counselor's own page, in full, with one private note per counselor and
+  analysis (`GET` / `PUT /api/counselor/analyses/<id>/notes`). `/c/<token>` is
+  a static « Ce lien n’est plus actif. » page, `/api/c/*` is deleted, and
+  `analyses.share_token` stays as a column nothing mints. The voyage's own
+  counselor link (`/voyage/c/…`) is untouched.
+- **No token in a URL a server sees.** The report link carries its key in the
+  fragment; a signed-out draft is held by the HttpOnly `neoori_hold` cookie.
+  Password signup only marks a held row (`pending_user_id`), and only on the
+  round trip that held it (`next` exactly
+  `/analyse/nouveau?reprendre=compte|promo|brouillon` or `/espace?garder=1`,
+  `held.ROUND_TRIPS`): a signup from anywhere else may be a stranger's on a
+  shared computer. verify-email with the signup password attaches it; any
+  other proof of the address (Google, Microsoft, email link, password reset)
+  drops the mark.
+- **Caps** read the append-only `run_log`, so deleting a report never lowers
+  them: `ANONYMOUS_RUNS_PER_DAY`, `FREE_RUNS_PER_ACCOUNT_PER_DAY`. nginx limits
+  the open POSTs per address (`analyses`, `codes` zones).
+- **Retention** — `flask purge-expired`, host cron 03:30 (DOCKER.md « Purge »):
+  held drafts 48 h, unclaimed no-login reports 30 days, advisor reports 12
+  months, `run_log` 2 days.
+- **Rolling back below the four-doors migration** needs a backup, then
+  `flask purge-expired --before-rollback --apply`, then `flask db downgrade`:
+  otherwise advisor reports, unclaimed no-login reports and held drafts become
+  plain ownerless rows (belonging to no account) that the previous image
+  serves by id. The commands, in order: DOCKER.md, « Rolling back below the
+  four-doors migration ».
+- Access logs (nginx, gunicorn) record the path only — no query string, no
+  Referer.
 
 ## AI call spec
 
@@ -75,7 +122,7 @@ Two-tier model routing by user plan:
 
 | Plan | Sections generated | Model | max_tokens |
 |---|---|---|---|
-| free | 1–4 only | `claude-haiku-4-5-20251001` | 8000 |
+| free | 1–3 + verdict | `claude-haiku-4-5-20251001` | 8000 |
 | paid | 1–9 (full) | `claude-sonnet-4-6` | 8000 |
 
 ```
@@ -88,7 +135,7 @@ user: <concatenation of 8 fields per format in prompt v1.3>
 - `ANTHROPIC_API_KEY` in env
 - Stream the response
 - Persist raw response + parsed output
-- Counselor code grants paid-tier model access (free for Cap Emploi / France Travail beneficiaries)
+- The tier is the door's (`services/doors.py`); nothing the browser sends selects a model. An unlock re-runs the same report on the tier it sold: Complet for a promo code or the 9 € payment, Premium for the 24 € one.
 
 ## Prompt management (hard requirement)
 - Prompt stored in DB table `PromptVersion`, never in code
@@ -98,13 +145,13 @@ user: <concatenation of 8 fields per format in prompt v1.3>
 - Every analysis row stores `prompt_version_id` (B2G traceability)
 
 ## Paywall
-- Free: sections 1–4 (genuinely useful, do NOT aggressively blur)
+- Free: sections 1–3 + verdict (genuinely useful, do NOT aggressively blur)
 - Paid: 9 € one-shot, no subscription
-- Counselor code → free access (Cap Emploi / France Travail beneficiaries)
+- Conseiller code → the advisor door: Complet, sent to the counselor, not the candidate. Promo code → Complet for a signed-in account, once.
 
 ## Data model (see README for full schema)
 - `User` — id, email, role, plan, credits_remaining
-- `Analysis` — id, user_id, prompt_version_id, status, inputs (8 fields), output (9 sections), tokens_in/out, share_token
+- `Analysis` — id, user_id, prompt_version_id, status, inputs (8 fields), output (9 sections), tokens_in/out, share_token (retired, no longer minted)
 - `CounselorNote` — analysis_id, counselor_id, body (private)
 - `PromptVersion` — version_label, system_prompt_text, author_id, is_active
 
@@ -135,7 +182,7 @@ git add .
 git commit -m "..."
 git push        # GitHub Actions: build images → push GHCR → sync config + pull/up on the VPS
 ```
-Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d`
+Rollback on the VPS: `IMAGE_TAG=<commit-sha> docker compose -f docker-compose.prod.yml up -d` — except below the four-doors migration, which needs the purge and a downgrade first (see Les quatre portes).
 
 Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 
@@ -143,6 +190,7 @@ Local dev mirrors prod routing: `docker compose up -d` → http://localhost:8080
 - `NGINX_MODE` in `/srv/neoori/.env` selects the nginx template: `http` (pre-TLS / ACME / IP smoke tests) or `https`. Now `https` — login only works in that phase, JWT cookies are `Secure`-only in production.
 - Flask `strict_slashes=False` stays global — the proxies strip trailing slashes before forwarding.
 - Frontend `NEXT_PUBLIC_*` values are baked at image build time (CI build-args), not read from VPS runtime env.
+- The four-doors caps and retentions are optional env settings read in `config.py` (defaults in parentheses): `ANONYMOUS_RUNS_PER_DAY` (200), `FREE_RUNS_PER_ACCOUNT_PER_DAY` (5), `CV_TEXT_MAX` (40000), `CIBLE_MAX` (10000), `ANONYMOUS_RETENTION_DAYS` (30), `ADVISOR_RETENTION_DAYS` (365), `HELD_DRAFT_RETENTION_HOURS` (48), `HELD_DRAFTS_MAX` (2000). `FORCE_ANALYSIS_TIER` no longer exists: a leftover line in `/srv/neoori/.env` does nothing.
 
 ## Le voyage
 
@@ -190,9 +238,9 @@ either half.
 
 ### What reaches an analysis
 
-`routes/analyses._merge_voyage()` folds the voyage into every new analysis,
-beside the Profil de base fold and independent of it — session 0 requires no
-profile:
+`routes/analyses._merge_voyage()` folds the voyage into **`account` and `promo`
+runs** (the advisor and anonymous doors fold nothing), beside the Profil de
+base fold and independent of it — session 0 requires no profile:
 
 - `inputs["_voyage"]` — up to nine plain-French lines, a line omitted rather
   than left empty. No digit, no trait name, no framework name. Model-facing
@@ -327,8 +375,11 @@ refresh tokens (an access token already issued lives up to 1 h).
   limits) »).
 - The deploy re-renders and reloads nginx (`deploy.yml`): `up -d` alone never
   applied a template change.
-- Analyses and CV uploads require an account; `/analyse/*` sends a signed-out
-  visitor to `/inscription`.
+- The analysis form and the CV upload are open (Les quatre portes): `proxy.ts`
+  leaves `/analyse`, `/analyse/nouveau` and `/analyse/envoyee` public. The rest
+  of `/analyse/` — the report (`/analyse/<id>/rapport`), its unlock page
+  (`/analyse/<id>/debloquer`) and the waiting page (`/analyse/en-cours/<id>`) —
+  needs the owner, and sends a signed-out visitor to `/inscription`.
 - `/admin/utilisateurs` « Marquer comme vérifié » is the way in for a test
   account or a link lost to spam.
 
@@ -407,14 +458,25 @@ approval and rejection mails, which predate it and are HTML-only.
 | Votre lien de connexion | the address typed, account or not | « Recevoir un lien de connexion » — `services/auth_mail.login_link_if_due` |
 | Votre mot de passe a été modifié | the account | `auth.reset_password`, after its commit |
 | Votre analyse est prête / n'a pas abouti | the analysis owner, verified only | `anthropic_service._notify_outcome`, at every final status `_run_analysis` writes |
+| Une analyse est prête / n’a pas abouti (conseiller) | the counselor who owns the code, verified only | `anthropic_service._notify_outcome`, advisor-door runs |
 | Nouvelle demande de compte conseiller | the addresses in `ADMIN_NOTIFY_EMAIL`; every verified admin when it is unset | `services/demande_mail.notify_if_visible` |
 | Compte activé / demande non retenue / accès retiré | the conseiller | `admin` approve / reject / revoke |
 
 - **The analysis mail goes out on every run `_run_analysis` finishes, watched
   or not.** That is what lets the waiting page say « vous pouvez fermer cette
   page », and why its 10-minute give-up reads « C’est plus long que prévu »,
-  not an error. A run orphaned by a restart is not one of them:
-  `reap_stale_running` marks it `error` at startup and sends nothing.
+  not an error. A no-login report has no address to mail, so its waiting page
+  promises none (« Gardez ce lien : le rapport s’affichera ici dès qu’il sera
+  prêt. »). A run orphaned by a restart is not one of them:
+  `reap_stale_running` (`app/__init__.py`) marks it `error` at startup and
+  sends nothing — but it only takes runs older than `STALE_RUN_CUTOFF_MINUTES`
+  (15), and a run a deploy orphans is a minute or two old when the new
+  container boots. So `reap_if_orphaned()` (same module, same cutoff, same
+  `started_at` clock) applies the rule to the one row a read is about to
+  serve — `GET /api/analyses/<id>`, `GET /api/analyses/by-token`,
+  `GET /api/counselor/analyses/<id>` — once it passes the cutoff: `running`
+  rows only, never `queued`; it sets `error` and sends no mail. The list
+  endpoints still show such a run as `running` until its row is opened.
 - **The run an unlock starts (`unlock_method` set) has its own wording.** When
   it fails, the unlock is still a dead end — a second unlock is a 409 — so the
   mail asks the candidate to reply, with the analysis id. Relaunching it is

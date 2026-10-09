@@ -4,10 +4,11 @@ import { useState, useCallback, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
-import { useAuth, useRequireSession } from "@/lib/auth"
+import { useAuth } from "@/lib/auth"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { AppBar } from "@/components/layout/AppBar"
+import { DOORS_PANEL_ID, DoorsPanel, type DoorId } from "@/components/analyse/DoorsPanel"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { SectionCard } from "@/components/ui/section-card"
@@ -15,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { api, ApiError } from "@/lib/api"
+import { held } from "@/lib/held"
 import { cn } from "@/lib/utils"
 import type { Analysis } from "@/types"
 import { UploadCloud, FileText, ArrowRight, Check, ShieldCheck } from "lucide-react"
@@ -69,6 +71,11 @@ function toInputs({ chemin, ...rest }: Fields) {
   return { ...rest, _chemin: chemin }
 }
 
+/** Where the sign-in link under « Enregistrer le brouillon » brings the person
+ *  back after a lapsed session (ruling R14): the form, refilled from the draft
+ *  this browser holds, with no door open — they only wanted their form back. */
+const DRAFT_RETURN = "/analyse/nouveau?reprendre=brouillon"
+
 export default function NouvelleAnalysePage() {
   return (
     <Suspense>
@@ -80,23 +87,21 @@ export default function NouvelleAnalysePage() {
 function NouvelleAnalyseForm() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
-  const ready = useRequireSession()
+  // The form opens to everyone (four-doors spec): it waits only for auth to
+  // resolve, so the doors know who is there.
+  const ready = !authLoading
   const searchParams = useSearchParams()
   const [draftId, setDraftId] = useState<string | null>(searchParams.get("draft"))
-  const [draftState, setDraftState] = useState<"idle" | "saving" | "saved" | "error" | "auth">("idle")
+  const [draftState, setDraftState] = useState<"idle" | "saving" | "saved" | "error" | "held">("idle")
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
   const [uploadedFilename, setUploadedFilename] = useState<string>("")
   const [projectUploadState, setProjectUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle")
   const [projectUploadedFilename, setProjectUploadedFilename] = useState<string>("")
-  const [submitError, setSubmitError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isProjectDragging, setIsProjectDragging] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-
-  // Premium generation is offered only to users who are actually entitled to it
-  // (paid plan or remaining credits). Everyone else generates the free tier and
-  // unlocks the full report afterwards via /debloquer. This closes the free-premium hole.
-  const canPremium = !!user && (user.plan === "paid" || (user.credits_remaining ?? 0) > 0)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [initialDoor, setInitialDoor] = useState<DoorId | null>(null)
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null)
 
   const { register, handleSubmit, control, setValue, watch, reset, formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
@@ -123,6 +128,66 @@ function NouvelleAnalyseForm() {
       .catch(() => { /* draft gone — start blank */ })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Back from a sign-in round trip (?reprendre=compte|promo): refill the form
+  // from the held draft and reopen the panel at that door (four-doors spec,
+  // decision 34). The person confirms; nothing starts on its own.
+  // ?reprendre=brouillon is the way back from the lapsed-session link under
+  // « Enregistrer le brouillon » (ruling R14): same restore, but no door.
+  // Once it has run, whatever the outcome, ?reprendre= is dropped from the URL:
+  // it is a one-shot instruction, and left in the history entry it would replay
+  // on Back, after a submit promoted the draft, as a false « formulaire resté
+  // sur l’appareil ».
+  useEffect(() => {
+    const porte = searchParams.get("reprendre")
+    if (!porte || authLoading) return
+    const door: DoorId | null = porte === "brouillon" ? null : porte === "promo" ? "promo" : "account"
+    // A run can be cleaned up before it settles (the page is left; Strict Mode
+    // runs effects twice in dev): only the live run touches the form or the URL.
+    let live = true
+    const restore = (a: Analysis, owned: boolean) => {
+      const i = a.inputs ?? {}
+      reset({ cv_text: i.cv_text ?? "", cible_visee: i.cible_visee ?? "", chemin: i._chemin === "B" ? "B" : "A" })
+      if (owned) setDraftId(a.id)
+      if (door) {
+        setInitialDoor(door)
+        setPanelOpen(true)
+      }
+    }
+    const resume = async () => {
+      try {
+        if (!user) {
+          const { analysis } = await held.get()
+          if (live) restore(analysis, false)
+          return
+        }
+        let draft: Analysis | undefined
+        try {
+          draft = (await held.claim()).analysis
+        } catch (e) {
+          // Only « nothing held » (404) falls back. Any other failure is shown
+          // as it is: guessing around it would restore the wrong thing.
+          if (!(e instanceof ApiError && e.status === 404)) throw e
+          // Verified on another device: signup attached the draft to this
+          // account at verify-email, so it is the account's latest draft.
+          const { analyses } = await api.get<{ analyses: Analysis[] }>("/analyses/", { skipRedirect: true })
+          draft = analyses.find((a) => a.status === "draft")
+          if (!draft) {
+            if (live) setResumeNotice("Votre formulaire est resté sur l’appareil où vous l’avez rempli : connectez-vous depuis celui-ci pour le retrouver.")
+            return
+          }
+        }
+        if (live) restore(draft, true)
+      } catch (e) {
+        if (live) setResumeNotice(e instanceof ApiError ? e.message : "Erreur inattendue.")
+      } finally {
+        if (live) router.replace("/analyse/nouveau", { scroll: false })
+      }
+    }
+    resume()
+    return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading])
 
   const handleFile = useCallback(async (file: File) => {
     if (file.type !== "application/pdf") { setUploadState("error"); return }
@@ -168,34 +233,30 @@ function NouvelleAnalyseForm() {
     if (file) handleProjectFile(file)
   }, [handleProjectFile])
 
-  const onSubmit = async (data: Fields) => {
-    setSubmitError(null)
-    setSubmitting(true)
-    const tier = canPremium ? "sonnet" : "haiku"
-    try {
-      const res = await api.post<{ analysis: Analysis }>("/analyses/", { inputs: toInputs(data), tier })
-      if (draftId) api.delete(`/analyses/${draftId}`).catch(() => {})
-      router.push(`/analyse/en-cours/${res.analysis.id}`)
-    } catch (e) {
-      setSubmitError(e instanceof ApiError ? e.message : "Erreur inattendue.")
-      setSubmitting(false)
-    }
-  }
+  // Validation passed: the doors decide what happens next (four-doors spec).
+  const onSubmit = () => setPanelOpen(true)
 
+  // The button is shown to signed-in visitors only, but a session can lapse
+  // under an open page: the backend then keeps the draft in this browser and
+  // says so with "held" (ruling R13).
   const saveDraft = async () => {
-    if (!authLoading && !user) { setDraftState("auth"); return }
     setDraftState("saving")
     try {
-      const res = await api.post<{ analysis: Analysis }>(
+      const res = await api.post<{ analysis: Analysis; held?: boolean }>(
         "/analyses/draft",
         { inputs: toInputs(watch()), draft_id: draftId ?? undefined },
         { skipRedirect: true },
       )
+      if (res.held) {
+        // Not the account's draft: no draftId to carry, and no « Brouillon enregistré ».
+        setDraftState("held")
+        return
+      }
       setDraftId(res.analysis.id)
       setDraftState("saved")
       setTimeout(() => setDraftState((s) => (s === "saved" ? "idle" : s)), 4000)
-    } catch (e) {
-      setDraftState(e instanceof ApiError && e.status === 401 ? "auth" : "error")
+    } catch {
+      setDraftState("error")
     }
   }
 
@@ -243,8 +304,8 @@ function NouvelleAnalyseForm() {
     )
   }
 
-  // No form until the session is known to be live (useRequireSession): a
-  // pasted CV and target typed into an expired one were lost at submit. A
+  // No form until auth has resolved, so the doors know who is there (signed in
+  // or not) and the draft/panel choices below are right on the first paint. A
   // draft that loads meanwhile is reset() into the form before it mounts,
   // and the fields pick it up when they register.
   if (!ready) {
@@ -272,10 +333,12 @@ function NouvelleAnalyseForm() {
           <h1 className="font-display text-2xl font-bold text-navy">Nouvelle analyse</h1>
           <Badge variant="outline" className="font-mono text-xs">~2 min</Badge>
         </div>
-        <p className="mb-8 text-sm text-muted-foreground">Votre CV et la cible que vous visez. Le reste vient de votre profil.</p>
+        <p className="mb-8 text-sm text-muted-foreground">
+          {user ? "Votre CV et la cible que vous visez. Le reste vient de votre profil." : "Votre CV et la cible que vous visez."}
+        </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {submitError && <Alert variant="destructive"><AlertDescription>{submitError}</AlertDescription></Alert>}
+          {resumeNotice && <Alert><AlertDescription>{resumeNotice}</AlertDescription></Alert>}
 
           <SectionCard n={1} title="Votre CV">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.2fr_1fr]">
@@ -335,42 +398,57 @@ function NouvelleAnalyseForm() {
             {errors.cible_visee && <p className="mt-2 text-xs text-destructive">{errors.cible_visee.message}</p>}
           </SectionCard>
 
-          <p className="rounded-2xl bg-card p-4 text-xs text-muted-foreground ring-1 ring-foreground/10">
-            Le reste de l’analyse s’appuie sur ce que vous avez déjà donné — prénom,
-            localisation, situation, contraintes. Ces questions sont posées à
-            l’inscription et au fil du{" "}
-            <Link href="/voyage" className="link-underline text-navy">voyage</Link> ; vous
-            pouvez les relire dans{" "}
-            <Link href="/profil" className="link-underline text-navy">mes informations</Link>.
-          </p>
+          {user && (
+            <p className="rounded-2xl bg-card p-4 text-xs text-muted-foreground ring-1 ring-foreground/10">
+              Le reste de l’analyse s’appuie sur ce que vous avez déjà donné — prénom,
+              localisation, situation, contraintes. Ces questions sont posées à
+              l’inscription et au fil du{" "}
+              <Link href="/voyage" className="link-underline text-navy">voyage</Link> ; vous
+              pouvez les relire dans{" "}
+              <Link href="/profil" className="link-underline text-navy">mes informations</Link>.
+            </p>
+          )}
 
           {/* Footer */}
           <div className="flex flex-col gap-4 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-1">
-              <Button type="button" variant="outline" onClick={saveDraft} disabled={draftState === "saving"} className="self-start">
-                {draftState === "saving" ? "Enregistrement…" : draftState === "saved" ? <><Check className="size-4 text-success" /> Brouillon enregistré</> : "Enregistrer le brouillon"}
-              </Button>
-              {draftState === "auth" && (
-                <span className="text-xs text-destructive">
-                  <Link href="/connexion" className="underline">Connectez-vous</Link> pour enregistrer un brouillon.
-                </span>
-              )}
-              {draftState === "error" && <span className="text-xs text-destructive">Échec de l’enregistrement. Réessayez.</span>}
-            </div>
+            {user && (
+              <div className="flex flex-col gap-1">
+                <Button type="button" variant="outline" onClick={saveDraft} disabled={draftState === "saving"} className="self-start">
+                  {draftState === "saving" ? "Enregistrement…" : draftState === "saved" ? <><Check className="size-4 text-success" /> Brouillon enregistré</> : "Enregistrer le brouillon"}
+                </Button>
+                {/* Information, not a failure: the draft is safe in this browser. */}
+                {draftState === "held" && (
+                  <span className="text-xs text-muted-foreground">
+                    Votre session a expiré : ce brouillon est gardé dans ce navigateur.{" "}
+                    <Link href={`/connexion?redirect=${encodeURIComponent(DRAFT_RETURN)}`} className="text-navy underline underline-offset-2">Connectez-vous</Link> pour l’enregistrer dans votre espace.
+                  </span>
+                )}
+                {draftState === "error" && <span className="text-xs text-destructive">Échec de l’enregistrement. Réessayez.</span>}
+              </div>
+            )}
 
-            <Button type="submit" size="xl" disabled={submitting}>
-              {submitting ? "Lancement…" : canPremium ? "Générer l’analyse complète" : "Générer mon analyse"}
-              {!submitting && <ArrowRight />}
+            {/* sm:ml-auto keeps it on the right when the draft button is not there (signed out). */}
+            <Button type="submit" size="xl" className="sm:ml-auto" aria-expanded={panelOpen} aria-controls={DOORS_PANEL_ID}>
+              Générer mon analyse <ArrowRight />
             </Button>
           </div>
 
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <ShieldCheck className="size-3.5 text-success" />
-            {canPremium
-              ? "Analyse complète · 9 sections. Données chiffrées, supprimables à tout moment."
-              : "3 sections gratuites — les 6 suivantes après déblocage (9 € ou code conseiller). Données chiffrées."}
+            Données chiffrées, supprimables à tout moment.
           </p>
         </form>
+
+        {panelOpen && (
+          <div className="mt-6">
+            <DoorsPanel
+              inputs={() => toInputs(watch())}
+              draftId={draftId}
+              initialDoor={initialDoor}
+              onClose={() => setPanelOpen(false)}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -42,7 +42,6 @@ export function ReportSection({
   render = "markdown",
   locked = false,
   paid = false,
-  counselor = false,
   unlockHref,
 }: {
   n: string
@@ -52,7 +51,6 @@ export function ReportSection({
   section?: SectionData
   locked?: boolean
   paid?: boolean
-  counselor?: boolean
   unlockHref?: string
 }) {
   // Keys run "1".."11". The free-tier verdict has no ordinal, so it gets no
@@ -68,7 +66,7 @@ export function ReportSection({
         )}
         <div className="flex flex-1 items-center gap-2 bg-navy px-3 py-2">
           <h2 className="font-display text-sm font-bold uppercase leading-tight tracking-wide text-white">{title}</h2>
-          {paid && !counselor && <Badge variant="peach" className="ml-auto shrink-0 text-[10px]">plan payant</Badge>}
+          {paid && <Badge variant="peach" className="ml-auto shrink-0 text-[10px]">plan payant</Badge>}
         </div>
       </div>
 

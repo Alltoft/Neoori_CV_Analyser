@@ -6,9 +6,10 @@ Two audiences, two access rules, one blueprint:
     voyage and never take an id from the client, so there is nothing to
     enumerate and no ownership check to forget.
   * counselor handlers need the counselor/admin role **and** the share token.
-    That is deliberately stricter than /api/c/<token> for analyses: the
-    synthesis sheet is a psychometric read-out, so a leaked link alone must
-    not open it (spec § Security).
+    That was deliberately stricter than /api/c/<token> for analyses, a public
+    link the four-doors spec retired (decision 43): the synthesis sheet is a
+    psychometric read-out, so a leaked link alone must not open it (voyage
+    spec § Security).
 
 Session locking is enforced here and not only in the UI — see
 models.voyage.session_lock: S0 needs the voyage to exist, S1-S5 need a
@@ -24,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models.analysis import Analysis
+from ..models.code_redemption import CodeRedemption
 from ..models.profile import Profile
 from ..models.voyage import (
     CONSENT_VERSION,
@@ -173,6 +175,13 @@ def delete_voyage():
         stripped.pop("_voyage", None)
         stripped.pop("_voyage_id", None)
         analysis.inputs = stripped
+
+    # The use stays spent, but no longer names a person who erased their
+    # voyage (four-doors spec, decision 23) — and the per-person unique key no
+    # longer stops them from unlocking a new voyage with another use.
+    CodeRedemption.query.filter_by(target_type="voyage", target_id=voyage.id).update(
+        {"user_id": None}, synchronize_session=False
+    )
 
     try:
         db.session.delete(voyage)
@@ -467,15 +476,33 @@ def unlock_voyage():
     if not code_str:
         return jsonify({"error": "Code requis."}), 400
 
-    code, refusal = code_service.resolve(code_str)
+    code, refusal = code_service.resolve(code_str, "voyage")
     if refusal:
         return jsonify({"error": refusal}), 400
 
-    voyage.counselor_code_id = code.id
-    code_service.record(
-        code, user_id=voyage.user_id, target_type="voyage", target_id=voyage.id
+    # The unlock is set BEFORE the redemption is written, so redeem()'s commit
+    # carries both: a use is never spent on a voyage that stays locked. The ids
+    # go in locals because a rollback inside redeem() expires these objects.
+    voyage_id, code_id = voyage.id, code.id
+    voyage.counselor_code_id = code_id
+    refused = code_service.redeem(
+        code, user_id=voyage.user_id, target_type="voyage", target_id=voyage_id
     )
-    db.session.commit()
+    if refused:
+        # redeem() has rolled back on a key violation, but not on its early
+        # EXHAUSTED: either way the pending unlock must not outlive the refusal.
+        db.session.rollback()
+        return jsonify({"error": refused}), 400
+
+    # When another request took the slot first, redeem() rolls back and retries
+    # once, and that retry commits only the redemption. The unlock rode on the
+    # commit that was rolled back, so re-read the voyage and finish it.
+    voyage = db.session.get(Voyage, voyage_id)
+    if voyage is None:
+        return jsonify({"error": NO_VOYAGE}), 404
+    if voyage.counselor_code_id != code_id:
+        voyage.counselor_code_id = code_id
+        db.session.commit()
     return jsonify({"voyage": voyage.to_dict()}), 200
 
 
@@ -506,9 +533,10 @@ def get_portrait():
 
 
 # ── counselor ────────────────────────────────────────────────────────────────
-# Role AND token. /api/c/<token> for an analysis is public by design — a
-# counselor opens the link without an account. The synthesis sheet is a
-# psychometric read-out, so a leaked link alone must not open it.
+# Role AND token. /api/c/<token> for an analysis was public by design — a
+# counselor opened the link without an account — until the four-doors spec
+# retired it (decision 43). The synthesis sheet is a psychometric read-out,
+# so a leaked link alone must not open it.
 
 NOT_FOUND = "Voyage introuvable."
 

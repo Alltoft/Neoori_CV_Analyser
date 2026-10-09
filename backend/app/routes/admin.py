@@ -10,6 +10,7 @@ from ..models.counselor_code import CounselorCode
 from ..models.counselor_profile import CounselorProfile
 from ..models.voyage import STATUS_S0, STATUS_TERMINE, Voyage
 from ..services import email_service
+from ..services import code_service
 from ..services import section_registry as registry
 from ..services import tiers
 from ..utils.decorators import admin_required
@@ -179,26 +180,80 @@ def verify_user_email(user_id):
     return jsonify({"user": user.to_dict()}), 200
 
 
+# Promo codes (four-doors spec, decision 18): one use and 90 days unless the
+# admin says otherwise, `null` meaning illimité. Same ceilings as the codes a
+# conseiller mints (routes/counselor_space.py).
+PROMO_DEFAULT_USES = 1
+PROMO_DEFAULT_DAYS = 90
+USES_CEILING = 1000
+DAYS_CEILING = 3650
+
+
+def _admin_code_row(code: CounselorCode, uses: dict[str, int]) -> dict:
+    return {**code.to_dict(), "kind": code_service.kind(code), "uses_by_kind": uses}
+
+
+def _promo_limit(data: dict, key: str, default: int | None) -> tuple[int | None, str | None]:
+    """Absent: the default. null: illimité. Otherwise a positive integer."""
+    if key not in data:
+        return default, None
+    return _optional_limit(data, key)
+
+
 @admin_bp.get("/counselor-codes")
 @admin_required
 def list_counselor_codes():
     codes = CounselorCode.query.order_by(CounselorCode.created_at.desc()).all()
-    return jsonify({"codes": [c.to_dict() for c in codes]}), 200
+    counts = code_service.use_counts_by_kind([c.id for c in codes])
+    empty = {"analysis": 0, "voyage": 0}
+    return jsonify({"codes": [_admin_code_row(c, counts.get(c.id, dict(empty))) for c in codes]}), 200
 
 
 @admin_bp.post("/counselor-codes")
 @admin_required
 def create_counselor_code():
-    user_id = get_jwt_identity()
     data = json_object()
     label = text_field(data, "label")
     if not label:
         return jsonify({"error": "label requis."}), 400
+    max_uses, problem = _promo_limit(data, "max_uses", PROMO_DEFAULT_USES)
+    if problem:
+        return jsonify({"error": problem}), 400
+    days, problem = _promo_limit(data, "expires_in_days", PROMO_DEFAULT_DAYS)
+    if problem:
+        return jsonify({"error": problem}), 400
 
-    code = CounselorCode(label=label, created_by_id=user_id)
+    code = CounselorCode(
+        label=label,
+        created_by_id=get_jwt_identity(),
+        max_uses=None if max_uses is None else min(max_uses, USES_CEILING),
+        expires_at=None if days is None else datetime.utcnow() + timedelta(days=min(days, DAYS_CEILING)),
+    )
     db.session.add(code)
     db.session.commit()
-    return jsonify({"code": code.to_dict()}), 201
+    return jsonify({"code": _admin_code_row(code, {"analysis": 0, "voyage": 0})}), 201
+
+
+@admin_bp.patch("/counselor-codes/<code_id>")
+@admin_required
+def update_counselor_code(code_id):
+    """Set a code's limits later — the one admin code that predates the doors
+    has neither (decision 18)."""
+    code = CounselorCode.query.get_or_404(code_id)
+    data = json_object()
+    if "max_uses" in data:
+        value, problem = _optional_limit(data, "max_uses")
+        if problem:
+            return jsonify({"error": problem}), 400
+        code.max_uses = None if value is None else min(value, USES_CEILING)
+    if "expires_in_days" in data:
+        days, problem = _optional_limit(data, "expires_in_days")
+        if problem:
+            return jsonify({"error": problem}), 400
+        code.expires_at = None if days is None else datetime.utcnow() + timedelta(days=min(days, DAYS_CEILING))
+    db.session.commit()
+    counts = code_service.use_counts_by_kind([code.id])
+    return jsonify({"code": _admin_code_row(code, counts.get(code.id, {"analysis": 0, "voyage": 0}))}), 200
 
 
 @admin_bp.delete("/counselor-codes/<code_id>")
@@ -206,8 +261,10 @@ def create_counselor_code():
 def deactivate_counselor_code(code_id):
     code = CounselorCode.query.get_or_404(code_id)
     code.is_active = False
+    code.revoked_at = code.revoked_at or datetime.utcnow()
     db.session.commit()
-    return jsonify({"code": code.to_dict()}), 200
+    counts = code_service.use_counts_by_kind([code.id])
+    return jsonify({"code": _admin_code_row(code, counts.get(code.id, {"analysis": 0, "voyage": 0}))}), 200
 
 
 def _optional_limit(data: dict, key: str) -> tuple[int | None, str | None]:

@@ -1,3 +1,5 @@
+import { parseUtc } from "./utils"
+
 /* Central FR localization for backend enum values — so no raw English token
    (success / paid / counselor …) ever leaks into the UI. Use these everywhere. */
 
@@ -52,7 +54,10 @@ export const fmtPct = (n?: number | null, digits = 0) =>
 
 export const fmtDate = (d?: string | null) => {
   if (!d) return "—"
-  const date = new Date(d)
+  // The API's datetimes are naive UTC: parseUtc reads them as UTC, where
+  // new Date() read them as the viewer's local time and, around midnight UTC,
+  // gave the neighbouring day. A string that carries an offset is read as before.
+  const date = parseUtc(d)
   return isNaN(+date) ? "—" : date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })
 }
 export const fmtDateTime = (d?: string | null) => {

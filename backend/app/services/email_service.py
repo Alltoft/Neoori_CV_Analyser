@@ -321,6 +321,43 @@ def send_analysis_failed(to: str, prenom: str, *, unlocked: bool, analysis_id: s
         return False
 
 
+def send_counselor_analysis_ready(to: str) -> bool:
+    """« Une analyse est prête » — an advisor-door run finished (four-doors
+    spec, decision 28). No name and no content: the report is behind the
+    counselor's login."""
+    try:
+        body, text = _mail(
+            [
+                "Bonjour,",
+                "Un bénéficiaire a utilisé votre code : son analyse est prête dans "
+                "votre espace conseiller.",
+            ],
+            button=("Ouvrir mon espace conseiller", f"{_app_url()}/conseiller"),
+        )
+        return send(to, "Une analyse est prête", _layout("Analyse prête", body), text)
+    except Exception:
+        current_app.logger.exception("Could not build/send the counselor analysis-ready mail.")
+        return False
+
+
+def send_counselor_analysis_failed(to: str) -> bool:
+    """« Une analyse n’a pas abouti » — the counselor can relaunch it; the
+    candidate, who left with /analyse/envoyee, cannot."""
+    try:
+        body, text = _mail(
+            [
+                "Bonjour,",
+                "Un bénéficiaire a utilisé votre code : son analyse n’a pas abouti. "
+                "Vous pouvez la relancer depuis votre espace conseiller.",
+            ],
+            button=("Ouvrir mon espace conseiller", f"{_app_url()}/conseiller"),
+        )
+        return send(to, "Une analyse n’a pas abouti", _layout("Analyse interrompue", body), text)
+    except Exception:
+        current_app.logger.exception("Could not build/send the counselor analysis-failed mail.")
+        return False
+
+
 def send_new_demande(to: str, prenom: str) -> bool:
     """« Nouvelle demande de compte conseiller », to one address. Plain values:
     demande_mail picks the recipients. Nothing about the applicant: name,

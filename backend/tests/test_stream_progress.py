@@ -177,7 +177,8 @@ def test_unlocking_rewinds_progress_for_the_regeneration(app):
 
 
 def test_the_poll_endpoint_returns_progress(app, client):
-    analysis = Analysis(inputs={"_path": "1"}, status="running", progress=61)
+    # Ownerless, so readable by id only as a legacy row (four-doors decision 44).
+    analysis = Analysis(inputs={"_path": "1"}, status="running", progress=61, door="legacy")
     db.session.add(analysis)
     db.session.commit()
     res = client.get(f"/api/analyses/{analysis.id}")

@@ -1,6 +1,6 @@
 import { api } from "./api"
 import type {
-  Beneficiaire, CounselorApplication, CounselorCodeRow,
+  Analysis, Beneficiaire, CounselorAnalysisRow, CounselorApplication, CounselorCodeRow,
   CounselorProfile, CounselorStats, DomaineActivite, TypeStructure, User,
 } from "@/types"
 
@@ -28,8 +28,8 @@ export interface ApplyPayload {
   password?: string
 }
 
-/** The conseiller's own surface. /api/counselor, not /api/c — that one is the
- *  token-addressed share link for an analysis and has no account behind it. */
+/** The conseiller's own surface: /api/counselor. The token-addressed share link
+ *  that /api/c served is retired (four-doors spec, decision 43). */
 export const counselor = {
   apply: (payload: ApplyPayload) =>
     api.post<{ user: User; profile: CounselorProfile; mail_sent?: boolean }>("/counselor/apply", payload),
@@ -48,6 +48,16 @@ export const counselor = {
   revokeCode: (id: string) => api.delete<{ code: CounselorCodeRow }>(`/counselor/codes/${id}`),
 
   beneficiaires: () => api.get<{ beneficiaires: Beneficiaire[] }>("/counselor/beneficiaires"),
+
+  /** Advisor-door reports — the counselor's alone (four-doors spec, ruling 2). */
+  analyses: () => api.get<{ analyses: CounselorAnalysisRow[] }>("/counselor/analyses"),
+  analysis: (id: string) =>
+    api.get<{ analysis: Analysis; code_label: string | null }>(`/counselor/analyses/${id}`),
+  deleteAnalysis: (id: string) => api.delete(`/counselor/analyses/${id}`),
+  relaunch: (id: string) => api.post<{ analysis: Analysis }>(`/counselor/analyses/${id}/relaunch`),
+  note: (id: string) => api.get<{ note: string }>(`/counselor/analyses/${id}/notes`),
+  saveNote: (id: string, note: string) =>
+    api.put<{ note: string }>(`/counselor/analyses/${id}/notes`, { note }),
 }
 
 export const adminCounselor = {

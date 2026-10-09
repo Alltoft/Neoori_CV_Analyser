@@ -17,6 +17,11 @@ class CounselorNote(db.Model):
         onupdate=datetime.utcnow,
     )
 
+    # One note per counselor per analysis: the counselor page upserts it.
+    __table_args__ = (
+        db.UniqueConstraint("analysis_id", "counselor_id", name="uq_counselor_notes_analysis_counselor"),
+    )
+
     def to_dict(self):
         return {
             "id": self.id,

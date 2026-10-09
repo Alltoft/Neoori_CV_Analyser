@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { AppBar } from "@/components/layout/AppBar"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -13,12 +15,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
-import { copyToClipboard } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
+import { held } from "@/lib/held"
 import { getVoyage } from "@/lib/voyage"
 import type { Analysis } from "@/types"
 import type { Voyage } from "@/types/voyage"
-import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, Check, Link2, ArrowRight } from "lucide-react"
+import { PlusCircle, ExternalLink, Download, MoreHorizontal, Trash2, ArrowRight } from "lucide-react"
 
 function cardTitle(a: Analysis) {
   if (a.status === "draft") return "Brouillon"
@@ -26,33 +28,42 @@ function cardTitle(a: Analysis) {
 }
 
 export default function EspacePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <Espace />
+    </Suspense>
+  )
+}
+
+function Espace() {
   const { user } = useAuth()
+  const garder = useSearchParams().get("garder") === "1"
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
-  const [origin, setOrigin] = useState("")
+  // The report this visit has just attached to the account, if any.
+  const [claimed, setClaimed] = useState<Analysis | null>(null)
   const [voyage, setVoyage] = useState<Voyage | null>(null)
   const [voyageLoaded, setVoyageLoaded] = useState(false)
 
-  useEffect(() => setOrigin(window.location.origin), [])
-
-  const copyShare = async (token: string) => {
-    const url = `${window.location.origin}/c/${token}`
-    const ok = await copyToClipboard(url)
-    if (!ok) {
-      window.prompt("Copiez le lien conseiller :", url)
-      return
-    }
-    setCopiedToken(token)
-    setTimeout(() => setCopiedToken((t) => (t === token ? null : t)), 2500)
-  }
-
   useEffect(() => {
-    api.get<{ analyses: Analysis[] }>("/analyses/")
+    // Back from « Créer un compte pour le garder » (four-doors spec, decision
+    // 32): attach the held report to this account before the list is read, so
+    // the first list already holds it. When nothing is held any more — a
+    // password signup's verification link attached it already — the claim
+    // answers 404: no sentence, and the list stands as it is.
+    const claim = garder ? held.claim().then((r) => setClaimed(r.analysis), () => {}) : Promise.resolve()
+    claim
+      .then(() => api.get<{ analyses: Analysis[] }>("/analyses/"))
       .then((r) => setAnalyses(r.analyses))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [garder])
+
+  // The report just kept goes first, as the spec has it: the list is ordered by
+  // creation date, and a no-login report keeps the date of its run, which can
+  // be older than the account's other analyses. Deduplicated by id: the list
+  // read after the claim already holds it.
+  const shown = garder && claimed ? [claimed, ...analyses.filter((a) => a.id !== claimed.id)] : analyses
 
   // The voyage is never required (spec decision 11) — this strip is an offer,
   // so a failed read renders nothing rather than an error (D-S9): voyageLoaded
@@ -69,12 +80,11 @@ export default function EspacePage() {
     try {
       await api.delete(`/analyses/${id}`)
       setAnalyses((prev) => prev.filter((a) => a.id !== id))
+      setClaimed((c) => (c?.id === id ? null : c))
     } catch (e) {
       alert(e instanceof ApiError ? e.message : "Erreur lors de la suppression.")
     }
   }
-
-  const shareable = analyses.find((a) => a.status === "success" && a.share_token)
 
   return (
     <div className="min-h-screen bg-background">
@@ -160,11 +170,15 @@ export default function EspacePage() {
           </Link>
         )}
 
+        {garder && claimed && (
+          <Alert className="mb-4"><AlertDescription>Le rapport est maintenant dans votre espace.</AlertDescription></Alert>
+        )}
+
         {loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
           </div>
-        ) : analyses.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary py-20 text-center">
             <span className="grid size-12 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-6" /></span>
             <p className="font-display font-semibold text-navy">Votre première analyse</p>
@@ -175,7 +189,7 @@ export default function EspacePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {analyses.map((a) => (
+            {shown.map((a) => (
               <div key={a.id} className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 shadow-soft hover-lift">
                 <div className="flex items-start justify-between gap-2">
                   <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{fmtDate(a.created_at)}</Badge>
@@ -223,11 +237,6 @@ export default function EspacePage() {
                       <Button render={<Link href={`/analyse/${a.id}/rapport?print=1`} />} size="icon-sm" variant="outline" aria-label="Télécharger le PDF">
                         <Download className="size-3.5" />
                       </Button>
-                      {a.share_token && (
-                        <Button size="icon-sm" variant="outline" aria-label="Copier le lien conseiller" onClick={() => copyShare(a.share_token!)}>
-                          {copiedToken === a.share_token ? <Check className="size-3.5 text-success" /> : <Link2 className="size-3.5" />}
-                        </Button>
-                      )}
                     </>
                   )}
                 </div>
@@ -249,23 +258,7 @@ export default function EspacePage() {
         <Separator className="my-8" />
 
         {/* Bottom strip */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-          <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:flex-row sm:items-center">
-            <span className="shrink-0 text-sm font-medium text-navy">Partagez avec votre conseiller</span>
-            {shareable ? (
-              <>
-                <code className="flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs text-muted-foreground">
-                  {origin}/c/{shareable.share_token}
-                </code>
-                <Button size="sm" variant="outline" className="shrink-0" onClick={() => copyShare(shareable.share_token!)}>
-                  {copiedToken === shareable.share_token ? <><Check className="size-3.5 text-success" /> Copié</> : "Copier"}
-                </Button>
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">Aucune analyse complète disponible pour le moment.</span>
-            )}
-          </div>
-
+        <div className="grid grid-cols-1 gap-4">
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
             <div>
               <p className="eyebrow text-muted-foreground">Crédits restants</p>

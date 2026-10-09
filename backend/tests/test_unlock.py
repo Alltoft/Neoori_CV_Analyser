@@ -3,10 +3,12 @@ from unittest.mock import patch
 from app.extensions import db
 from app.models.analysis import Analysis
 from app.models.counselor_code import CounselorCode
+from tests.helpers_doors import bearer, user
 
 
-def _make_analysis(status="success", path="A", output=None):
+def _make_analysis(status="success", path="A", output=None, owner=None):
     a = Analysis(
+        user_id=owner.id if owner else None,
         inputs={"_path": path, "_tier": "haiku", "cible_visee": "x"},
         status=status,
         output=output if output is not None else {"1": {"title": "t", "body_markdown": "b", "items": []}},
@@ -23,11 +25,16 @@ def _make_code(active=True):
     return c
 
 
+# /unlock is the owner's alone and takes promo codes only (four-doors spec,
+# decision 22): every rig below owns its analysis and posts with that owner's
+# bearer header. _make_code() mints an ownerless code, which is a promo code.
+
 @patch("app.services.unlock_service.start_analysis")
 def test_unlock_with_valid_code(mock_start, client, app):
-    a = _make_analysis()
+    owner = user()
+    a = _make_analysis(owner=owner)
     c = _make_code()
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=bearer(owner))
     assert r.status_code == 200
     db.session.refresh(a)
     assert a.status == "queued"
@@ -40,31 +47,35 @@ def test_unlock_with_valid_code(mock_start, client, app):
 
 @patch("app.services.unlock_service.start_analysis")
 def test_unlock_code_normalisation(mock_start, client, app):
-    a = _make_analysis()
+    owner = user()
+    a = _make_analysis(owner=owner)
     c = _make_code()
     spaced = f" {c.code[:4].lower()}-{c.code[4:]} "
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": spaced})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": spaced}, headers=bearer(owner))
     assert r.status_code == 200
 
 
 def test_unlock_invalid_code(client, app):
-    a = _make_analysis()
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": "NOPE1234"})
+    owner = user()
+    a = _make_analysis(owner=owner)
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": "NOPE1234"}, headers=bearer(owner))
     assert r.status_code == 400
 
 
 def test_unlock_inactive_code(client, app):
-    a = _make_analysis()
+    owner = user()
+    a = _make_analysis(owner=owner)
     c = _make_code(active=False)
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=bearer(owner))
     assert r.status_code == 400
 
 
 @patch("app.services.unlock_service.start_analysis")
 def test_unlock_already_unlocked(mock_start, client, app):
-    a = _make_analysis(output={"1": {}, "5": {}})
+    owner = user()
+    a = _make_analysis(output={"1": {}, "5": {}}, owner=owner)
     c = _make_code()
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=bearer(owner))
     assert r.status_code == 409
     db.session.refresh(c)
     assert c.uses_count == 0
@@ -72,10 +83,13 @@ def test_unlock_already_unlocked(mock_start, client, app):
 
 
 def test_unlock_draft_rejected(client, app):
-    a = _make_analysis(status="draft", output=None)
+    owner = user()
+    a = _make_analysis(status="draft", output=None, owner=owner)
     c = _make_code()
-    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code})
+    r = client.post(f"/api/analyses/{a.id}/unlock", json={"code": c.code}, headers=bearer(owner))
     assert r.status_code == 409
+    db.session.refresh(c)
+    assert c.uses_count == 0
 
 
 def test_payments_config_disabled_without_key(client, app, monkeypatch):
@@ -87,8 +101,11 @@ def test_payments_config_disabled_without_key(client, app, monkeypatch):
 
 def test_checkout_503_without_key(client, app, monkeypatch):
     monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
-    a = _make_analysis()
-    r = client.post("/api/payments/checkout", json={"analysis_id": a.id})
+    # Checkout is the owner's: signed out it answers 401 before it looks for
+    # the key, so the 503 is only reachable as the owner.
+    owner = user()
+    a = _make_analysis(owner=owner)
+    r = client.post("/api/payments/checkout", json={"analysis_id": a.id}, headers=bearer(owner))
     assert r.status_code == 503
 
 
