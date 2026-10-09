@@ -17,7 +17,9 @@ export default function CgvPage() {
       <h2>2. Description du service</h2>
       <p>
         L&apos;offre gratuite comprend les trois premières sections du rapport d&apos;analyse,
-        ainsi qu&apos;un verdict de diagnostic. Elle est accessible avec ou sans compte ; sans compte, le rapport n&apos;est accessible que par un lien privé, pendant 30 jours, sauf si l&apos;utilisateur crée un compte pour le conserver. L&apos;offre payante débloque le rapport complet. Il compte 9 sections, incluant les points à renforcer,
+        ainsi qu&apos;un verdict de diagnostic. Elle est accessible avec ou sans compte ; sans compte, le rapport
+        n&apos;est accessible que par un lien privé, pendant 30 jours, sauf si l&apos;utilisateur crée un compte pour le
+        conserver. L&apos;offre payante débloque le rapport complet. Il compte 9 sections, incluant les points à renforcer,
         les préconisations terrain, un exemple de réécriture, la synthèse, les pistes
         d&apos;évolution et une proposition de CV retravaillé. Le rapport est généré par
         intelligence artificielle à partir des informations fournies par l&apos;utilisateur ; il

@@ -90,6 +90,11 @@ export default function ConfidentialitePage() {
         adressez-vous à votre conseiller ou écrivez-nous. Lorsque vous utilisez son code pour le
         voyage, le conseiller voit votre prénom, votre email et la date d&apos;utilisation.
       </p>
+      <p>
+        Le lien conseiller du voyage (« /voyage/c/… ») ne s&apos;ouvre que pour un compte
+        conseiller connecté. Il donne accès à la synthèse de vos réponses et à votre portrait,
+        que le conseiller relit avec vous avant que vous le receviez.
+      </p>
 
       <h2>6. Profil de base, voyage et conservation</h2>
       <p>
