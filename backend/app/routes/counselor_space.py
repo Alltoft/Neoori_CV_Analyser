@@ -16,6 +16,7 @@ from flask_jwt_extended import (
 from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt import PyJWTError
 
+from .. import reap_if_orphaned
 from ..extensions import bcrypt, db
 from ..models.analysis import Analysis
 from ..models.code_redemption import CodeRedemption
@@ -490,6 +491,9 @@ def my_report(analysis_id):
     row = _my_report(analysis_id)
     if row is None:
         return jsonify(_NOT_FOUND[0]), _NOT_FOUND[1]
+    # A run a restart orphaned reads as the failure it is, so « Relancer » is
+    # offered (decision 27).
+    reap_if_orphaned(row)
     return jsonify({"analysis": row.to_dict(), "code_label": _code_labels([row.id]).get(row.id)}), 200
 
 

@@ -1,14 +1,39 @@
 import os
 from datetime import datetime, timedelta
 
-from flask import Flask
+from flask import Flask, current_app
 from .config import config
 from .extensions import db, migrate, jwt, bcrypt, cors
 
-# How long a row may sit in 'running' before a restart is allowed to call it
-# orphaned. Must stay above the longest plausible generation (paid tier at
-# 8000 tokens runs a couple of minutes) — see reap_stale_running().
+# How long a row may sit in 'running' before a restart -- or a read of the row,
+# see reap_if_orphaned() -- is allowed to call it orphaned. Must stay above the
+# longest plausible generation (paid tier at 8000 tokens runs a couple of
+# minutes) — see reap_stale_running().
 STALE_RUN_CUTOFF_MINUTES = int(os.getenv("STALE_RUN_CUTOFF_MINUTES", "15"))
+
+
+def _stale_cutoff(cutoff_minutes: int | None = None) -> datetime:
+    """The instant before which a 'running' row is old enough to be orphaned."""
+    return datetime.utcnow() - timedelta(
+        minutes=STALE_RUN_CUTOFF_MINUTES if cutoff_minutes is None else cutoff_minutes
+    )
+
+
+def _orphaned_run(cutoff: datetime):
+    """WHERE clause for « 'running' since before the cutoff » -- the one rule
+    reap_stale_running() and reap_if_orphaned() both apply. The clock is
+    `started_at`, with `created_at` for a row that has none."""
+    from sqlalchemy import and_, or_
+    from .models.analysis import Analysis
+
+    return and_(
+        Analysis.status == "running",
+        or_(
+            Analysis.started_at < cutoff,
+            # Rows that went running before the column existed.
+            and_(Analysis.started_at.is_(None), Analysis.created_at < cutoff),
+        ),
+    )
 
 
 def reap_stale_running(cutoff_minutes: int | None = None) -> int:
@@ -25,25 +50,54 @@ def reap_stale_running(cutoff_minutes: int | None = None) -> int:
     The clock is `started_at` (four-doors spec, decision 47): a relaunch or an
     unlock re-runs a row whose `created_at` may be days old, and the nightly
     `flask purge-expired` boots an app too.
+
+    A run orphaned by a deploy is a minute or two old when the new container
+    boots, so this sweep spares it. reap_if_orphaned() takes it later, when its
+    row is read.
     """
-    from sqlalchemy import and_, or_
     from .models.analysis import Analysis
 
-    cutoff = datetime.utcnow() - timedelta(
-        minutes=STALE_RUN_CUTOFF_MINUTES if cutoff_minutes is None else cutoff_minutes
-    )
     stale = (
         Analysis.query
-        .filter(Analysis.status == "running")
-        .filter(or_(
-            Analysis.started_at < cutoff,
-            # Rows that went running before the column existed.
-            and_(Analysis.started_at.is_(None), Analysis.created_at < cutoff),
-        ))
+        .filter(_orphaned_run(_stale_cutoff(cutoff_minutes)))
         .update({"status": "error"}, synchronize_session=False)
     )
     db.session.commit()
     return stale
+
+
+def reap_if_orphaned(analysis) -> bool:
+    """Fail a run a restart orphaned, at the moment its row is read. True if it did.
+
+    reap_stale_running() cannot take a run orphaned by a deploy: it is a minute
+    or two old when the new container boots, inside the cutoff that spares runs
+    still streaming in another worker. The row then reads « running » until a
+    later boot, so « Relancer » (which needs `error`) never appears and a page
+    waiting on the failure never sees it. This applies the same rule to the one
+    row a route is about to serve, and sends no mail, as at startup.
+
+    One conditional UPDATE rather than a check on the object: the run's thread
+    may write 'success' in between, and 'error' must not land on a finished
+    report. 'queued' is never touched -- a relaunch re-queues a row whose
+    started_at still holds the previous run's time. On True the session has
+    committed and the row is expired, so serialise it afterwards.
+    """
+    from .models.analysis import Analysis
+
+    # Most reads are of a finished report: spare them the statement.
+    if analysis.status != "running":
+        return False
+    analysis_id = analysis.id
+    reaped = (
+        Analysis.query
+        .filter(Analysis.id == analysis_id, _orphaned_run(_stale_cutoff()))
+        .update({"status": "error"}, synchronize_session=False)
+    )
+    if not reaped:
+        return False
+    db.session.commit()
+    current_app.logger.info("Reaped orphaned analysis %s on read.", analysis_id)
+    return True
 
 
 def reap_stale_generating(cutoff_minutes: int | None = None) -> int:

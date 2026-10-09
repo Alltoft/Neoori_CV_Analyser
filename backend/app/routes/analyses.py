@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
+from .. import reap_if_orphaned
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.counselor_code import CounselorCode
@@ -294,6 +295,8 @@ def get_by_token():
     row = Analysis.query.filter_by(access_token_hash=presented).first() if presented else None
     if row is None or row.status == "draft" or not _may_access(row):
         return jsonify({"error": "Ce lien n'est plus valide."}), 404
+    # After the access checks, as in get_analysis.
+    reap_if_orphaned(row)
     return jsonify({"analysis": row.to_dict()}), 200
 
 
@@ -311,6 +314,9 @@ def get_analysis(analysis_id):
     analysis = Analysis.query.get_or_404(analysis_id)
     if not _may_access(analysis):
         return jsonify({"error": "Accès non autorisé."}), 403
+    # Only a caller who may read the row changes it: a run a restart orphaned
+    # is served as the failure it is.
+    reap_if_orphaned(analysis)
     return jsonify({"analysis": analysis.to_dict()}), 200
 
 
