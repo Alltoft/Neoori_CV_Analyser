@@ -14,7 +14,13 @@ import type { AdminCodeRow } from "@/types"
 
 /** An empty field means illimité, as the API's null does. Anything that is
  *  not a positive whole number goes as 0, which the API refuses with its own
- *  sentence — never as NaN, which JSON turns into null, i.e. illimité. */
+ *  sentence — never as NaN, which JSON turns into null, i.e. illimité.
+ *
+ *  This only works on the raw text. The inline edit inputs are therefore
+ *  type="text": a type="number" input reports unparsable text ("-", "e", "1e")
+ *  as "", which would read as illimité and silently lift a cap. The create
+ *  form keeps type="number" because it sits in a <form>, where the browser's
+ *  own validation refuses such input before this runs. */
 const limit = (raw: string): number | null => {
   if (raw.trim() === "") return null
   const n = Number(raw)
@@ -33,25 +39,35 @@ function statut(c: AdminCodeRow): string {
   return "Actif"
 }
 
+/** The limits being edited on one promo row. `days` empty means the expiry is
+ *  left as it is; `noExpiry` (« illimité ») clears it. */
+interface Editing { id: string; uses: string; days: string; noExpiry: boolean }
+
 /** The admin's codes (four-doors spec, decision 18). A code with no owner is
  *  a promo code: signed in, Complet, once per account. Conseiller codes are
- *  listed for reference; their limits are the conseiller's. */
+ *  listed too, and the admin can revoke one (a leaked code, say) without
+ *  revoking the whole account; their limits are the conseiller's, so they get
+ *  no « Limites ». */
 export function PromoCodesPanel() {
   const [codes, setCodes] = useState<AdminCodeRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [label, setLabel] = useState("")
   const [uses, setUses] = useState("1")
   const [days, setDays] = useState("90")
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
-  const [editing, setEditing] = useState<{ id: string; uses: string; days: string } | null>(null)
+  const [editing, setEditing] = useState<Editing | null>(null)
   const [revoking, setRevoking] = useState<string | null>(null)
 
   useEffect(() => {
     api.get<{ codes: AdminCodeRow[] }>("/admin/counselor-codes")
       .then((r) => setCodes(r.codes))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Erreur de chargement"))
+      .catch((e) => {
+        setLoadFailed(true)
+        setError(e instanceof ApiError ? e.message : "Erreur de chargement")
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -67,7 +83,11 @@ export function PromoCodesPanel() {
         label, max_uses: limit(uses), expires_in_days: limit(days),
       })
       setCodes((all) => [r.code, ...all])
+      // Back to the defaults, so an unlimited code is never followed by another
+      // one the admin did not mean to make unlimited.
       setLabel("")
+      setUses("1")
+      setDays("90")
     } catch (err) { fail(err) } finally { setBusy(false) }
   }
 
@@ -76,9 +96,12 @@ export function PromoCodesPanel() {
     setBusy(true)
     setError(null)
     try {
-      // Validity left empty while editing means "unchanged", not illimité.
+      // Uses: empty means illimité, as everywhere. Validity: « illimité » clears
+      // the expiry (null); an empty field leaves it as it is — the key is
+      // omitted — and never means illimité.
       const body: Record<string, number | null> = { max_uses: limit(editing.uses) }
-      if (editing.days.trim()) body.expires_in_days = limit(editing.days)
+      if (editing.noExpiry) body.expires_in_days = null
+      else if (editing.days.trim()) body.expires_in_days = limit(editing.days)
       const r = await api.patch<{ code: AdminCodeRow }>(`/admin/counselor-codes/${editing.id}`, body)
       replace(r.code)
       setEditing(null)
@@ -158,19 +181,30 @@ export function PromoCodesPanel() {
                     <td className="py-2.5 pr-4 tabular-nums">{c.uses_by_kind.voyage}</td>
                     <td className="py-2.5 pr-4">
                       {isEditing
-                        ? <Input className="h-8 w-20" type="number" min={1} aria-label="Utilisations" value={editing.uses}
+                        ? <Input className="h-8 w-20" type="text" inputMode="numeric" aria-label="Utilisations" value={editing.uses}
                                  onChange={(e) => setEditing({ ...editing, uses: e.target.value })} />
                         : (c.max_uses ?? "illimité")}
                     </td>
                     <td className="py-2.5 pr-4">
-                      {isEditing
-                        ? <Input className="h-8 w-24" type="number" min={1} aria-label="Validité (jours)" placeholder="inchangé" value={editing.days}
+                      {isEditing ? (
+                        <div className="flex flex-col gap-1.5">
+                          <Input className="h-8 w-24" type="text" inputMode="numeric" aria-label="Validité (jours)"
+                                 placeholder={editing.noExpiry ? undefined : "inchangé"}
+                                 value={editing.days} disabled={editing.noExpiry}
                                  onChange={(e) => setEditing({ ...editing, days: e.target.value })} />
-                        : fmtDate(c.expires_at)}
+                          <label className="flex items-center gap-1.5 text-xs">
+                            <input type="checkbox" className="size-3.5 accent-orange" checked={editing.noExpiry}
+                                   onChange={(e) => setEditing({
+                                     ...editing, noExpiry: e.target.checked, days: e.target.checked ? "" : editing.days,
+                                   })} />
+                            illimité
+                          </label>
+                        </div>
+                      ) : fmtDate(c.expires_at)}
                     </td>
                     <td className="py-2.5 pr-4">{statut(c)}</td>
                     <td className="whitespace-nowrap py-2.5 text-right">
-                      {c.kind === "promo" && !isRevoked(c) && (
+                      {!isRevoked(c) && (
                         isEditing ? (
                           <>
                             <Button size="sm" variant="navy" onClick={saveLimits} disabled={busy}>Enregistrer</Button>{" "}
@@ -184,10 +218,15 @@ export function PromoCodesPanel() {
                           </>
                         ) : (
                           <>
-                            <Button size="sm" variant="outline"
-                                    onClick={() => setEditing({ id: c.id, uses: c.max_uses?.toString() ?? "", days: "" })}>
-                              Limites
-                            </Button>{" "}
+                            {/* A conseiller code's limits are the conseiller's: the admin can only revoke it. */}
+                            {c.kind === "promo" && (
+                              <>
+                                <Button size="sm" variant="outline"
+                                        onClick={() => setEditing({ id: c.id, uses: c.max_uses?.toString() ?? "", days: "", noExpiry: false })}>
+                                  Limites
+                                </Button>{" "}
+                              </>
+                            )}
                             <Button size="sm" variant="ghost" onClick={() => setRevoking(c.id)}>Révoquer</Button>
                           </>
                         )
@@ -199,7 +238,8 @@ export function PromoCodesPanel() {
             </tbody>
           </table>
         </div>
-        {!loading && codes.length === 0 && (
+        {/* Not after a failed load: the alert above already says why the list is empty. */}
+        {!loading && !loadFailed && codes.length === 0 && (
           <p className="py-10 text-center text-sm text-muted-foreground">Aucun code pour le moment.</p>
         )}
       </div>

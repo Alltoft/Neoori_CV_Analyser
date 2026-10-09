@@ -37,7 +37,12 @@ function DebloquerContent() {
 
   const [code, setCode] = useState("")
   const [codeState, setCodeState] = useState<"idle" | "checking">("idle")
+  // Checkout and verify failures, shown at the top of the page.
   const [error, setError] = useState<string | null>(null)
+  // The code field's own refusal, shown under the field: the code row is at the
+  // foot of a long page, and a sentence like decision 22's would otherwise
+  // appear far from where the person typed.
+  const [codeError, setCodeError] = useState<string | null>(null)
 
   const [paymentsEnabled, setPaymentsEnabled] = useState<boolean | null>(null)
   const [offers, setOffers] = useState<Record<string, { cents: number; description: string }> | null>(null)
@@ -76,8 +81,9 @@ function DebloquerContent() {
 
   const redeemCode = async () => {
     setError(null)
+    setCodeError(null)
     if (!code.trim()) {
-      setError("Saisissez votre code promo.")
+      setCodeError("Saisissez votre code promo.")
       return
     }
     setCodeState("checking")
@@ -85,7 +91,7 @@ function DebloquerContent() {
       await api.post(`/analyses/${id}/unlock`, { code })
       router.push(`/analyse/en-cours/${id}`)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
+      setCodeError(e instanceof ApiError ? e.message : "Erreur inattendue.")
       setCodeState("idle")
     }
   }
@@ -95,6 +101,7 @@ function DebloquerContent() {
 
   const startCheckout = async (tier: "paid" | "premium" = "paid") => {
     setError(null)
+    setCodeError(null)
     if (!waiverAccepted) {
       setError("Veuillez accepter l’exécution immédiate pour continuer (droit de rétractation).")
       return
@@ -297,18 +304,27 @@ function DebloquerContent() {
         </div>
 
         {/* Promo code */}
-        <div className="mt-6 flex flex-col gap-3 rounded-2xl bg-secondary p-4 sm:flex-row sm:items-center">
-          <span className="shrink-0 text-sm font-medium text-navy">Déjà un code promo ?</span>
-          <Input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") redeemCode() }}
-            placeholder="ex. A1B2C3D4"
-            className="h-10 flex-1 bg-background font-mono text-sm"
-          />
-          <Button variant="outline" size="lg" onClick={redeemCode} disabled={codeState === "checking"}>
-            {codeState === "checking" ? "Vérification…" : "Activer"}
-          </Button>
+        <div className="mt-6 rounded-2xl bg-secondary p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <span className="shrink-0 text-sm font-medium text-navy">Déjà un code promo ?</span>
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") redeemCode() }}
+              placeholder="ex. A1B2C3D4"
+              aria-invalid={codeError ? true : undefined}
+              aria-describedby={codeError ? "promo-code-error" : undefined}
+              className="h-10 flex-1 bg-background font-mono text-sm"
+            />
+            <Button variant="outline" size="lg" onClick={redeemCode} disabled={codeState === "checking"}>
+              {codeState === "checking" ? "Vérification…" : "Activer"}
+            </Button>
+          </div>
+          {codeError && (
+            <Alert id="promo-code-error" variant="destructive" className="mt-3">
+              <AlertDescription>{codeError}</AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <div className="mt-5">

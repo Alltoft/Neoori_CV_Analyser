@@ -82,9 +82,9 @@ export default function ConseillersPage() {
   // one box.
   const [limits, setLimits] = useState<Record<string, { codes: string; uses: string }>>({})
   const [reasons, setReasons] = useState<Record<string, string>>({})
-  // Per-panel error state, matching errorCounselors/errorCodes below: an
-  // error from one of the four demande/compte actions must surface in the
-  // panel that produced it, not a screen away in Comptes conseillers.
+  // Per-panel error state, like errorCounselors: an error from one of the four
+  // demande/compte actions must surface in the panel that produced it, not a
+  // screen away in Comptes conseillers.
   const [errorDemandes, setErrorDemandes] = useState<string | null>(null)
   const [errorApproved, setErrorApproved] = useState<string | null>(null)
 
