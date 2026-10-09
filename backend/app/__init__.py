@@ -21,7 +21,12 @@ def reap_stale_running(cutoff_minutes: int | None = None) -> int:
     still streaming. The candidate's page then shows « L'analyse n'a pas
     abouti » and stops polling, while the background thread finishes and
     writes 'success' to a row nobody is watching any more.
+
+    The clock is `started_at` (four-doors spec, decision 47): a relaunch or an
+    unlock re-runs a row whose `created_at` may be days old, and the nightly
+    `flask purge-expired` boots an app too.
     """
+    from sqlalchemy import and_, or_
     from .models.analysis import Analysis
 
     cutoff = datetime.utcnow() - timedelta(
@@ -29,7 +34,12 @@ def reap_stale_running(cutoff_minutes: int | None = None) -> int:
     )
     stale = (
         Analysis.query
-        .filter(Analysis.status == "running", Analysis.created_at < cutoff)
+        .filter(Analysis.status == "running")
+        .filter(or_(
+            Analysis.started_at < cutoff,
+            # Rows that went running before the column existed.
+            and_(Analysis.started_at.is_(None), Analysis.created_at < cutoff),
+        ))
         .update({"status": "error"}, synchronize_session=False)
     )
     db.session.commit()

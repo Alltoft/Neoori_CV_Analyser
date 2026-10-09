@@ -11,6 +11,7 @@ from json_repair import repair_json
 from ..extensions import db
 from ..models.analysis import Analysis
 from ..models.prompt_version import PromptVersion
+from ..models.user import User
 from . import email_service
 from . import section_registry as registry
 from . import tiers
@@ -450,6 +451,7 @@ def _run_analysis(analysis_id: str, app) -> None:
         model, max_tokens = _select_model_by_tier(tier)
 
         analysis.status = "running"
+        analysis.started_at = datetime.utcnow()
         analysis.prompt_version_id = prompt.id
         db.session.commit()
 
@@ -545,6 +547,20 @@ def _notify_outcome(analysis_id: str) -> None:
     """
     try:
         analysis = db.session.get(Analysis, analysis_id)
+        if analysis is not None and analysis.door == "advisor":
+            # The report is the counselor's (ruling 2), so is the mail. Same
+            # rule as the owner's: only a proven address.
+            counselor = db.session.get(User, analysis.counselor_id) if analysis.counselor_id else None
+            if counselor is None or counselor.email_verified_at is None:
+                return
+            to, status = counselor.email, analysis.status
+            db.session.remove()
+            if status == "success":
+                email_service.send_counselor_analysis_ready(to)
+            elif status in ("error", "timeout"):
+                email_service.send_counselor_analysis_failed(to)
+            return
+
         user = analysis.user if analysis is not None else None
         # No mail to an address nobody proved (decision 8); an ownerless row
         # predates accounts.

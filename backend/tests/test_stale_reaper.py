@@ -51,3 +51,18 @@ def test_reaper_only_touches_running_rows(app):
     db.session.refresh(done)
     assert queued.status == "queued"
     assert done.status == "success"
+
+
+def test_the_reaper_reads_started_at_not_created_at(app):
+    """A counselor's « Relancer » re-runs a row created days ago (four-doors
+    spec, decision 47): it must survive a boot while it streams."""
+    old, now = datetime.utcnow() - timedelta(days=3), datetime.utcnow()
+    relaunched = Analysis(status="running", created_at=old, started_at=now, inputs={})
+    stuck = Analysis(status="running", created_at=old, started_at=old, inputs={})
+    before_the_column = Analysis(status="running", created_at=old, inputs={})
+    db.session.add_all([relaunched, stuck, before_the_column])
+    db.session.commit()
+
+    assert reap_stale_running() == 2
+    db.session.expire_all()
+    assert db.session.get(Analysis, relaunched.id).status == "running"
