@@ -121,6 +121,17 @@ sed -i 's/^NGINX_MODE=.*/NGINX_MODE=https/' .env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+The `certbot` container renews automatically every 12 h, but renewing does not
+reach nginx — it holds the old certificate in memory until reloaded. A deploy
+restarts nginx and hides this; a quiet month after a renewal would not. So a
+second cron job reloads nginx nightly (installed 23/08):
+
+```
+0 4 * * * cd /srv/neoori && docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload >> /var/log/neoori-nginx-reload.log 2>&1
+```
+
+A reload is graceful — in-flight requests finish on the old workers.
+
 ### Adding cv. and voyage. (the subdomain split)
 
 Done once, **before** the deploy that ships the split: without it `cv.` and
@@ -144,17 +155,6 @@ docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
 After the deploy, delete `APP_URL` and `FRONTEND_URL` from
 `/srv/neoori/.env` and the GitHub repo variable `SITE_URL` — but only once
 no rollback below the split is expected (« CI/CD », rollback).
-
-The `certbot` container renews automatically every 12 h, but renewing does not
-reach nginx — it holds the old certificate in memory until reloaded. A deploy
-restarts nginx and hides this; a quiet month after a renewal would not. So a
-second cron job reloads nginx nightly (installed 23/08):
-
-```
-0 4 * * * cd /srv/neoori && docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload >> /var/log/neoori-nginx-reload.log 2>&1
-```
-
-A reload is graceful — in-flight requests finish on the old workers.
 
 ### Do not publish an AAAA record (rate limits)
 
