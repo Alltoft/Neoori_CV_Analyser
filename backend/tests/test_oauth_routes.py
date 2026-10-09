@@ -568,6 +568,17 @@ def test_each_subdomain_gets_its_own_callback(client, app, providers):
         assert q["redirect_uri"] == f"https://{host}/api/auth/google/callback"
 
 
+def test_the_callback_is_built_from_domain_never_copied_from_the_host(client, app, providers):
+    # The Host only selects cv: its case and port never reach the callback.
+    # Every other test starts on the exact name, where a callback copied from
+    # the Host header would look the same. The header is sent as written: the
+    # test client lowercases the name in base_url.
+    app.config["DOMAIN"] = "neoori.tech"
+    host = "CV.Neoori.Tech:8443"
+    q = _query(_start(client, "google", base_url=f"https://{host}", headers={"Host": host}))
+    assert q["redirect_uri"] == "https://cv.neoori.tech/api/auth/google/callback"
+
+
 @pytest.mark.parametrize("host", ["neoori.tech", "www.neoori.tech", "attacker.example"])
 def test_start_anywhere_else_hands_over_to_cv_before_writing_any_state(client, app, providers, host):
     app.config["DOMAIN"] = "neoori.tech"
