@@ -642,9 +642,10 @@ def test_a_signed_out_save_says_it_is_held_and_a_signed_in_one_does_not(client, 
 #
 # A held row may be the leftover of someone else on this browser: « Avec mon
 # compte » or « Garder », then no signup. A later signup that did not start
-# from one of those round trips — the landing's « Créer un compte » lands on
-# /espace — must not take it over: verify-email would attach the stranger's
-# CV to the new account for good, and the purge would never select it again.
+# from one of those round trips — from the landing through « Se connecter »
+# (no `next`), or from /espace — must not take it over: verify-email would
+# attach the stranger's CV to the new account for good, and the purge would
+# never select it again.
 
 ROUND_TRIPS = [
     "/analyse/nouveau?reprendre=compte",

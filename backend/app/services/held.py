@@ -36,9 +36,10 @@ PATH = "/api"
 # pour le garder » on /rapport (decision 32). The frontend calls /claim on
 # these four URLs only. A password signup marks the held row only when its
 # `next` is one of them (decision 34, amended by the final review): a signup
-# from anywhere else — the landing's « Créer un compte » lands on /espace —
-# may be a stranger's on a shared computer, after someone who held a CV here
-# walked away, and marking would hand that CV to them at verify-email.
+# from anywhere else — « Se connecter » on the landing then « Créer un
+# compte », with no `next`, or /espace sending a signed-out visitor to sign
+# in — may be a stranger's on a shared computer, after someone who held a CV
+# here walked away, and marking would hand that CV to them at verify-email.
 # Compared exactly, never decoded or prefix-matched: the frontend writes these
 # strings literally, encodes them once into ?redirect= and reads them back
 # once, so they reach /auth/register exactly as written here.
