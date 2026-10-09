@@ -260,6 +260,35 @@ def _door_request(door, *, max_uses=None, draft=False):
     return (bearer(u) if u else {}), fields, c, draft_id
 
 
+@pytest.mark.parametrize("door,signed_in,names_the_account", [
+    ("account", True, True),
+    ("promo", True, False),
+    ("advisor", True, False),
+    ("anonymous", False, False),
+])
+@patch(START)
+def test_run_log_names_an_account_only_where_a_cap_reads_it(_s, client, app, door, signed_in,
+                                                           names_the_account):
+    """Final review, minor 1. An advisor report belongs to no account: a
+    run_log row carrying the signed-in caller's id would link it back to
+    theirs. Only the account door's cap counts per account (doors.over_cap),
+    so only that door keeps the id."""
+    u = _profiled()
+    fields = {}
+    if door == "promo":
+        code(value="PROMO0L1", max_uses=5)
+        fields = {"code": "PROMO0L1"}
+    elif door == "advisor":
+        code(counselor(), value="CONS0L01")
+        fields = {"code": "CONS0L01", "prenom": "Zoé", "nom": "Durand", "consent": True}
+    elif door == "anonymous":
+        fields = {"consent": True}
+    res = _post(client, bearer(u) if signed_in else None, door=door, **fields)
+    assert res.status_code == 201, res.data
+    log = RunLog.query.one()
+    assert (log.door, log.user_id) == (door, u.id if names_the_account else None)
+
+
 @pytest.mark.parametrize("door,tier", [
     ("account", "free"), ("promo", "paid"), ("advisor", "paid"), ("anonymous", "free"),
 ])

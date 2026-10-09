@@ -118,6 +118,11 @@ def over_cap(plan: Plan, user_id: str | None) -> str | None:
     return None
 
 
-def log_run(door: str, user_id: str | None) -> None:
-    """Count one submitted run. The caller commits it with the row it counts."""
-    db.session.add(RunLog(door=door, user_id=user_id))
+def log_run(plan: Plan, user_id: str | None) -> None:
+    """Count one submitted run. The caller commits it with the row it counts.
+
+    The caller's id is kept only where a cap counts per account (the account
+    door, over_cap above). Anywhere else it is a link nothing reads, and at
+    the advisor door a harmful one: the report belongs to no account, and a
+    signed-in sender's id beside it would tie it back to theirs."""
+    db.session.add(RunLog(door=plan.door, user_id=user_id if plan.cap == ACCOUNT else None))

@@ -505,7 +505,7 @@ def _stage_run(
     # Stored on the row as well as in the inputs blob: which voyage fed this
     # analysis stays queryable -- B2G traceability, as with prompt_version_id.
     analysis.voyage_id = inputs.get("_voyage_id")
-    doors.log_run(plan.door, user_id)
+    doors.log_run(plan, user_id)
 
 
 def _is_queued_at(analysis_id: str, door: str) -> bool:
