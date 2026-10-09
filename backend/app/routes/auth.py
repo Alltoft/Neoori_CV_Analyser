@@ -11,7 +11,7 @@ from flask_jwt_extended import (
 )
 from datetime import datetime
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..extensions import db, bcrypt
 from ..models.auth_identity import AuthIdentity
@@ -225,8 +225,24 @@ def refresh():
 
 @auth_bp.post("/logout")
 def logout():
+    # A draft saved after the session lapsed is held by this browser's cookie,
+    # not by the account (decision 38: expired means signed out). Left behind,
+    # the next person on a shared computer could read it back at /held or claim
+    # it into their own account, so it goes with the session. A held no-login
+    # report is not touched: its own link still reaches it. No session is
+    # needed, so a lapsed one can log out too.
+    try:
+        if held.drop_held_draft():
+            db.session.commit()
+    except SQLAlchemyError:
+        # Best effort: ending the session must not depend on the database,
+        # which logout never touched before. The cookie is cleared below
+        # either way, so the browser forgets the key and the row expires.
+        db.session.rollback()
+        current_app.logger.warning("Logout could not delete the held draft.", exc_info=True)
     response = jsonify({"message": "Déconnecté."})
     unset_jwt_cookies(response)
+    held.clear_cookie(response)
     return response, 200
 
 

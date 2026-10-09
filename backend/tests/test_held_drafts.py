@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from app.extensions import db
 from app.models.analysis import Analysis
@@ -508,3 +509,114 @@ def test_a_hostile_cookie_finds_nothing(client, app, value):
 def test_a_hostile_token_header_is_refused(client, app, value):
     assert client.post("/api/analyses/hold", headers={"X-Analysis-Token": value}).status_code == 404
     assert _cookie(client) is None
+
+
+# ── Fix round 1: a draft held after the session lapsed must not outlive logout ─
+#
+# Decision 38: an expired session is a signed-out one, so the form's draft goes
+# to the cookie. On a shared computer that row would otherwise stay readable at
+# /held, and claimable by whoever signs in next, for 48 hours after logout.
+
+def _logout(client, headers=None):
+    """POST /logout, then back to what the request committed."""
+    res = client.post("/api/auth/logout", headers=headers or {})
+    _reload()
+    return res
+
+
+def test_logout_deletes_the_draft_a_lapsed_session_left_in_the_cookie(client, app):
+    lapsed = expired_bearer(user())
+    saved = client.post("/api/analyses/draft", json={"inputs": P1_INPUTS}, headers=lapsed)
+    assert (saved.status_code, saved.get_json()["held"]) == (201, True)
+    key = _cookie(client)
+
+    res = _logout(client, headers=lapsed)           # no live session to log out of
+
+    assert res.status_code == 200
+    assert Analysis.query.count() == 0              # gone, and committed
+    value, attrs = _set_cookie(res)
+    assert (value, attrs["path"], attrs["max-age"]) == ("", "/api", "0")
+    assert _cookie(client) is None
+    assert client.get("/api/analyses/held").status_code == 404
+    # The server forgot it too, not only the browser: the old key finds nothing.
+    client.set_cookie(held.COOKIE, key, path="/api")
+    assert client.get("/api/analyses/held").status_code == 404
+    assert client.post("/api/analyses/claim", headers=bearer(user("suivant@test.fr"))).status_code == 404
+
+
+def test_logout_leaves_a_kept_report_to_its_own_link_and_clears_the_cookie(client, app):
+    report, key = _kept_report(client)
+
+    res = _logout(client)
+
+    assert res.status_code == 200
+    assert db.session.get(Analysis, report.id) is not None
+    assert client.get("/api/analyses/by-token", headers={"X-Analysis-Token": key}).status_code == 200
+    value, attrs = _set_cookie(res)
+    assert (value, attrs["path"]) == ("", "/api")
+    assert _cookie(client) is None
+
+
+def test_logout_with_no_cookie_and_no_session_answers_as_before(client, app):
+    res = client.post("/api/auth/logout")
+    assert res.status_code == 200
+    assert res.get_json() == {"message": "Déconnecté."}
+    names = {header.split("=", 1)[0] for header in res.headers.getlist("Set-Cookie")}
+    assert {"access_token_cookie", "refresh_token_cookie"} <= names     # the JWT pair still goes
+
+
+def test_logout_deletes_only_the_draft_its_own_cookie_points_at(client, app):
+    elsewhere = app.test_client()                   # another browser, its own held draft
+    _held_draft(elsewhere)
+    _held_draft(client)
+
+    assert _logout(client).status_code == 200
+    assert Analysis.query.count() == 1
+    assert _logout(app.test_client()).status_code == 200            # no cookie: nothing to delete
+    assert Analysis.query.count() == 1
+    assert elsewhere.get("/api/analyses/held").status_code == 200
+
+
+def test_logout_still_ends_the_session_when_the_draft_cannot_be_deleted(client, app, monkeypatch):
+    # Logout touched no database before this fix, so it must not start failing
+    # on one: a 500 here would leave the HttpOnly session cookies in place.
+    _held_draft(client)
+
+    def database_gone():
+        raise OperationalError("DELETE", {}, Exception("database is gone"))
+
+    monkeypatch.setattr(held, "drop_held_draft", database_gone)
+    res = client.post("/api/auth/logout")
+
+    assert res.status_code == 200
+    assert res.get_json() == {"message": "Déconnecté."}
+    names = {header.split("=", 1)[0] for header in res.headers.getlist("Set-Cookie")}
+    assert {"access_token_cookie", "refresh_token_cookie", held.COOKIE} <= names
+    assert _cookie(client) is None          # the browser forgets the key; the row expires
+
+
+def test_logout_never_deletes_an_owned_row(client, app):
+    # Unreachable through the app (attach() clears the key). This pins that
+    # logout goes through the held-row guard and never reaches an account's data.
+    key = new_access_token()
+    db.session.add(Analysis(user_id=user().id, status="draft", inputs={},
+                            access_token_hash=hash_token(key)))
+    db.session.commit()
+    client.set_cookie(held.COOKIE, key, path="/api")
+    assert _logout(client).status_code == 200
+    assert Analysis.query.count() == 1
+
+
+def test_a_signed_out_save_says_it_is_held_and_a_signed_in_one_does_not(client, app):
+    created = _held_draft(client)
+    updated = _held_draft(client)
+    assert (created.status_code, created.get_json()["held"]) == (201, True)
+    assert (updated.status_code, updated.get_json()["held"]) == (200, True)
+
+    u = user()
+    signed_in = client.post("/api/analyses/draft", json={"inputs": P1_INPUTS}, headers=bearer(u))
+    assert signed_in.status_code == 201 and "held" not in signed_in.get_json()
+    again = client.post("/api/analyses/draft", headers=bearer(u), json={
+        "inputs": P1_INPUTS, "draft_id": signed_in.get_json()["analysis"]["id"],
+    })
+    assert again.status_code == 200 and "held" not in again.get_json()

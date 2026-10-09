@@ -149,7 +149,9 @@ def save_draft():
         else:
             row.inputs = inputs
         db.session.commit()
-        response = jsonify({"analysis": row.to_dict()})
+        # "held" tells the form this draft belongs to the browser, not to an
+        # account (it goes at logout). A signed-in save never carries the key.
+        response = jsonify({"analysis": row.to_dict(), "held": True})
         if token:
             held.set_cookie(response, token)
         return response, status

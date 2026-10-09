@@ -11,6 +11,10 @@ Nothing here attaches a row to an account before the signup password has
 proven its address (decision 36): signup only marks the row
 (`pending_user_id`), verify-email attaches it, and any other proof of the
 address drops the mark.
+
+A held draft belongs to the browser, not to an account, so logout deletes it
+(`drop_held_draft`): on a shared computer it must not be handed to the next
+person who reads /held or signs in and claims.
 """
 from datetime import datetime, timedelta
 
@@ -103,6 +107,17 @@ def attach_pending(user_id: str) -> int:
     for row in rows:
         attach(row, user_id)
     return len(rows)
+
+
+def drop_held_draft() -> bool:
+    """Logout: delete the draft this browser's cookie holds, so the next person
+    on this computer finds nothing to read back or claim. A held no-login
+    report stays: its own link still reaches it. Caller commits."""
+    row = held_row(draft_only=True)
+    if row is None:
+        return False
+    db.session.delete(row)
+    return True
 
 
 def unmark(user_id: str) -> int:
