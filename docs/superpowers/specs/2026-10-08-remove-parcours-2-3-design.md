@@ -1,6 +1,6 @@
 # Retrait des parcours 2 et 3 — Design Spec
 Date: 2026-10-08
-Status: design approved in conversation 2026-10-08; written spec awaiting review
+Status: implemented; production purged 2026-10-08; purge script removed
 
 ## Overview
 
