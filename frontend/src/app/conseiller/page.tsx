@@ -32,6 +32,10 @@ const STATUT_VARIANT: Record<CodeStatut, "success" | "secondary" | "warning"> = 
   revoque: "secondary",
 }
 
+/** « 0 analyse », « 1 analyse », « 2 analyses »: in French a noun takes its
+ *  plural from two up, and zero stays singular. */
+const counted = (n: number, noun: string) => `${n} ${noun}${n >= 2 ? "s" : ""}`
+
 export default function ConseillerPage() {
   const { user, loading: authLoading, refresh: refreshAuth } = useAuth()
   const router = useRouter()
@@ -283,7 +287,7 @@ export default function ConseillerPage() {
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                               <Badge variant={STATUT_VARIANT[c.statut]}>{STATUT_LABEL[c.statut]}</Badge>
                               <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                {c.uses_by_kind.analysis} analyse · {c.uses_by_kind.voyage} voyage
+                                {counted(c.uses_by_kind.analysis, "analyse")} · {counted(c.uses_by_kind.voyage, "voyage")}
                               </span>
                             </div>
                           </td>

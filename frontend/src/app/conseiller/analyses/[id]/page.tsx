@@ -24,18 +24,13 @@ export default function ConseillerAnalysePage() {
   const router = useRouter()
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [label, setLabel] = useState<string | null>(null)
-  // True only once a fetch has answered 404. Any other failure is a retry.
+  // True only once a fetch has answered 404. A 403 shows through `loadError`;
+  // any other failure is a retry.
   const [missing, setMissing] = useState(false)
-  // The last non-404 failure of the report fetch, cleared by the next success.
-  // Shown only while the page has no report yet (see the render below).
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [note, setNote] = useState("")
-  // The note is editable only once it has been read: an empty box saved over a
-  // note that failed to load would erase it.
-  const [noteLoad, setNoteLoad] = useState<"loading" | "ready" | "failed">("loading")
-  // Bumped by « Réessayer »: the note-loading effect depends on it.
-  const [noteTry, setNoteTry] = useState(0)
-  const [noteState, setNoteState] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  // The last failure of the report fetch (a 404 aside), cleared by the next
+  // success. `final` is a 403: this session is no longer an approved
+  // counselor's, no retry can change that, and the watch has stopped.
+  const [loadError, setLoadError] = useState<{ message: string; final: boolean } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,18 +51,27 @@ export default function ConseillerAnalysePage() {
         setAnalysis(r.analysis)
         setLabel(r.code_label)
         setLoadError(null)
-        if (r.analysis.status !== "queued" && r.analysis.status !== "running") return
+        if (r.analysis.status !== "queued" && r.analysis.status !== "running") {
+          // A final status ends the watch, and with it any action error still
+          // on screen (the refusal of a second « Relancer », say).
+          setError(null)
+          return
+        }
       } catch (e) {
         if (!alive) return
-        // Only a 404 means the report is gone. A 502, a 429 or a dropped
-        // connection keeps what is on screen and tries again, more slowly: it
-        // must not tell a counselor the report is gone, nor stop the watch of
-        // a run that is still going.
+        // Two answers are final. A 404 means the report is gone. A 403 means
+        // this session is not (or no longer) an approved counselor's: no retry
+        // can succeed, so the watch stops and the server's message stays.
+        // Anything else (a 502, a 429, a dropped connection) keeps what is on
+        // screen and tries again, more slowly: it must not tell a counselor
+        // the report is gone, nor stop the watch of a run that is still going.
         if (e instanceof ApiError && e.status === 404) {
           setMissing(true)
           return
         }
-        setLoadError(e instanceof ApiError ? e.message : "Erreur inattendue.")
+        const denied = e instanceof ApiError && e.status === 403
+        setLoadError({ message: e instanceof ApiError ? e.message : "Erreur inattendue.", final: denied })
+        if (denied) return
         wait = POLL_MS * 2
       }
       timer = setTimeout(poll, wait)
@@ -75,14 +79,6 @@ export default function ConseillerAnalysePage() {
     void poll()
     return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [id, round])
-
-  useEffect(() => {
-    let alive = true
-    counselor.note(id)
-      .then((r) => { if (alive) { setNote(r.note); setNoteLoad("ready") } })
-      .catch(() => { if (alive) setNoteLoad("failed") })
-    return () => { alive = false }
-  }, [id, noteTry])
 
   const fail = (e: unknown) => setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
 
@@ -100,22 +96,6 @@ export default function ConseillerAnalysePage() {
       if (e instanceof ApiError && e.status === 409) setRound((n) => n + 1)
     } finally {
       setRelaunching(false)
-    }
-  }
-
-  const retryNote = () => {
-    setNoteLoad("loading")
-    setNoteTry((n) => n + 1)
-  }
-
-  const saveNote = async () => {
-    setNoteState("saving")
-    try {
-      await counselor.saveNote(id, note)
-      // Typing while the save was in flight already set "idle": keep it.
-      setNoteState((s) => (s === "saving" ? "saved" : s))
-    } catch {
-      setNoteState("error")
     }
   }
 
@@ -192,13 +172,15 @@ export default function ConseillerAnalysePage() {
         <p className="no-print mb-4 text-sm font-medium text-navy">
           {[who || "—", label ? `code « ${label} »` : null, date].filter(Boolean).join(" · ")}
         </p>
-        {error && <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
-        {/* Nothing to keep on screen yet: say why, while the retry goes on. With
-            a report showing, a failed poll stays silent and the page carries on. */}
-        {loadError && !analysis && (
-          <Alert variant="destructive" className="mb-4"><AlertDescription>{loadError}</AlertDescription></Alert>
+        {/* Neither alert below belongs on a printed page. */}
+        {error && <Alert variant="destructive" className="no-print mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
+        {/* Why the report is not (or no longer) being fetched, while the retry
+            goes on or, after a 403, for good: a « Analyse en cours… » frozen on
+            screen over a dead session would say nothing. */}
+        {loadError && (
+          <Alert variant="destructive" className="no-print mb-4"><AlertDescription>{loadError.message}</AlertDescription></Alert>
         )}
-        {running && (
+        {running && !loadError?.final && (
           <Alert className="mb-4"><AlertDescription>Analyse en cours… La page se met à jour toute seule.</AlertDescription></Alert>
         )}
         {failed && (
@@ -208,31 +190,72 @@ export default function ConseillerAnalysePage() {
         )}
         {analysis && !running && !failed && <ReportDocument analysis={analysis} loading={false} unlockHref={null} />}
 
-        <section className="no-print mt-6 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
-          <h2 id="notes-privees" className="font-display text-base font-semibold text-navy">Notes privées</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Visibles par vous seul.</p>
-          <Textarea
-            aria-labelledby="notes-privees"
-            className="mt-3 min-h-32 bg-background text-sm"
-            value={note}
-            maxLength={20000}
-            disabled={noteLoad !== "ready"}
-            onChange={(e) => { setNote(e.target.value); setNoteState("idle") }}
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <Button size="sm" variant="navy" onClick={saveNote}
-                    disabled={noteLoad !== "ready" || noteState === "saving"}>Enregistrer</Button>
-            {noteLoad === "failed" && (
-              <>
-                <span className="text-xs text-destructive">Les notes n’ont pas pu être chargées.</span>
-                <Button size="sm" variant="outline" onClick={retryNote}>Réessayer</Button>
-              </>
-            )}
-            {noteState === "saved" && <span className="text-xs text-success">Enregistré.</span>}
-            {noteState === "error" && <span className="text-xs text-destructive">Échec de l’enregistrement. Réessayez.</span>}
-          </div>
-        </section>
+        <CounselorNotes key={id} id={id} />
       </div>
     </div>
+  )
+}
+
+/** The counselor's private note on a report. Its own component, so that a
+ *  keystroke re-renders this box and not the nine sections of the report above
+ *  it; rendered with `key={id}`, so another report starts from a clean box. */
+function CounselorNotes({ id }: { id: string }) {
+  const [note, setNote] = useState("")
+  // The note is editable only once it has been read: an empty box saved over a
+  // note that failed to load would erase it.
+  const [noteLoad, setNoteLoad] = useState<"loading" | "ready" | "failed">("loading")
+  // Bumped by « Réessayer »: the loading effect depends on it.
+  const [noteTry, setNoteTry] = useState(0)
+  const [noteState, setNoteState] = useState<"idle" | "saving" | "saved" | "error">("idle")
+
+  useEffect(() => {
+    let alive = true
+    counselor.note(id)
+      .then((r) => { if (alive) { setNote(r.note); setNoteLoad("ready") } })
+      .catch(() => { if (alive) setNoteLoad("failed") })
+    return () => { alive = false }
+  }, [id, noteTry])
+
+  const retryNote = () => {
+    setNoteLoad("loading")
+    setNoteTry((n) => n + 1)
+  }
+
+  const saveNote = async () => {
+    setNoteState("saving")
+    try {
+      await counselor.saveNote(id, note)
+      // Typing while the save was in flight already set "idle": keep it.
+      setNoteState((s) => (s === "saving" ? "saved" : s))
+    } catch {
+      setNoteState("error")
+    }
+  }
+
+  return (
+    <section className="no-print mt-6 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
+      <h2 id="notes-privees" className="font-display text-base font-semibold text-navy">Notes privées</h2>
+      <p className="mt-1 text-xs text-muted-foreground">Visibles par vous seul.</p>
+      <Textarea
+        aria-labelledby="notes-privees"
+        className="mt-3 min-h-32 bg-background text-sm"
+        value={note}
+        maxLength={20000}
+        disabled={noteLoad !== "ready"}
+        onChange={(e) => { setNote(e.target.value); setNoteState("idle") }}
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="navy" onClick={saveNote}
+                disabled={noteLoad !== "ready" || noteState === "saving"}>Enregistrer</Button>
+        {noteLoad === "failed" && (
+          <>
+            <span className="text-xs text-destructive">Les notes n’ont pas pu être chargées.</span>
+            <Button size="sm" variant="outline" onClick={retryNote}>Réessayer</Button>
+          </>
+        )}
+        {noteState === "saved" && <span className="text-xs text-success">Enregistré.</span>}
+        {noteState === "error" && <span className="text-xs text-destructive">Échec de l’enregistrement. Réessayez.</span>}
+      </div>
+    </section>
   )
 }
