@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { AppBar } from "@/components/layout/AppBar"
+import { isPaidReport } from "@/components/report/ReportDocument"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -76,7 +77,7 @@ function DebloquerContent() {
   const redeemCode = async () => {
     setError(null)
     if (!code.trim()) {
-      setError("Saisissez votre code conseiller.")
+      setError("Saisissez votre code promo.")
       return
     }
     setCodeState("checking")
@@ -136,13 +137,10 @@ function DebloquerContent() {
     )
   }
 
-  // Same rule as the report: complete means the paid sections exist, however
-  // they came to exist — otherwise this page offers to sell a report the user
-  // is already holding.
-  const paidSectionsPresent = (analysis?.sections_meta ?? []).some(
-    (m) => !m.tiers.includes("free") && m.key in (analysis?.output ?? {}),
-  )
-  const alreadyComplete = analysis?.unlock_method != null || paidSectionsPresent
+  // Same rule as the report, and the same function: complete means the paid
+  // sections exist, however they came to exist — otherwise this page offers to
+  // sell a report the user is already holding.
+  const alreadyComplete = isPaidReport(analysis)
 
   // ── Nothing to unlock ──
   if (alreadyComplete) {
@@ -215,7 +213,7 @@ function DebloquerContent() {
               <p className="mt-2 font-display text-4xl font-extrabold">{eur(offers?.paid?.cents)}</p>
               <span className="text-sm text-white/70">une fois · sans abonnement</span>
             </div>
-            <p className="text-xs text-white/70">Livrable 9 sections + CV retravaillé + export conseiller</p>
+            <p className="text-xs text-white/70">Livrable 9 sections + CV retravaillé</p>
             <Separator className="my-4 bg-white/20" />
             <ul className="mb-5 space-y-2">
               {[...FREE, ...PAID].map((n) => (
@@ -253,7 +251,7 @@ function DebloquerContent() {
               {paymentsEnabled !== false && payState !== "redirecting" && <ArrowRight />}
             </Button>
             <p className="mt-2 text-center text-[10px] text-white/65">
-              Paiement sécurisé par Stripe · gratuit pour les bénéficiaires Cap Emploi / France Travail (code conseiller)
+              Paiement sécurisé par Stripe
             </p>
           </div>
         </div>
@@ -298,9 +296,9 @@ function DebloquerContent() {
           </Button>
         </div>
 
-        {/* Counselor code */}
+        {/* Promo code */}
         <div className="mt-6 flex flex-col gap-3 rounded-2xl bg-secondary p-4 sm:flex-row sm:items-center">
-          <span className="shrink-0 text-sm font-medium text-navy">Déjà un code conseiller ?</span>
+          <span className="shrink-0 text-sm font-medium text-navy">Déjà un code promo ?</span>
           <Input
             value={code}
             onChange={(e) => setCode(e.target.value)}
