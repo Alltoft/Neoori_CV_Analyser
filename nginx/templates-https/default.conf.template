@@ -26,11 +26,37 @@ map $uri $auth_oauth_key {
     default "";
 }
 limit_req_zone $auth_oauth_key zone=auth_oauth:10m rate=30r/m;
+
+# Four-doors spec, decision 39: what the open form exposes, POST only (the
+# polling GETs are never limited). Sized for a workshop room behind one
+# address: fifteen people, about four requests each, within minutes.
+map "$request_method:$uri" $analyses_key {
+    ~^POST:/api/(analyses(/draft)?|upload/(cv|projet))/?$  $binary_remote_addr;
+    default "";
+}
+map "$request_method:$uri" $codes_key {
+    ~^POST:/api/(codes/check|analyses/[^/]+/unlock|voyage/unlock)/?$  $binary_remote_addr;
+    default "";
+}
+limit_req_zone $analyses_key zone=analyses:10m rate=10r/m;
+limit_req_zone $codes_key    zone=codes:10m    rate=10r/m;
+# A refused request is logged at error level with its request line and its
+# Referer — the very things decision 42 keeps out of logs. `info` falls below
+# the image's error-log threshold (notice).
+limit_req_log_level info;
+
+# Four-doors spec, decision 42: log the path, never the query string or the
+# Referer. Verification and reset tokens, `next` paths and Stripe session ids
+# travel in query strings, and the Referer repeats them.
+log_format neoori_paths '$remote_addr [$time_local] "$request_method $uri" '
+                        '$status $body_bytes_sent $request_time';
+
 limit_req_status 429;
 
 server {
     listen 80;
     server_name ${DOMAIN} www.${DOMAIN};
+    access_log /var/log/nginx/access.log neoori_paths;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -47,6 +73,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name www.${DOMAIN};
+    access_log /var/log/nginx/access.log neoori_paths;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
@@ -61,6 +88,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name ${DOMAIN};
+    access_log /var/log/nginx/access.log neoori_paths;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
@@ -84,6 +112,8 @@ server {
     location /api/ {
         limit_req zone=auth_mail  burst=3 nodelay;
         limit_req zone=auth_login burst=5 nodelay;
+        limit_req zone=analyses burst=40 nodelay;
+        limit_req zone=codes    burst=20 nodelay;
         proxy_pass http://backend:5000;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

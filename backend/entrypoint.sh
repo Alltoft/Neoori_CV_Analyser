@@ -28,6 +28,7 @@ echo "[entrypoint] Starting gunicorn..."
 # Anthropic stream, so sync workers would cap concurrent analyses at the worker
 # count. 2 workers x 8 threads = 16 concurrent requests. Timeout must exceed the
 # longest paid-tier generation (see anthropic_service.py timeout handling).
+# Access log: the path only, no query string, no Referer (four-doors spec, decision 42).
 exec gunicorn \
     --bind 0.0.0.0:5000 \
     --worker-class gthread \
@@ -35,5 +36,6 @@ exec gunicorn \
     --threads "${GUNICORN_THREADS:-8}" \
     --timeout "${GUNICORN_TIMEOUT:-300}" \
     --access-logfile - \
+    --access-logformat '%(h)s %(t)s "%(m)s %(U)s" %(s)s %(b)s %(L)s' \
     --error-logfile - \
     run:app
