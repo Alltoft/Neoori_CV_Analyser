@@ -9,11 +9,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Public site origin baked into the bundle (metadata/OG URLs). CI passes the
-# SITE_URL repo variable; empty -> localhost fallback in layout.tsx.
-ARG NEXT_PUBLIC_SITE_URL
-ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
-    NEXT_TELEMETRY_DISABLED=1
+# No site URL is baked in: the frontend reads DOMAIN at request time
+# (subdomain split spec, decision 21).
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ---- runner: minimal standalone server, no node_modules ----

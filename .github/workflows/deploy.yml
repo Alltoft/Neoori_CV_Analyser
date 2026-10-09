@@ -50,8 +50,6 @@ jobs:
         with:
           context: ./frontend
           push: true
-          build-args: |
-            NEXT_PUBLIC_SITE_URL=${{ vars.SITE_URL }}
           tags: |
             ghcr.io/alltoft/neoori-frontend:latest
             ghcr.io/alltoft/neoori-frontend:${{ github.sha }}
