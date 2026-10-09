@@ -182,10 +182,11 @@ def list_analyses():
 @analyses_bp.get("/by-token")
 def get_by_token():
     """A no-login report, by the key in its link. A held draft is read through
-    /held, by its cookie: its key never leaves the cookie."""
+    /held, by its cookie: its key never leaves the cookie. _may_access has the
+    last word, so an advisor-door report is refused here too, whatever it holds."""
     presented = _header_token_hash()
     row = Analysis.query.filter_by(access_token_hash=presented).first() if presented else None
-    if row is None or row.status == "draft":
+    if row is None or row.status == "draft" or not _may_access(row):
         return jsonify({"error": "Ce lien n'est plus valide."}), 404
     return jsonify({"analysis": row.to_dict()}), 200
 

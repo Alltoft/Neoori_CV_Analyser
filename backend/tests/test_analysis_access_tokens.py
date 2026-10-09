@@ -124,6 +124,21 @@ def test_a_closed_row_stays_closed_to_its_token_and_its_owner(client, app):
     assert _get(client, owned, bearer(owner)) == 403
 
 
+def test_by_token_never_serves_an_advisor_row_even_with_its_hash(client, app):
+    """An advisor row holds no token by construction. Were one ever given a
+    hash, /by-token still refuses it: it goes through _may_access like every
+    other candidate route."""
+    c = counselor()
+    token = new_access_token()
+    headers = {"X-Analysis-Token": token}
+    row = _row(user_id=None, door="advisor", counselor_id=c.id, access_token_hash=hash_token(token))
+    assert client.get("/api/analyses/by-token", headers=headers).status_code == 404
+    # The counselor's account erased (ON DELETE SET NULL): `door` alone keeps it closed.
+    row.counselor_id = None
+    db.session.commit()
+    assert client.get("/api/analyses/by-token", headers=headers).status_code == 404
+
+
 def test_only_an_unclaimed_no_login_report_has_a_link_expiry(client, app):
     owner = user()
     for door in ("legacy", "advisor"):
