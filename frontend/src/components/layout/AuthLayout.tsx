@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { Photo } from "@/components/media/Photo"
 import { Logo, InfinityMark } from "@/components/brand/Logo"
 import { Check } from "lucide-react"
@@ -21,9 +21,9 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="absolute inset-0 bg-navy/45" />
         <div className="relative flex h-full flex-col justify-between p-10 text-white">
-          <Link href="/" aria-label="neoori — accueil">
+          <AppLink href="/" aria-label="neoori — accueil">
             <Logo tone="light" className="text-2xl" />
-          </Link>
+          </AppLink>
           <div>
             <p className="eyebrow inline-flex items-center gap-2 text-peach">
               <InfinityMark tone="light" className="text-[1.05em]" /> Orientation et emploi
@@ -46,9 +46,9 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
       {/* Form area */}
       <div className="flex items-center justify-center bg-background px-5 py-12">
         <div className="w-full max-w-sm">
-          <Link href="/" className="mb-8 flex justify-center text-2xl lg:hidden" aria-label="neoori — accueil">
+          <AppLink href="/" className="mb-8 flex justify-center text-2xl lg:hidden" aria-label="neoori — accueil">
             <Logo />
-          </Link>
+          </AppLink>
           {children}
         </div>
       </div>

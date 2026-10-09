@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { Logo, InfinityMark } from "@/components/brand/Logo"
 import { ShieldCheck } from "lucide-react"
 
@@ -60,9 +60,9 @@ export function SiteFooter() {
               <ul className="mt-4 space-y-2.5">
                 {col.links.map((l) => (
                   <li key={l.label}>
-                    <Link href={l.href} className="text-sm text-white/70 transition-colors hover:text-white">
+                    <AppLink href={l.href} className="text-sm text-white/70 transition-colors hover:text-white">
                       {l.label}
-                    </Link>
+                    </AppLink>
                   </li>
                 ))}
               </ul>

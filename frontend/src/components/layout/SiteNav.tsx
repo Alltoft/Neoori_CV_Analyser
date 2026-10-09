@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { useState } from "react"
 import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
@@ -22,27 +22,27 @@ export function SiteNav() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 sm:px-8">
-        <Link href="/" className="text-[26px] transition-opacity hover:opacity-80" aria-label="neoori — accueil">
+        <AppLink href="/" className="text-[26px] transition-opacity hover:opacity-80" aria-label="neoori — accueil">
           <Logo priority />
-        </Link>
+        </AppLink>
 
         <nav className="hidden items-center gap-8 md:flex">
           {LINKS.map((l) => (
-            <Link
+            <AppLink
               key={l.href}
               href={l.href}
               className="link-underline text-sm font-medium text-muted-foreground transition-colors hover:text-navy"
             >
               {l.label}
-            </Link>
+            </AppLink>
           ))}
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Button render={<Link href={user ? "/espace" : "/connexion"} />} size="lg" variant="ghost">
+          <Button render={<AppLink href={user ? "/espace" : "/connexion"} />} size="lg" variant="ghost">
             {user ? "Mon espace" : "Se connecter"}
           </Button>
-          <Button render={<Link href="/analyse" />} size="lg">
+          <Button render={<AppLink href="/analyse" />} size="lg">
             Démarrer
             <ArrowRight />
           </Button>
@@ -62,21 +62,21 @@ export function SiteNav() {
         <div className="animate-fade-in border-t border-border bg-background px-5 pb-5 pt-1 md:hidden">
           <nav className="flex flex-col">
             {LINKS.map((l) => (
-              <Link
+              <AppLink
                 key={l.href}
                 href={l.href}
                 onClick={() => setOpen(false)}
                 className="border-b border-border/60 py-3 text-[15px] font-medium text-navy"
               >
                 {l.label}
-              </Link>
+              </AppLink>
             ))}
           </nav>
           <div className="mt-4 flex flex-col gap-2">
-            <Button render={<Link href={user ? "/espace" : "/connexion"} />} variant="outline" size="lg" onClick={() => setOpen(false)}>
+            <Button render={<AppLink href={user ? "/espace" : "/connexion"} />} variant="outline" size="lg" onClick={() => setOpen(false)}>
               {user ? "Mon espace" : "Se connecter"}
             </Button>
-            <Button render={<Link href="/analyse" />} size="lg" onClick={() => setOpen(false)}>
+            <Button render={<AppLink href="/analyse" />} size="lg" onClick={() => setOpen(false)}>
               Démarrer
               <ArrowRight />
             </Button>

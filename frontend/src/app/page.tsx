@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { SiteNav } from "@/components/layout/SiteNav"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { Logo, InfinityMark } from "@/components/brand/Logo"
@@ -160,11 +160,11 @@ export default function LandingPage() {
               Vous visez un poste : neoori lit votre parcours et votre CV face à cette cible, et vous dit ce qui fait votre force, ce qui freine, et par où avancer. Pas encore de cible ? Le voyage vous aide à faire le point.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button render={<Link href="/analyse" />} size="xl">
+              <Button render={<AppLink href="/analyse" />} size="xl">
                 Lancer mon analyse
                 <ArrowRight />
               </Button>
-              <Button render={<Link href="/#rapport" />} size="xl" variant="outline">
+              <Button render={<AppLink href="/#rapport" />} size="xl" variant="outline">
                 Voir un exemple de rapport
               </Button>
             </div>
@@ -214,7 +214,7 @@ export default function LandingPage() {
                 </p>
                 <div className="mt-7">
                   <Button
-                    render={<Link href="/voyage" />}
+                    render={<AppLink href="/voyage" />}
                     size="xl"
                     className="bg-white text-navy hover:bg-white/90"
                   >
@@ -355,13 +355,13 @@ export default function LandingPage() {
                     <h3 className="font-display text-xl font-semibold text-navy">{p.title}</h3>
                   </div>
                   <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">{p.desc}</p>
-                  <Link
+                  <AppLink
                     href={p.cta.href}
                     className="link-underline mt-5 inline-flex items-center gap-1.5 self-start text-sm font-semibold text-orange-dark"
                   >
                     {p.cta.label}
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                  </Link>
+                  </AppLink>
                 </div>
               </div>
             </Reveal>
@@ -390,7 +390,7 @@ export default function LandingPage() {
                   Vous découvrez ce que votre parcours montre déjà face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour avancer.
                 </p>
                 <p className="mt-3 text-xs text-muted-foreground">Trois premières sections et verdict de diagnostic inclus, plus la première session du voyage. Aucune carte bancaire demandée, et pas de compte obligatoire pour l’analyse.</p>
-                <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
+                <Button render={<AppLink href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
                   Je commence maintenant
                 </Button>
               </div>
@@ -421,7 +421,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Button render={<Link href="/analyse" />} size="lg" className="mt-auto w-full bg-white text-orange-dark hover:bg-white/90">
+                <Button render={<AppLink href="/analyse" />} size="lg" className="mt-auto w-full bg-white text-orange-dark hover:bg-white/90">
                   Accéder au rapport complet
                 </Button>
               </div>
@@ -435,7 +435,7 @@ export default function LandingPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Vous êtes accompagné par un conseiller ? Avec son code, votre analyse complète lui est envoyée pour qu’il la reprenne avec vous, et les sessions 1 à 5 du voyage vous sont ouvertes — gratuitement. Ça vaut la peine de lui demander.
                 </p>
-                <Button render={<Link href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
+                <Button render={<AppLink href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">
                   J’ai un code
                 </Button>
               </div>
@@ -498,7 +498,7 @@ export default function LandingPage() {
               Lancez votre première analyse ou la première session du voyage — gratuitement, en quelques minutes. Vous repartez déjà avec quelque chose de concret.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Button render={<Link href="/analyse" />} size="xl">
+              <Button render={<AppLink href="/analyse" />} size="xl">
                 Lancer mon analyse
                 <ArrowRight />
               </Button>

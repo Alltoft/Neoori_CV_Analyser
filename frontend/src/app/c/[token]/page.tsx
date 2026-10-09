@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { AppLink } from "@/lib/site-context"
 import { Logo } from "@/components/brand/Logo"
 import { Button } from "@/components/ui/button"
 
@@ -13,7 +13,7 @@ export default function LienConseillerRetirePage() {
         <p className="mt-2 text-sm text-muted-foreground">
           Les conseillers reçoivent désormais l’analyse complète dans leur espace, lorsque leur code est utilisé.
         </p>
-        <Button render={<Link href="/" />} variant="outline" size="lg" className="mt-6">
+        <Button render={<AppLink href="/" />} variant="outline" size="lg" className="mt-6">
           Retour à l’accueil
         </Button>
       </div>
