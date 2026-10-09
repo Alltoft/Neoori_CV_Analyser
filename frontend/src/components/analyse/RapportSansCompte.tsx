@@ -68,13 +68,37 @@ export default function RapportSansCompte() {
     return () => window.removeEventListener("hashchange", reload)
   }, [])
 
+  // A browser prints the page's URL in the header or footer of what it prints,
+  // fragment included: a PDF saved or shared from here would carry the report's
+  // key, and whoever holds it could open, keep or delete the report (spec
+  // decision 30). For the time the page is printed the URL has no fragment; the
+  // key stays in `token`. This covers the « PDF » button and Ctrl/Cmd+P alike.
+  // Passing history.state back makes Next's patched replaceState leave its
+  // router alone (it skips entries that already carry its own state), and
+  // replaceState fires neither hashchange nor popstate: the page is not
+  // reloaded, remounted or re-rendered.
+  useEffect(() => {
+    if (!token) return
+    const hideKey = () => window.history.replaceState(window.history.state, "", window.location.pathname)
+    const showKey = () => window.history.replaceState(window.history.state, "", `${window.location.pathname}#${token}`)
+    window.addEventListener("beforeprint", hideKey)
+    window.addEventListener("afterprint", showKey)
+    return () => {
+      window.removeEventListener("beforeprint", hideKey)
+      window.removeEventListener("afterprint", showKey)
+    }
+  }, [token])
+
   const retry = () => {
     setState("loading")
     setAttempt((n) => n + 1)
   }
 
   const copyLink = async () => {
-    setCopied(await copyToClipboard(window.location.href))
+    if (!token) return
+    // Built from the token rather than read off the address bar, which carries
+    // no fragment for as long as a print is under way (above).
+    setCopied(await copyToClipboard(`${window.location.origin}${window.location.pathname}#${token}`))
     setTimeout(() => setCopied(false), 2500)
   }
 
@@ -103,7 +127,11 @@ export default function RapportSansCompte() {
       await held.remove(analysis.id, token)
       setState("deleted")
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
+      // Already gone: deleted from another tab (404), or kept by an account in
+      // the meantime, so the token no longer opens it (403). A dead link, as
+      // keep() reads it.
+      if (e instanceof ApiError && (e.status === 404 || e.status === 403)) setState("gone")
+      else setError(e instanceof ApiError ? e.message : "Erreur inattendue.")
     } finally {
       setBusy(false)
     }

@@ -40,7 +40,8 @@ function Espace() {
   const garder = useSearchParams().get("garder") === "1"
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
-  const [kept, setKept] = useState(false)
+  // The report this visit has just attached to the account, if any.
+  const [claimed, setClaimed] = useState<Analysis | null>(null)
   const [voyage, setVoyage] = useState<Voyage | null>(null)
   const [voyageLoaded, setVoyageLoaded] = useState(false)
 
@@ -50,13 +51,19 @@ function Espace() {
     // the first list already holds it. When nothing is held any more — a
     // password signup's verification link attached it already — the claim
     // answers 404: no sentence, and the list stands as it is.
-    const claimed = garder ? held.claim().then(() => setKept(true), () => {}) : Promise.resolve()
-    claimed
+    const claim = garder ? held.claim().then((r) => setClaimed(r.analysis), () => {}) : Promise.resolve()
+    claim
       .then(() => api.get<{ analyses: Analysis[] }>("/analyses/"))
       .then((r) => setAnalyses(r.analyses))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [garder])
+
+  // The report just kept goes first, as the spec has it: the list is ordered by
+  // creation date, and a no-login report keeps the date of its run, which can
+  // be older than the account's other analyses. Deduplicated by id: the list
+  // read after the claim already holds it.
+  const shown = garder && claimed ? [claimed, ...analyses.filter((a) => a.id !== claimed.id)] : analyses
 
   // The voyage is never required (spec decision 11) — this strip is an offer,
   // so a failed read renders nothing rather than an error (D-S9): voyageLoaded
@@ -73,6 +80,7 @@ function Espace() {
     try {
       await api.delete(`/analyses/${id}`)
       setAnalyses((prev) => prev.filter((a) => a.id !== id))
+      setClaimed((c) => (c?.id === id ? null : c))
     } catch (e) {
       alert(e instanceof ApiError ? e.message : "Erreur lors de la suppression.")
     }
@@ -162,7 +170,7 @@ function Espace() {
           </Link>
         )}
 
-        {garder && kept && (
+        {garder && claimed && (
           <Alert className="mb-4"><AlertDescription>Le rapport est maintenant dans votre espace.</AlertDescription></Alert>
         )}
 
@@ -170,7 +178,7 @@ function Espace() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
           </div>
-        ) : analyses.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary py-20 text-center">
             <span className="grid size-12 place-items-center rounded-full bg-peach-soft text-orange-dark"><PlusCircle className="size-6" /></span>
             <p className="font-display font-semibold text-navy">Votre première analyse</p>
@@ -181,7 +189,7 @@ function Espace() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {analyses.map((a) => (
+            {shown.map((a) => (
               <div key={a.id} className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 shadow-soft hover-lift">
                 <div className="flex items-start justify-between gap-2">
                   <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{fmtDate(a.created_at)}</Badge>
