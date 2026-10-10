@@ -133,23 +133,27 @@ export function runLoop(stage: Stage, host: HTMLElement, update: Update, pointer
   let running = false
   let visible = false
   let stopped = false
+  // The one pending frame. A hidden tab keeps its queued callbacks, so a pause
+  // must cancel it: left queued, it would come back as a second loop.
+  let pending = 0
   const t0 = performance.now()
 
   const frame = () => {
+    pending = 0
     if (!running || stopped) return
     current.x += (target.x - current.x) * 0.05
     current.y += (target.y - current.y) * 0.05
     update((performance.now() - t0) / 1000, current)
     stage.render()
-    requestAnimationFrame(frame)
+    pending = requestAnimationFrame(frame)
   }
   const sync = () => {
-    const go = visible && !document.hidden && !stopped
-    if (go && !running) {
-      running = true
-      requestAnimationFrame(frame)
+    running = visible && !document.hidden && !stopped
+    if (running && !pending) pending = requestAnimationFrame(frame)
+    if (!running && pending) {
+      cancelAnimationFrame(pending)
+      pending = 0
     }
-    if (!go) running = false
   }
   const move = (event: PointerEvent) => {
     const r = pointerArea.getBoundingClientRect()
@@ -173,6 +177,8 @@ export function runLoop(stage: Stage, host: HTMLElement, update: Update, pointer
     stop() {
       stopped = true
       running = false
+      if (pending) cancelAnimationFrame(pending)
+      pending = 0
       observer.disconnect()
       document.removeEventListener("visibilitychange", sync)
       pointerArea.removeEventListener("pointermove", move)
