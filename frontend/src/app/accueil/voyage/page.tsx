@@ -11,6 +11,7 @@ import { AdvisorsSection } from "@/components/landing/AdvisorsSection"
 import { DataSection } from "@/components/landing/DataSection"
 import { Faq } from "@/components/landing/Faq"
 import { FinalCall } from "@/components/landing/FinalCall"
+import { HeroObject } from "@/components/landing/HeroObject"
 
 // Landings spec, decision 15: this landing's own title, description,
 // canonical and share image. The root layout's template adds « · neoori ».
@@ -49,7 +50,18 @@ export default async function VoyageLandingPage() {
     <div className="lp lp-voy">
       <LandingNav app="voyage" copy={v.nav} placement="hero" />
       <main>
-        <VoyageHero copy={v.hero} object={<div className="lp-voy-object" aria-hidden="true" />} />
+        <VoyageHero
+          copy={v.hero}
+          object={
+            <HeroObject
+              scene="mark"
+              desktop={{ src: "/landing/voyage-desktop", width: 1555, height: 1555 }}
+              phone={{ src: "/landing/voyage-phone", width: 780, height: 600 }}
+              pointerAreaId="lp-voy-hero"
+              className="lp-voy-object"
+            />
+          }
+        />
         <CardGrid id="emporter" title={v.take.title} items={v.take.items} layout="grid" bg="deep" note={v.take.note} />
         <CardGrid id="etapes" title={v.how.title} items={how} layout="steps" bg="dusk" note={v.how.note} />
         <AdvisorsSection copy={v.advisors} bg="dawn" />

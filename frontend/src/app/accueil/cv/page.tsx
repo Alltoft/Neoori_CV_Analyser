@@ -13,6 +13,7 @@ import { Pricing } from "@/components/landing/Pricing"
 import { DataSection } from "@/components/landing/DataSection"
 import { Faq } from "@/components/landing/Faq"
 import { FinalCall } from "@/components/landing/FinalCall"
+import { HeroObject } from "@/components/landing/HeroObject"
 
 // Landings spec, decision 15: this landing's own title, description,
 // canonical and share image. The root layout's template adds « · neoori ».
@@ -45,7 +46,18 @@ export default function CvLandingPage() {
     <div className="lp lp-cv">
       <LandingNav app="cv" copy={c.nav} showPrices={c.showPrices} placement="hero" />
       <main>
-        <CvHero copy={c.hero} object={<div className="lp-cv-object" aria-hidden="true" />}>
+        <CvHero
+          copy={c.hero}
+          object={
+            <HeroObject
+              scene="sheet"
+              desktop={{ src: "/landing/cv-desktop", width: 1240, height: 1388 }}
+              phone={{ src: "/landing/cv-phone", width: 780, height: 670 }}
+              pointerAreaId="lp-cv-hero"
+              className="lp-cv-object"
+            />
+          }
+        >
           <ReportIndex copy={c.report} />
         </CvHero>
         <CardGrid id="comment" title={c.how.title} items={c.how.items} layout="steps" bg="white" />
