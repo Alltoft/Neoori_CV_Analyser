@@ -1,11 +1,31 @@
+import "@/components/landing/landing.css"
 import type { ReactNode } from "react"
 import { SiteNav } from "@/components/layout/SiteNav"
 import { SiteFooter } from "@/components/layout/SiteFooter"
+import { LandingNav } from "@/components/landing/LandingNav"
+import { LandingFooter } from "@/components/landing/LandingFooter"
+import { cvCopy } from "@/components/landing/copy/cv"
+import { voyageCopy } from "@/components/landing/copy/voyage"
+import { currentSite } from "@/lib/site-server"
 
-export default function LegalLayout({ children }: { children: ReactNode }) {
+// On cv. and voyage. the legal pages wear that app's menu and footer (landings
+// spec, decision 13): SiteNav's links are anchors on the root landing, which
+// those hosts no longer show at "/".
+export default async function LegalLayout({ children }: { children: ReactNode }) {
+  const { app } = await currentSite()
+  const landing = app === "cv" || app === "voyage" ? app : null
   return (
     <div className="min-h-screen overflow-x-clip bg-background">
-      <SiteNav />
+      {landing ? (
+        <LandingNav
+          app={landing}
+          copy={landing === "cv" ? cvCopy.nav : voyageCopy.nav}
+          showPrices={cvCopy.showPrices}
+          placement="page"
+        />
+      ) : (
+        <SiteNav />
+      )}
 
       <main
         className="mx-auto max-w-[760px] animate-fade-up px-5 py-14 text-[15px] leading-[1.75] text-navy-ink sm:px-8
@@ -24,7 +44,7 @@ export default function LegalLayout({ children }: { children: ReactNode }) {
         </div>
       </main>
 
-      <SiteFooter />
+      {landing ? <LandingFooter app={landing} /> : <SiteFooter />}
     </div>
   )
 }

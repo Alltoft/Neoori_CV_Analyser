@@ -1,8 +1,8 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
-  appOfHost, origin, ownerOf, passesThrough, resolveHref, route, settingsFromEnv,
-  type AppName, type Site, type SiteSettings,
+  appOfHost, isInternalLanding, landingHref, origin, ownerOf, passesThrough, resolveHref, route,
+  settingsFromEnv, type AppName, type Site, type SiteSettings,
 } from "./site.ts"
 import { signInRedirect } from "./sign-in-gate.ts"
 
@@ -10,6 +10,7 @@ const PROD: SiteSettings = { domain: "neoori.tech", scheme: "https", port: "" }
 const DEV: SiteSettings = { domain: "neoori.localhost", scheme: "http", port: "8080" }
 const serve = { kind: "serve" }
 const to = (location: string) => ({ kind: "redirect", location })
+const rewrite = (path: string) => ({ kind: "rewrite", path })
 const on = (app: AppName): Site => ({ settings: PROD, app })
 
 test("the settings come from DOMAIN, PUBLIC_SCHEME and PUBLIC_PORT", () => {
@@ -84,7 +85,7 @@ test("an old link keeps its encoded query byte for byte", () => {
 
 test("cv serves its own and the shared paths, and hands the voyage over", () => {
   const r = (path: string, search = "") => route("cv.neoori.tech", path, search, PROD)
-  assert.deepEqual(r("/"), to("/analyse/nouveau"))
+  assert.deepEqual(r("/"), rewrite("/accueil/cv"))
   assert.deepEqual(r("/analyse/nouveau"), serve)
   assert.deepEqual(r("/espace"), serve)
   assert.deepEqual(r("/connexion", "?redirect=%2Fvoyage"), serve)
@@ -94,7 +95,7 @@ test("cv serves its own and the shared paths, and hands the voyage over", () => 
 
 test("voyage serves its own and the shared paths, and hands cv's over", () => {
   const r = (path: string, search = "") => route("voyage.neoori.tech", path, search, PROD)
-  assert.deepEqual(r("/"), to("/voyage"))
+  assert.deepEqual(r("/"), rewrite("/accueil/voyage"))
   assert.deepEqual(r("/voyage"), serve)
   assert.deepEqual(r("/profil"), serve)
   assert.deepEqual(r("/espace", "?garder=1"), to("https://cv.neoori.tech/espace?garder=1"))
@@ -114,12 +115,40 @@ test("a link stays relative on the host that serves it, absolute otherwise", () 
   assert.equal(resolveHref("/espace?garder=1", on("voyage")), "https://cv.neoori.tech/espace?garder=1")
   assert.equal(resolveHref("/profil", on("voyage")), "/profil")
   assert.equal(resolveHref("/#rapport", on("root")), "/#rapport")
-  assert.equal(resolveHref("/#rapport", on("cv")), "https://neoori.tech/#rapport")
-  assert.equal(resolveHref("/", on("voyage")), "https://neoori.tech/")
+  // Landings spec, decision 12: "/" and "/#…" are this host's own landing.
+  assert.equal(resolveHref("/#rapport", on("cv")), "/#rapport")
+  assert.equal(resolveHref("/", on("voyage")), "/")
   assert.equal(resolveHref("/inscription-conseiller", on("root")), "https://cv.neoori.tech/inscription-conseiller")
   assert.equal(resolveHref("/analyse", on("root")), "https://cv.neoori.tech/analyse")
   assert.equal(resolveHref("mailto:a@b.fr", on("root")), "mailto:a@b.fr")
   assert.equal(resolveHref("https://stripe.test/s", on("cv")), "https://stripe.test/s")
+})
+
+test("each subdomain's / is its landing, served in place (landings spec, decision 8)", () => {
+  assert.deepEqual(route("cv.neoori.tech", "/", "", PROD), rewrite("/accueil/cv"))
+  assert.deepEqual(route("voyage.neoori.tech", "/", "?utm_source=x", PROD), rewrite("/accueil/voyage"))
+  assert.deepEqual(route("cv.neoori.localhost:8080", "/", "", DEV), rewrite("/accueil/cv"))
+  assert.deepEqual(route("neoori.tech", "/", "", PROD), serve)
+  assert.deepEqual(route("127.0.0.1:3000", "/", "", PROD), serve)
+})
+
+test("the /accueil paths are never an address of their own (decision 9)", () => {
+  // Review Focus 3.
+  assert.deepEqual(route("cv.neoori.tech", "/accueil/cv", "", PROD), to("/"))
+  assert.deepEqual(route("voyage.neoori.tech", "/accueil/voyage", "?x=1", PROD), to("/"))
+  assert.deepEqual(route("cv.neoori.tech", "/accueil/voyage", "", PROD), to("https://voyage.neoori.tech/"))
+  assert.deepEqual(route("voyage.neoori.tech", "/accueil/cv", "", PROD), to("https://cv.neoori.tech/"))
+  assert.deepEqual(route("neoori.tech", "/accueil", "", PROD), to("https://cv.neoori.tech/"))
+  assert.deepEqual(route("neoori.tech", "/accueil/voyage/x", "", PROD), to("https://voyage.neoori.tech/"))
+  assert.equal(isInternalLanding("/accueillir"), false)
+  assert.equal(isInternalLanding("/accueil"), true)
+})
+
+test("a link to an app's landing, from any host (decision 12)", () => {
+  assert.equal(landingHref("cv", on("cv")), "/")
+  assert.equal(landingHref("voyage", on("cv")), "https://voyage.neoori.tech/")
+  assert.equal(landingHref("cv", on("root")), "https://cv.neoori.tech/")
+  assert.equal(landingHref("root", on("voyage")), "https://neoori.tech/")
 })
 
 test("the sign-in gate: four doors' open paths, signup first on the report and the voyage hub", () => {

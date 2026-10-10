@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth"
 import { origin } from "@/lib/site"
 import { SiteProvider } from "@/lib/site-context"
 import { currentSite } from "@/lib/site-server"
+import { NavigationSettled } from "@/components/landing/NavigationSettled"
 
 // Display — neoori charter face (Plus Jakarta Sans): humanist geometric sans, brand-aligned.
 const jakarta = Plus_Jakarta_Sans({
@@ -41,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s · neoori",
     },
     description:
-      "Faites le point sur votre parcours : l'analyse de votre CV face au poste que vous visez, et le voyage, six sessions pour poser ce que vous savez déjà de vous. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
+      "Faites le point sur votre parcours : l'analyse de votre CV face à ce que vous visez (métier, formation, poste ou projet), et le voyage, six sessions pour poser ce que vous savez déjà de vous. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
     keywords: [
       "orientation professionnelle", "analyse de CV", "projet professionnel", "reconversion",
       "insertion professionnelle", "conseiller en évolution professionnelle", "Cap Emploi",
@@ -85,6 +86,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="antialiased min-h-screen bg-background text-foreground">
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
         <SiteProvider site={site}>
+          <NavigationSettled />
           <AuthProvider>{children}</AuthProvider>
         </SiteProvider>
       </body>

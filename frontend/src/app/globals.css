@@ -286,3 +286,29 @@ html { scroll-behavior: smooth; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ── The ∞ wipe (landings spec, decision 22). WipeLink sets the variables and
+   the class for one View Transition; nothing here applies otherwise. ── */
+html.neoori-wipe::view-transition-old(root) { animation: none; }
+html.neoori-wipe::view-transition-new(root) {
+  animation: neoori-wipe-in 900ms cubic-bezier(0.76, 0, 0.24, 1) both;
+}
+html.neoori-wipe::view-transition-group(neoori-wipe-ring) {
+  transform-origin: 50% 50%;
+  animation: neoori-ring-grow 900ms cubic-bezier(0.76, 0, 0.24, 1) both;
+}
+html.neoori-wipe::view-transition-old(neoori-wipe-ring) {
+  animation: neoori-ring-fade 900ms linear both;
+}
+@keyframes neoori-wipe-in {
+  from { clip-path: circle(0px at var(--wipe-x) var(--wipe-y)); }
+  to { clip-path: circle(var(--wipe-r) at var(--wipe-x) var(--wipe-y)); }
+}
+@keyframes neoori-ring-grow {
+  from { transform: translate(var(--ring-tx), var(--ring-ty)) scale(0.002); }
+  to { transform: translate(var(--ring-tx), var(--ring-ty)) scale(var(--ring-scale)); }
+}
+@keyframes neoori-ring-fade {
+  0%, 55% { opacity: 1; }
+  100% { opacity: 0; }
+}

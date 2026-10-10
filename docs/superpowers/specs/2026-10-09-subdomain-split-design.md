@@ -137,6 +137,8 @@ swapped some day (see « Out of scope »).
 13. **Day one:** `cv./` redirects to `/analyse/nouveau`, `voyage./` to
     `/voyage` (307). A designed landing later takes over its subdomain's `/`
     through an internal rewrite, so the address stays `cv.DOMAIN/`.
+    *Amended 2026-10-10 (landings spec, decisions 8–9): `/` on cv and voyage
+    now serves each app's landing from `/accueil/cv` / `/accueil/voyage`.*
 14. **Signed out on the voyage hub** (`/voyage`, exact path) → `/inscription`,
     with the hub as `redirect`, as the analysis form did before four doors: new
     people arrive there. Deeper voyage pages keep sending to `/connexion`.
@@ -148,6 +150,8 @@ swapped some day (see « Out of scope »).
 16. *Claude's call.* **In links, `/` and `/#anchor` mean the root landing**: the
     marketing nav and footer anchors, the auth pages' logo, where logout lands.
     A visitor reaches `cv./` or `voyage./` only by typing it.
+    *Amended 2026-10-10 (landings spec, decision 12): on cv and voyage, `/`
+    and `/#anchor` mean that host's own landing; the root keeps its own.*
 17. *Claude's call.* **Files and Next's own assets are served on every host.**
     `proxy.ts` already skips `_next/static`, `_next/image`, `favicon.ico` and
     `.png`; any other path whose last segment has an extension (svg, jpg, webp,

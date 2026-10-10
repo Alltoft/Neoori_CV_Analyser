@@ -1,9 +1,11 @@
 /**
- * Which host serves which page (subdomain split spec, decisions 10–18 and 37).
+ * Which host serves which page (subdomain split spec, decisions 10–18 and 37;
+ * landings spec, decisions 8, 9 and 12).
  *
  * neoori answers on three hosts built from one setting, DOMAIN: the root
  * (today's landing, nothing else), cv.DOMAIN (« J'ai une cible ») and
- * voyage.DOMAIN (le voyage). Plain functions with no Next.js import, so
+ * voyage.DOMAIN (le voyage). Each subdomain's "/" is its own landing, served
+ * in place from an internal path. Plain functions with no Next.js import, so
  * `node --test` loads this file as it is (site.test.ts).
  *
  * A new page that belongs to one app needs a row in OWNERS. A path in no row
@@ -27,7 +29,10 @@ export interface Site {
   app: AppName
 }
 
-export type Route = { kind: "serve" } | { kind: "redirect"; location: string }
+export type Route =
+  | { kind: "serve" }
+  | { kind: "redirect"; location: string }
+  | { kind: "rewrite"; path: string }
 
 const PREFIX: Record<AppName, string> = { root: "", cv: "cv.", voyage: "voyage." }
 
@@ -39,11 +44,18 @@ const OWNERS: ReadonlyArray<readonly [string, "cv" | "voyage"]> = [
   ["/voyage", "voyage"],
 ]
 
-/** Each subdomain's "/" until its landing is designed (decision 13). A
- *  designed landing will take over its "/" through an internal rewrite. */
-const DAY_ONE: Record<"cv" | "voyage", string> = {
-  cv: "/analyse/nouveau",
-  voyage: "/voyage",
+/** Where each subdomain's landing lives (landings spec, decision 8). The
+ *  proxy serves it in place of "/", so the address stays cv.DOMAIN/. */
+export const LANDING: Record<"cv" | "voyage", string> = {
+  cv: "/accueil/cv",
+  voyage: "/accueil/voyage",
+}
+
+const INTERNAL = "/accueil"
+
+/** The landings' own paths are never an address (decision 9). */
+export function isInternalLanding(pathname: string): boolean {
+  return pathname === INTERNAL || pathname.startsWith(`${INTERNAL}/`)
 }
 
 /** Takes `process.env` whole. The index signature is what lets it: Next types
@@ -96,17 +108,25 @@ export function passesThrough(pathname: string): boolean {
   return pathname.slice(pathname.lastIndexOf("/") + 1).includes(".")
 }
 
-/** The app that serves a page owned by `owner`, asked for on `app`. */
+/** The app that serves a page owned by `owner`, asked for on `app`. Every
+ *  host serves its own "/" (landings spec, decision 12). */
 function servedBy(owner: Owner, app: AppName): AppName {
+  if (owner === "root") return app
   if (owner === "shared") return app === "root" ? "cv" : app
   return owner
 }
 
+/** The landing an internal path belongs to: voyage's, or cv's for anything
+ *  else under /accueil. */
+function landingOf(pathname: string): "cv" | "voyage" {
+  return pathname === LANDING.voyage || pathname.startsWith(`${LANDING.voyage}/`) ? "voyage" : "cv"
+}
+
 /**
- * What a page request gets (spec, « How a page request is routed »). A
- * redirect to another host is absolute and built from the settings, never
- * from the Host header; the day-one redirect stays on its host and is
- * relative.
+ * What a page request gets (split spec, « How a page request is routed »;
+ * landings spec, decisions 8–9). A redirect to another host is absolute and
+ * built from the settings, never from the Host header; a same-host redirect
+ * is relative.
  */
 export function route(
   host: string | null | undefined,
@@ -116,9 +136,13 @@ export function route(
 ): Route {
   if (passesThrough(pathname)) return { kind: "serve" }
   const app = appOfHost(host, settings.domain)
+  if (isInternalLanding(pathname)) {
+    const owner = landingOf(pathname)
+    return { kind: "redirect", location: owner === app ? "/" : `${origin(owner, settings)}/` }
+  }
   const owner = ownerOf(pathname)
   if (owner === "root") {
-    return app === "root" ? { kind: "serve" } : { kind: "redirect", location: DAY_ONE[app] }
+    return app === "root" ? { kind: "serve" } : { kind: "rewrite", path: LANDING[app] }
   }
   const target = servedBy(owner, app)
   if (target === app) return { kind: "serve" }
@@ -127,12 +151,18 @@ export function route(
 
 /**
  * A link target for a page served on `site`: the path itself when this host
- * serves it, the serving host's absolute URL otherwise. "/" and "/#…" are the
- * root landing (decision 16). Anything that is not a site path — mailto:, an
- * absolute URL — comes back as given.
+ * serves it, the serving host's absolute URL otherwise. "/" and "/#…" are
+ * this host's own landing (landings spec, decision 12). Anything that is not
+ * a site path — mailto:, an absolute URL — comes back as given.
  */
 export function resolveHref(path: string, site: Site): string {
   if (!path.startsWith("/") || path.startsWith("//")) return path
   const target = servedBy(ownerOf(path), site.app)
   return target === site.app ? path : origin(target, site.settings) + path
+}
+
+/** A link to an app's landing from any host (decision 12): "/" on that app's
+ *  own host, its absolute "/" everywhere else. */
+export function landingHref(app: AppName, site: Site): string {
+  return app === site.app ? "/" : `${origin(app, site.settings)}/`
 }

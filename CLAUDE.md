@@ -201,8 +201,8 @@ start: changing it needs no rebuild).
 | Host | Serves |
 |---|---|
 | `DOMAIN` | today's landing at `/`, nothing else: every other path redirects (307) to the host that serves it |
-| `cv.DOMAIN` | « J'ai une cible »: `/analyse/*`, `/rapport`, `/espace`; `/` → `/analyse/nouveau` until its landing exists |
-| `voyage.DOMAIN` | le voyage: `/voyage/*`; `/` → `/voyage` |
+| `cv.DOMAIN` | « J'ai une cible »: its landing at `/`, `/analyse/*`, `/rapport`, `/espace` |
+| `voyage.DOMAIN` | le voyage: its landing at `/`, `/voyage/*` |
 
 Every other page — the sign-in pages, `/profil`, `/conseiller`, `/admin`, the
 legal pages — is shared: served on cv and voyage, and sent from the root to
@@ -210,6 +210,14 @@ cv. The table lives in `frontend/src/lib/site.ts`: **a new page that belongs
 to one app needs a row there**, or it is shared. A link that may cross hosts
 uses `AppLink`, `useSite().href` or `go()` (`lib/site-context.tsx`).
 
+- **Each subdomain's `/` is its landing**, served in place from
+  `/accueil/cv` / `/accueil/voyage` (a rewrite in `proxy.ts`); a direct
+  request for `/accueil/*` is sent back to `/`. In links, `/` and `/#anchor`
+  mean the current host's own landing; another app's landing is
+  `useSite().landing(app)` or `landingHref()`. Every landing string lives in
+  `components/landing/copy/*.ts` (the PM reviews those files), and the 3D
+  stills are re-rendered from `/dev/stills` in `next dev`. Spec:
+  `docs/superpowers/specs/2026-10-10-subdomain-landings-design.md`.
 - **One sign-in.** The session cookies are `neoori_access` / `neoori_refresh`
   with `Domain=DOMAIN` (`config.py`, `app/__init__.py`). The Google/Microsoft
   state and the signup ticket stay on one host: each of their round trips

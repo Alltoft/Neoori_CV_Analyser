@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>cv. · 1 · Côte à côte (maquette)</title>
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;600;700&amp;family=Plus+Jakarta+Sans:wght@700;800&amp;display=swap">
+<link rel="stylesheet" href="kit/landing.css">
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/" } }</script>
+</head>
+<body class="cv">
+<header class="nav">
+  <div class="container nav-in">
+    <a class="logo-link" href="#" data-inert aria-label="neoori, accueil"><span data-logo="navy" data-play="once"></span></a>
+    <nav class="nav-links" aria-label="Sections"><a href="#comment">Comment ça marche</a><a href="#conseillers">Pour les conseillers</a><a href="#" data-inert>Tarifs</a><a href="#" data-inert>Questions</a></nav>
+    <div class="nav-actions">
+      <a class="nav-signin" href="#" data-inert>Se connecter</a>
+      <a class="nav-cross" href="#" data-inert>Le voyage <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
+      <button class="nav-menu" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+</header>
+<main>
+<section class="hero-split" aria-labelledby="h">
+  <div class="container">
+    <div class="hero-copy rise">
+      <span class="label" style="--i:0">J’ai une cible</span>
+      <h1 id="h" style="--i:1">Lire un parcours face à sa cible.</h1>
+      <p class="sub" style="--i:2">Un métier, une formation, un poste, un projet&#160;: neoori lit le CV face à ce qui est visé, et montre les forces, ce qui reste à renforcer et par où avancer.</p>
+      <div class="doors" style="--i:3">
+        <div class="door"><a class="btn btn-primary" href="#" data-wipe-open>Analyser mon CV <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><p class="door-note">Gratuit pour commencer, avec ou sans compte.</p></div>
+        <div class="door"><a class="btn btn-secondary" href="#conseillers">Je suis conseiller</a><p class="door-note">Vos codes, et les rapports qui vous reviennent.</p></div>
+      </div>
+    </div>
+    <div class="panel" id="sheet3d" aria-hidden="true">
+      <span class="chip c2"><b>§3</b>Compétences transférables</span>
+      <span class="chip c1"><b>§2</b>Forces du profil pour la cible</span>
+    </div>
+  </div>
+</section>
+<section class="advisors" id="conseillers" aria-labelledby="adv-h">
+  <div class="container">
+    <div>
+      <span class="label">Pour les conseillers</span>
+      <h2 id="adv-h">Proposez l’analyse aux personnes que vous accompagnez.</h2>
+      <div class="links"><a class="btn btn-dark" href="#" data-inert>Créer un compte conseiller</a><a class="btn btn-line" href="#" data-inert>Se connecter</a></div>
+    </div>
+    <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Des codes à remettre, pour une analyse ou pour un voyage.</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Avec votre code, le rapport complet vous revient, à vous seul.</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Une note privée sur chaque analyse, que vous seul lisez.</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Pour toute cible&#160;: un métier, une formation, un poste, un projet.</span></li></ul>
+  </div>
+</section>
+</main>
+<div class="wipe" id="wipe" hidden role="dialog" aria-modal="true" aria-labelledby="wipe-h">
+  <div class="wipe-card">
+    <span class="label">Nouvelle analyse</span>
+    <h2 id="wipe-h">Votre CV et votre cible</h2>
+    <div class="fld"><span>Votre CV</span><div>Déposez un PDF ou collez le texte</div></div>
+    <div class="fld"><span>Votre cible</span><div>Un métier, une formation, un poste, un projet…</div></div>
+    <p class="wipe-note">Maquette&#160;: sur le site, c’est la vraie page qui s’ouvre ici.</p>
+    <div><button type="button" class="btn btn-line" data-wipe-back>Retour</button></div>
+  </div>
+</div>
+<svg class="wipe-ring" id="wipeRing" aria-hidden="true"><circle r="0" fill="none" stroke-width="5"/></svg>
+<script src="kit/landing.js"></script>
+<script type="module">
+import { mountSheet } from "./kit/scenes.js";
+mountSheet(document.getElementById("sheet3d"), { layout: (a, v) => ({ x: 0.08, y: -0.06, s: Math.min(1.05, v.w / 2.95) }) });
+</script>
+</body>
+</html>
