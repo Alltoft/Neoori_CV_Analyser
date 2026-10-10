@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth"
 import { origin } from "@/lib/site"
 import { SiteProvider } from "@/lib/site-context"
 import { currentSite } from "@/lib/site-server"
+import { NavigationSettled } from "@/components/landing/NavigationSettled"
 
 // Display — neoori charter face (Plus Jakarta Sans): humanist geometric sans, brand-aligned.
 const jakarta = Plus_Jakarta_Sans({
@@ -85,6 +86,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="antialiased min-h-screen bg-background text-foreground">
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
         <SiteProvider site={site}>
+          <NavigationSettled />
           <AuthProvider>{children}</AuthProvider>
         </SiteProvider>
       </body>
