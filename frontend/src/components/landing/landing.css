@@ -70,11 +70,15 @@
 .lp-logo-link { display: block; flex: none; font-size: 31px; line-height: 0; }
 .lp-logo { display: block; height: 32px; width: auto; overflow: visible; }
 .lp-nav-links { display: flex; gap: 26px; margin-left: auto; font: 500 0.95rem/1 var(--lp-body); }
-.lp-nav-links a { text-decoration: none; opacity: 0.78; transition: opacity 0.2s; }
+.lp-nav-links a { position: relative; text-decoration: none; opacity: 0.78; transition: opacity 0.2s; }
+/* Touch targets of 44 px (decision 31) without changing how the links look:
+   an invisible hit area around the text and the pill. */
+.lp-nav-links a::after { content: ""; position: absolute; inset: -15px -6px; }
 .lp-nav-links a:hover { opacity: 1; }
 .lp-nav-actions { display: flex; align-items: center; gap: 16px; }
-.lp-nav-signin { font: 600 0.95rem/1 var(--lp-body); text-decoration: none; padding: 12px 2px; }
-.lp-nav-cross { font: 600 0.84rem/1 var(--lp-body); text-decoration: none; padding: 10px 14px; border-radius: 999px; display: inline-flex; gap: 6px; align-items: center; }
+.lp-nav-signin { font: 600 0.95rem/1 var(--lp-body); text-decoration: none; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; white-space: nowrap; }
+.lp-nav-cross { position: relative; font: 600 0.84rem/1 var(--lp-body); text-decoration: none; padding: 10px 14px; border-radius: 999px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.lp-nav-cross::after { content: ""; position: absolute; inset: -5px 0; }
 .lp-cv .lp-nav-cross { background: var(--lp-cool); color: var(--lp-navy); }
 .lp-voy .lp-nav-cross { background: rgba(255, 255, 255, 0.1); color: #ffffff; }
 .lp-nav-cross svg { width: 14px; height: 14px; }
@@ -136,8 +140,8 @@
 .lp-footer-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px 40px; align-items: start; }
 .lp-footer-brand { display: grid; gap: 14px; font-size: 26px; justify-items: start; }
 .lp-footer-brand p { font-size: 0.92rem; line-height: 1.5; color: rgba(255, 255, 255, 0.7); max-width: 36ch; }
-.lp-footer-links { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 0.92rem; }
-.lp-footer-links a { text-decoration: none; color: rgba(255, 255, 255, 0.78); }
+.lp-footer-links { display: flex; flex-wrap: wrap; gap: 0 22px; font-size: 0.92rem; }
+.lp-footer-links a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; color: rgba(255, 255, 255, 0.78); }
 .lp-footer-links a:hover { color: #ffffff; }
 .lp-footer-copy { grid-column: 1 / -1; font-size: 0.82rem; color: rgba(255, 255, 255, 0.5); border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 18px; }
 @media (max-width: 760px) { .lp-footer-in { grid-template-columns: minmax(0, 1fr); } }
