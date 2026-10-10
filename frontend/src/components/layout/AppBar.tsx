@@ -31,7 +31,8 @@ export function AppBar() {
 
   const handleLogout = async () => {
     await logout()
-    // The root landing (decision 16). The session ended on every host.
+    // This app's own landing (landings spec, decision 12). The session ended
+    // on every host.
     go("/")
   }
 

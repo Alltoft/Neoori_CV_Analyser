@@ -15,6 +15,17 @@ export function proxy(req: NextRequest) {
     // as a relative Location.
     return NextResponse.redirect(new URL(routed.location, req.url), 307)
   }
+  if (routed.kind === "rewrite") {
+    // Each subdomain's landing lives at an internal path and is public: serve
+    // it in place of "/", so the address stays cv.DOMAIN/ (landings spec,
+    // decision 8). Next keeps a rewrite internal only while its target has
+    // the server's own origin; otherwise it proxies it, and this proxy runs
+    // again for /accueil/… and answers 307. req.url carries that origin when
+    // the server binds 0.0.0.0, as the Dockerfile does. Bound to 127.0.0.1,
+    // Next renames the host "localhost" in req.url alone, and every landing
+    // turns into a 307.
+    return NextResponse.rewrite(new URL(routed.path, req.url))
+  }
 
   const to = signInRedirect(pathname, search, req.cookies.has(SESSION_COOKIE))
   if (to) return NextResponse.redirect(new URL(to, req.url))

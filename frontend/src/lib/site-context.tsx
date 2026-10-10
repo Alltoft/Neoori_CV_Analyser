@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from "react"
-import { resolveHref, type AppName, type Site } from "./site"
+import { landingHref, resolveHref, type AppName, type Site } from "./site"
 
 const SiteContext = createContext<Site | null>(null)
 
@@ -22,6 +22,9 @@ export interface SiteTools {
   /** The router on this host; a full page load to another host, which is
    *  where the shared session cookie keeps the person signed in. */
   go: (path: string, options?: { replace?: boolean }) => void
+  /** "/" when `app` is this host's, that app's absolute "/" otherwise
+   *  (landings spec, decision 12). */
+  landing: (app: AppName) => string
 }
 
 export function useSite(): SiteTools {
@@ -42,6 +45,7 @@ export function useSite(): SiteTools {
         router.push(path)
       }
     },
+    landing: (target) => landingHref(target, site),
   }), [site, router])
 }
 
