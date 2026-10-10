@@ -39,3 +39,6 @@ next-env.d.ts
 
 # watermark-crop backups (local only)
 public/img/_originals/
+
+# Landing still masters (rendered by /dev/stills; the AVIF and WebP are committed)
+/public/landing/*.png
