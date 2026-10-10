@@ -508,9 +508,9 @@ One app on three hosts (CLAUDE.md, « Sous-domaines »). Locally:
 | 14.1 | Open `http://neoori.localhost:8080` | The landing; the address stays `neoori.localhost:8080` |
 | 14.2 | Click « Lancer mon analyse »; go back; click « Commencer le voyage » | The form at `cv.neoori.localhost:8080/analyse/nouveau`; then signup at `voyage.neoori.localhost:8080/inscription?redirect=%2Fvoyage` |
 | 14.3 | Open `http://neoori.localhost:8080/verifier-email?token=abc#x` | `cv.neoori.localhost:8080/verifier-email?token=abc#x` — path, query and fragment kept; the page says the link is not valid |
-| 14.4 | Open `http://cv.neoori.localhost:8080/`, then `http://voyage.neoori.localhost:8080/` | The form; then signup, with the voyage hub as `redirect` |
+| 14.4 | Open `http://cv.neoori.localhost:8080/`, then `http://voyage.neoori.localhost:8080/` | The cv. landing; then the voyage. landing (addresses unchanged) |
 | 14.5 | Sign in on `cv.…/connexion`, then open `voyage.…/voyage` | The hub, signed in, no second sign-in |
-| 14.6 | On voyage, app bar menu → « Déconnexion »; then reload a cv tab on `/espace` | Logout lands on the landing at `neoori.localhost:8080`; the cv tab goes to `/connexion` |
+| 14.6 | On voyage, app bar menu → « Déconnexion »; then reload a cv tab on `/espace` | Logout lands on the voyage. landing at voyage.neoori.localhost:8080/; the cv tab goes to /connexion |
 | 14.7 | Signed out, on `voyage.…/connexion`: « Recevoir un lien de connexion » with any address; then `docker compose logs backend --since 2m` | The link printed starts `http://voyage.neoori.localhost:8080/connexion/lien?token=` |
 | 14.8 | The same from `cv.…/connexion`, and « Mot de passe oublié » for an existing account on voyage | Each link names the host it was asked from |
 | 14.9 | Signed out on cv: fill the form, « Avec mon compte », sign up, open the confirmation link from the backend log | Back on the form on cv with the draft (four doors' hold stays on cv) |
@@ -525,11 +525,40 @@ After the deploy, on production:
 
 | # | Do | Expect |
 |---|---|---|
-| 14.16 | `curl -sI https://neoori.tech https://cv.neoori.tech https://voyage.neoori.tech https://www.neoori.tech \| grep -iE '^(HTTP\|location)'` | `200`; `307` → `/analyse/nouveau`; `307` → `/voyage`; `301` → `https://neoori.tech/` |
+| 14.16 | `curl -sI https://neoori.tech https://cv.neoori.tech https://voyage.neoori.tech https://www.neoori.tech \| grep -iE '^(HTTP\|location)'` | `200`; `200`; `200`; `301` → `https://neoori.tech/` |
 | 14.17 | `curl -sI --resolve x.neoori.tech:443:186.240.157.26 https://x.neoori.tech` | Fails at the TLS handshake: an unknown name is refused |
 | 14.18 | One real sign-in on each subdomain (the email link) | Signed in; the mail's link names the host it was asked from |
 
 ---
+
+## 15 · Les landings
+
+`cv.neoori.localhost:8080` and `voyage.neoori.localhost:8080`, in Chrome
+(spec: `docs/superpowers/specs/2026-10-10-subdomain-landings-design.md`).
+
+| # | Do | Expect |
+|---|---|---|
+| 15.1 | Open `http://cv.neoori.localhost:8080/` in a new tab | « Lire un parcours face à sa cible. »; the logo's rings draw, then its letters rise; the address stays `/` |
+| 15.2 | Reload | The logo is still (once per tab session) |
+| 15.3 | Click « Je suis conseiller » | Scrolls to « Pour les conseillers » |
+| 15.4 | Click « Analyser mon CV »; then Back | The form opens through a growing circle with an orange ring; Back shows the landing whole |
+| 15.5 | Signed out, on voyage., click « Commencer le voyage » | The circle, peach ring, opens on `/inscription?redirect=%2Fvoyage` |
+| 15.6 | Sign in as a candidate, then a counselor; open both landings | « Mon espace » leads to `/espace` (cv.), `/voyage` (voyage.), `/conseiller` (counselor) |
+| 15.7 | At 1440 px, wait a second after load | The 3D object floats and follows the pointer; Network shows one three.js chunk |
+| 15.8 | At 390 px, reload | The 3D object is an image first; no three.js chunk; buttons full width, notes left; the cv. tiers and the voyage. steps are vertical lines |
+| 15.9 | DevTools > Rendering > « prefers-reduced-motion: reduce », reload | No logo motion, no rise, no wipe, the 3D a still image |
+| 15.10 | Launch Chrome with `--disable-3d-apis`, open both landings | The still images; no error |
+| 15.11 | `curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: cv.neoori.localhost' http://127.0.0.1:8080/accueil/cv` | `307` |
+| 15.12 | `curl -s -H 'Host: voyage.neoori.localhost' http://127.0.0.1:8080/robots.txt` | voyage.'s rules and its sitemap URL |
+| 15.13 | Open `cv.…/cgv`, then `voyage.…/cgv` | The cv. menu and footer; then a navy bar and the footer |
+
+After the deploy, on production:
+
+| # | Do | Expect |
+|---|---|---|
+| 15.14 | `curl -sI https://cv.neoori.tech https://voyage.neoori.tech \| grep -iE '^HTTP'` | `200` twice |
+| 15.15 | `curl -s https://cv.neoori.tech \| grep -o 'property="og:url" content="[^"]*"'` | `https://cv.neoori.tech` (Next writes a root URL without the slash); the same check on voyage. names voyage. |
+| 15.16 | In Safari (macOS or iOS), the wipe and the reduced-motion check | As 15.4 and 15.9: Safari does not resolve `*.localhost`, so it is checked here |
 
 ## What to report back
 
