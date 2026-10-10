@@ -12,6 +12,9 @@ const PHRASES = [
   "Le poste ou le secteur",
   "texte de l’offre d’emploi",
   "du point de vue des recruteurs",
+  // Review finding: the root's own list of the report's sections.
+  "pour ce poste précis",
+  "Ce que le recruteur retient",
 ]
 
 test("no page says the cible is only a job", () => {

@@ -81,8 +81,8 @@ const STEPS = [
 ]
 
 const SECTIONS_FULL = [
-  { n: "1", t: "Ce que le recruteur retient en premier", free: true },
-  { n: "2", t: "Vos forces réelles pour ce poste précis", free: true },
+  { n: "1", t: "Une lecture stratégique de votre parcours", free: true },
+  { n: "2", t: "Vos forces réelles pour votre cible", free: true },
   { n: "3", t: "Vos compétences transférables — celles que vous n’avez peut-être pas pensé à mettre en avant", free: true },
   { n: "4", t: "Ce qui reste à renforcer — et comment", free: false },
   { n: "5", t: "Des préconisations concrètes, issues du terrain", free: false },
