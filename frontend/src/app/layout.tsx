@@ -42,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s · neoori",
     },
     description:
-      "Faites le point sur votre parcours : l'analyse de votre CV face au poste que vous visez, et le voyage, six sessions pour poser ce que vous savez déjà de vous. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
+      "Faites le point sur votre parcours : l'analyse de votre CV face à ce que vous visez (métier, formation, poste ou projet), et le voyage, six sessions pour poser ce que vous savez déjà de vous. Conçu pour les conseillers, les organisations de l'emploi et les candidats.",
     keywords: [
       "orientation professionnelle", "analyse de CV", "projet professionnel", "reconversion",
       "insertion professionnelle", "conseiller en évolution professionnelle", "Cap Emploi",

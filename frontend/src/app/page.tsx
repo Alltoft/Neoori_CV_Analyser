@@ -75,8 +75,8 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 /* ── Section data ── */
 const STEPS = [
   { icon: UserRound, n: "01", title: "Votre profil", desc: "Rempli une seule fois : votre situation, votre projet, et si vous en avez, vos contraintes ou besoins particuliers — mobilité, aménagement, situation personnelle. L’analyse en tient compte. Elle est faite pour vous, pas pour un profil standard." },
-  { icon: Target, n: "02", title: "Votre cible", desc: "Une offre d’emploi en main, ou le poste que vous visez décrit avec vos mots. Et votre CV, en PDF ou copié-collé." },
-  { icon: PenLine, n: "03", title: "La lecture", desc: "neoori lit votre parcours et votre CV du point de vue des recruteurs, en tenant compte des ATS." },
+  { icon: Target, n: "02", title: "Votre cible", desc: "Un métier, une formation, un poste ou un projet, décrit avec vos mots, ou l’offre, la fiche métier ou le programme que vous avez en main. Et votre CV, en PDF ou copié-collé." },
+  { icon: PenLine, n: "03", title: "La lecture", desc: "neoori lit votre parcours et votre CV face à votre cible et, pour une candidature, en tenant compte des ATS." },
   { icon: FileCheck2, n: "04", title: "Votre rapport", desc: "Vous repartez avec des réponses claires. Ce qui fonctionne. Ce qui coince. Et comment avancer, concrètement." },
 ]
 
@@ -157,7 +157,7 @@ export default function LandingPage() {
               <span className="text-gradient-brand">votre vrai potentiel.</span>
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-muted-foreground">
-              Vous visez un poste : neoori lit votre parcours et votre CV face à cette cible, et vous dit ce qui fait votre force, ce qui freine, et par où avancer. Pas encore de cible ? Le voyage vous aide à faire le point.
+              Vous visez un métier, une formation, un poste ou un projet : neoori lit votre parcours et votre CV face à cette cible, et vous dit ce qui fait votre force, ce qui freine, et par où avancer. Pas encore de cible ? Le voyage vous aide à faire le point.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button render={<AppLink href="/analyse" />} size="xl">
@@ -387,7 +387,7 @@ export default function LandingPage() {
                 <p className="mt-2 font-display text-4xl font-extrabold text-navy">0 €</p>
                 <p className="mt-2 text-sm font-medium text-navy">Une première analyse qui change déjà le regard.</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Vous découvrez ce que votre parcours montre déjà face au poste que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour avancer.
+                  Vous découvrez ce que votre parcours montre déjà face à ce que vous visez. Vous identifiez vos vraies forces — y compris celles que vous n’avez pas pensé à mettre en avant. Vous repartez avec des pistes concrètes pour avancer.
                 </p>
                 <p className="mt-3 text-xs text-muted-foreground">Trois premières sections et verdict de diagnostic inclus, plus la première session du voyage. Aucune carte bancaire demandée, et pas de compte obligatoire pour l’analyse.</p>
                 <Button render={<AppLink href="/analyse" />} variant="outline" size="lg" className="mt-auto w-full">

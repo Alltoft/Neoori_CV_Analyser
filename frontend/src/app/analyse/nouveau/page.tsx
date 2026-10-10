@@ -385,13 +385,13 @@ function NouvelleAnalyseForm() {
               {dropZone("projet")}
               <div className="flex flex-col gap-1.5">
                 <span className="text-center text-[10px] text-muted-foreground">
-                  {chemin === "B" ? "— ou décrire librement —" : "— ou coller le texte de l’offre —"}
+                  {chemin === "B" ? "— ou décrire librement —" : "— ou coller le texte de l’offre, de la fiche métier ou du programme —"}
                 </span>
                 <Textarea
                   {...register("cible_visee")}
                   placeholder={chemin === "B"
-                    ? "Le poste ou le secteur que vous visez…"
-                    : "Collez ici le texte de l’offre d’emploi…"}
+                    ? "Le métier, la formation, le poste ou le projet que vous visez…"
+                    : "Collez ici l’offre, la fiche métier ou le programme de formation…"}
                   className="min-h-[104px] flex-1 resize-none bg-background text-sm"
                 />
               </div>
