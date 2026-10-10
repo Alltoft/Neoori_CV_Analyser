@@ -9,6 +9,12 @@ const DISALLOW: Record<AppName, string[]> = {
   root: ["/"],
 }
 
+// The root's landing at "/" only ("/$"), plus what that page is made of:
+// without its favicon, share image, styles and scripts, search results lose
+// the favicon and shared links their card. The longest matching rule wins,
+// so these beat « Disallow: / ».
+const ROOT_ALLOW = ["/$", "/_next/", "/img/", "/icon.svg", "/favicon.ico", "/sitemap.xml"]
+
 const LISTED: Record<AppName, string[]> = {
   cv: ["/", "/cgv", "/confidentialite", "/mentions-legales"],
   voyage: ["/"],
@@ -18,7 +24,7 @@ const LISTED: Record<AppName, string[]> = {
 /** robots.txt for one host, every URL built from DOMAIN. */
 export function robotsFor(app: AppName, settings: SiteSettings): MetadataRoute.Robots {
   return {
-    rules: { userAgent: "*", allow: app === "root" ? "/$" : "/", disallow: DISALLOW[app] },
+    rules: { userAgent: "*", allow: app === "root" ? ROOT_ALLOW : "/", disallow: DISALLOW[app] },
     sitemap: `${origin(app, settings)}/sitemap.xml`,
   }
 }

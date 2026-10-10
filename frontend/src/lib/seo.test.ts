@@ -23,8 +23,15 @@ test("robots per host (landings spec, decision 14)", () => {
     },
     sitemap: "https://voyage.neoori.tech/sitemap.xml",
   })
+  // The root shows its landing alone, but crawlers still need what that page
+  // is made of: favicon, share image, styles, scripts, fonts and photos
+  // (review finding: without them, no favicon in results, no share card).
   assert.deepEqual(robotsFor("root", PROD), {
-    rules: { userAgent: "*", allow: "/$", disallow: ["/"] },
+    rules: {
+      userAgent: "*",
+      allow: ["/$", "/_next/", "/img/", "/icon.svg", "/favicon.ico", "/sitemap.xml"],
+      disallow: ["/"],
+    },
     sitemap: "https://neoori.tech/sitemap.xml",
   })
 })
