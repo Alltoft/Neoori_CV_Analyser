@@ -111,8 +111,9 @@
 .lp-voy .lp-btn-secondary:hover { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.75); }
 .lp-voy .lp-bg-dawn .lp-btn-primary { background: var(--lp-navy); color: #ffffff; box-shadow: none; }
 .lp-voy .lp-bg-dawn .lp-btn-secondary { color: var(--lp-navy); box-shadow: inset 0 0 0 1.5px rgba(28, 53, 97, 0.25); }
-.lp-btn-dark { background: var(--lp-navy); color: #ffffff; }
-.lp-btn-line { background: transparent; color: var(--lp-navy); box-shadow: inset 0 0 0 1.5px rgba(28, 53, 97, 0.25); }
+/* Under .lp, so they outrank « .lp a { color: inherit } »: these two are links. */
+.lp .lp-btn-dark { background: var(--lp-navy); color: #ffffff; }
+.lp .lp-btn-line { background: transparent; color: var(--lp-navy); box-shadow: inset 0 0 0 1.5px rgba(28, 53, 97, 0.25); }
 @media (max-width: 560px) {
   .lp-doors { grid-template-columns: minmax(0, 1fr); width: 100%; gap: 18px; }
   .lp-door { justify-items: stretch; }
@@ -240,3 +241,42 @@
 .lp-final h2 { font-size: clamp(2rem, 4.4vw, 3.4rem); max-width: 18ch; }
 .lp-final-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 .lp-final-bridge { color: var(--lp-ink-2); }
+
+/* voyage. hero, direction 2 « Six étapes » (ruling 6): mist on the left,
+   dawn on the right, the six sessions as a path, the glass oo above its end. */
+.lp-voy-hero { position: relative; overflow: hidden; isolation: isolate; min-height: min(100svh, 900px); background: var(--lp-navy); }
+.lp-voy-hero-in { position: relative; z-index: 2; min-height: min(100svh, 900px); display: grid; grid-template-rows: 1fr auto; gap: 40px; padding-top: calc(var(--lp-nav-h) + clamp(24px, 6vh, 64px)); padding-bottom: clamp(40px, 7vh, 72px); }
+.lp-voy-hero .lp-hero-copy { max-width: 620px; }
+.lp-voy-hero h1 { font-size: clamp(2.6rem, 5.4vw, 4.6rem); max-width: 13ch; }
+.lp-voy-object { position: absolute; z-index: 0; left: 81%; top: 44%; width: min(72%, 1100px); aspect-ratio: 1; translate: -50% -50%; }
+.lp-mist { position: absolute; inset: -20%; z-index: 1; pointer-events: none; filter: blur(14px);
+  background:
+    radial-gradient(34% 22% at 18% 66%, rgba(214, 222, 240, 0.16), transparent 70%),
+    radial-gradient(40% 26% at 46% 82%, rgba(214, 222, 240, 0.12), transparent 70%),
+    radial-gradient(30% 20% at 70% 40%, rgba(214, 222, 240, 0.07), transparent 70%);
+  animation: lp-mist 26s ease-in-out infinite alternate; }
+.lp-mist--2 { opacity: 0.8; animation-duration: 34s; animation-direction: alternate-reverse;
+  background: radial-gradient(38% 24% at 30% 30%, rgba(214, 222, 240, 0.1), transparent 70%), radial-gradient(44% 26% at 64% 70%, rgba(214, 222, 240, 0.1), transparent 70%); }
+@keyframes lp-mist { from { transform: translate3d(-4%, 1%, 0); } to { transform: translate3d(4%, -2%, 0); } }
+.lp-mist-left { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(to right, rgba(214, 222, 240, 0.16) 0%, rgba(214, 222, 240, 0.05) 45%, rgba(214, 222, 240, 0) 70%), radial-gradient(40% 50% at 92% 88%, rgba(247, 179, 148, 0.2), transparent 70%); }
+.lp-path { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); position: relative; }
+.lp-path::before { content: ""; position: absolute; left: 6px; right: 0; top: 7px; height: 1px; background: linear-gradient(to right, rgba(247, 179, 148, 0.95), rgba(255, 255, 255, 0.28) 30%, rgba(255, 255, 255, 0.5)); }
+.lp-step { position: relative; display: grid; gap: 6px; align-content: start; padding-top: 30px; padding-right: 12px; }
+.lp-step i { position: absolute; top: 0; left: 0; width: 15px; height: 15px; border-radius: 50%; background: #8d9bb6; box-shadow: 0 0 0 5px var(--lp-navy); }
+.lp-step.is-lit i { background: var(--lp-peach); box-shadow: 0 0 0 5px var(--lp-navy), 0 0 26px 8px rgba(247, 179, 148, 0.55); }
+.lp-step b { font: 600 0.78rem/1 var(--lp-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.lp-step.is-lit b { color: var(--lp-peach); }
+.lp-step span { font: 500 0.92rem/1.35 var(--lp-body); color: rgba(255, 255, 255, 0.7); }
+@media (max-width: 900px) {
+  .lp-voy-hero { display: flex; flex-direction: column; min-height: 0; }
+  .lp-voy-object { position: relative; order: 0; left: auto; top: auto; translate: none; width: auto; height: 300px; aspect-ratio: auto; margin-top: var(--lp-nav-h); }
+  .lp-voy-hero-in { order: 1; min-height: 0; grid-template-rows: auto; padding-top: 8px; padding-bottom: 48px; }
+  .lp-path { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .lp-path::before { left: 7px; right: auto; top: 6px; bottom: 6px; width: 1px; height: auto; background: linear-gradient(to bottom, rgba(247, 179, 148, 0.95), rgba(255, 255, 255, 0.3)); }
+  .lp-step { padding-top: 0; padding-left: 34px; }
+}
+.lp-bg-dawn .lp-final-bridge { color: var(--lp-ink-2); }
+@media (prefers-reduced-motion: reduce) {
+  .lp-mist { animation: none; }
+}
