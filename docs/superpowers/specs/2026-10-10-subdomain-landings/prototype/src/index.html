@@ -1,0 +1,149 @@
+<title>neoori landing heroes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Plus+Jakarta+Sans:wght@700;800&display=swap">
+<style>
+/* Layout: one 1180px column; per landing, a tab row then a desktop frame beside a phone frame (stacked on phones). */
+:root {
+  --bg: #f4f6fa; --surface: #ffffff; --ink: #1c3561; --ink-2: #56637b; --line: rgba(28, 53, 97, 0.12);
+  --focus: #c9491e; --pick-bg: #e3f2ec; --pick-fg: #1d6b53; --frame: #dfe4ee;
+  --f-display: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0c1422; --surface: #131e33; --ink: #e8edf6; --ink-2: #a5b2c8; --line: rgba(232, 237, 246, 0.13); --focus: #ff9a6b; --pick-bg: #163a30; --pick-fg: #93e2c5; --frame: #233150; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0c1422; --surface: #131e33; --ink: #e8edf6; --ink-2: #a5b2c8; --line: rgba(232, 237, 246, 0.13); --focus: #ff9a6b; --pick-bg: #163a30; --pick-fg: #93e2c5; --frame: #233150; color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--f-body); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); padding-block: clamp(32px, 6vw, 64px) 96px; display: grid; gap: clamp(56px, 8vw, 96px); }
+h1, h2, h3 { font-family: var(--f-display); color: var(--ink); text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
+h1 { font-size: clamp(2rem, 4.4vw, 3.1rem); font-weight: 800; line-height: 1.04; letter-spacing: -0.028em; }
+h2 { font-size: clamp(1.35rem, 2.3vw, 1.75rem); font-weight: 700; line-height: 1.15; }
+p { margin: 0; }
+a { color: inherit; }
+.kicker { font-family: var(--f-mono); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); }
+.top { display: grid; gap: 16px; }
+.lede { font-size: clamp(1.02rem, 1.5vw, 1.15rem); color: var(--ink-2); max-width: 66ch; }
+.rules { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 4px 0 0; list-style: none; }
+.rules li { font-size: 0.82rem; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--surface); }
+.app { display: grid; gap: 18px; }
+.app-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 20px; }
+.tabs { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 12px; padding: 3px; background: var(--surface); gap: 2px; }
+.tabs button { font: 600 0.86rem/1 var(--f-body); color: var(--ink-2); background: transparent; border: 0; border-radius: 9px; padding: 10px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.tabs .dot { width: 7px; height: 7px; border-radius: 50%; background: #2e8b6e; }
+.dir-note { color: var(--ink-2); max-width: 74ch; }
+.dir-note b { color: var(--ink); font-weight: 600; }
+.pick { display: inline-flex; align-items: center; gap: 6px; font: 600 0.72rem/1 var(--f-body); color: var(--pick-fg); background: var(--pick-bg); border-radius: 999px; padding: 5px 10px; margin-left: 6px; vertical-align: 2px; }
+.frames { display: grid; grid-template-columns: minmax(0, 3.3fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .frames { grid-template-columns: minmax(0, 1fr); } .frame.phone { max-width: 300px; } }
+figure { margin: 0; }
+.frame { display: grid; gap: 10px; min-width: 0; }
+.viewport { position: relative; overflow: hidden; border-radius: 14px; background: var(--frame); box-shadow: 0 0 0 1px var(--line); }
+.viewport iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #ffffff; }
+.phone .viewport { border-radius: 26px; }
+figcaption { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.84rem; color: var(--ink-2); }
+figcaption a { font-weight: 600; color: var(--ink); text-underline-offset: 3px; }
+.try { display: grid; gap: 12px; }
+.try ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.try li { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 12px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 10px; }
+.try b { color: var(--ink); font-weight: 600; }
+@media (max-width: 560px) { .try li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.answer { border: 1px solid var(--line); background: var(--surface); border-radius: 18px; padding: clamp(20px, 4vw, 32px); display: grid; gap: 10px; }
+.answer p { color: var(--ink-2); max-width: 72ch; }
+.answer p b { color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+</style>
+
+<main class="wrap">
+  <header class="top">
+    <p class="kicker">cv.neoori.tech · voyage.neoori.tech · round 2 · chosen 10/10</p>
+    <h1>The top of each landing</h1>
+    <p class="lede">Two directions per landing, each a real responsive page shown at desktop and phone width. They use the round 1 picks. Both doors sit in every hero: the main button for the person, « Je suis conseiller » for advisors.</p>
+    <ul class="rules">
+      <li>No people, in any form</li>
+      <li>French copy is a first draft for the PM</li>
+      <li>Round 1: <a href="https://claude.ai/artifact/UNCumvFCvYouvX8EofR1mZ">building blocks</a></li>
+    </ul>
+  </header>
+
+  <section class="app" data-app="cv" aria-labelledby="cv-h">
+    <div class="app-head">
+      <h2 id="cv-h">cv. · J’ai une cible</h2>
+      <div class="tabs" role="tablist" aria-label="cv. directions">
+        <button type="button" role="tab" data-file="cv-1.html" aria-selected="false">1 · Côte à côte</button>
+        <button type="button" role="tab" data-file="cv-2.html" aria-selected="true"><span class="dot" aria-hidden="true"></span>2 · Le rapport en index</button>
+      </div>
+    </div>
+    <p class="dir-note" data-note="cv-1.html" hidden><b>Côte à côte.</b> Text on the left; the 3D sheet in a soft panel on the right, with two real section titles floating on it. Calm and classic.</p>
+    <p class="dir-note" data-note="cv-2.html"><b>Le rapport en index.</b> A large headline; the 3D sheet breaks out of the hero into a band that lists the real report sections by tier. At first glance you see what you get, free and paid. On phones the sheet leads, and the sections become one vertical line, like the voyage steps. <span class="pick">Chosen</span></p>
+    <div class="frames">
+      <figure class="frame desk"><div class="viewport" data-w="1440" data-h="900"><iframe title="cv. hero, desktop" loading="lazy" width="1440" height="900"></iframe></div>
+        <figcaption><span>Desktop · 1440 px</span><a data-open href="cv-2.html" target="_blank" rel="noopener">Open full page</a></figcaption></figure>
+      <figure class="frame phone"><div class="viewport" data-w="390" data-h="844"><iframe title="cv. hero, phone" loading="lazy" width="390" height="844"></iframe></div>
+        <figcaption><span>Phone · 390 px</span></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="app" data-app="voy" aria-labelledby="voy-h">
+    <div class="app-head">
+      <h2 id="voy-h">voyage. · Le voyage</h2>
+      <div class="tabs" role="tablist" aria-label="voyage. directions">
+        <button type="button" role="tab" data-file="voyage-1.html" aria-selected="false">1 · Brouillard</button>
+        <button type="button" role="tab" data-file="voyage-2.html" aria-selected="true"><span class="dot" aria-hidden="true"></span>2 · Six étapes</button>
+      </div>
+    </div>
+    <p class="dir-note" data-note="voyage-1.html" hidden><b>Brouillard.</b> A full navy stage, mist drifting across, the glass oo lit from below like dawn. Atmosphere first.</p>
+    <p class="dir-note" data-note="voyage-2.html"><b>Six étapes.</b> The six sessions drawn as a path from mist to dawn, session 0 lit, the glass oo at the far end. It says how the voyage works before any scrolling. <span class="pick">Chosen</span></p>
+    <div class="frames">
+      <figure class="frame desk"><div class="viewport" data-w="1440" data-h="900"><iframe title="voyage. hero, desktop" loading="lazy" width="1440" height="900"></iframe></div>
+        <figcaption><span>Desktop · 1440 px</span><a data-open href="voyage-2.html" target="_blank" rel="noopener">Open full page</a></figcaption></figure>
+      <figure class="frame phone"><div class="viewport" data-w="390" data-h="844"><iframe title="voyage. hero, phone" loading="lazy" width="390" height="844"></iframe></div>
+        <figcaption><span>Phone · 390 px</span></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="try" aria-labelledby="try-h">
+    <h2 id="try-h">What to try</h2>
+    <ul>
+      <li><b>Move the pointer</b><span>The 3D object follows it a little. It pauses when you scroll it out of view.</span></li>
+      <li><b>Main button</b><span>« Analyser mon CV » or « Commencer le voyage » plays the ∞ wipe and opens a preview of the next page.</span></li>
+      <li><b>Je suis conseiller</b><span>Scrolls to the advisors part, with « Créer un compte conseiller ».</span></li>
+      <li><b>On your phone</b><span>« Open full page » shows the real phone layout at full size.</span></li>
+    </ul>
+  </section>
+
+  <section class="answer" aria-labelledby="answer-h">
+    <h2 id="answer-h">Decided</h2>
+    <p><b>cv. 2 and voyage. 2, chosen on 10 October.</b> The cv. phone version was reworked after review: the 3D sheet first, then the text and the two buttons, then the report sections as one vertical line. Next: the design summary and the spec, with every sentence of both pages listed for the PM.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  // Scale each 1440×900 or 390×844 page down to its frame, keeping its real layout.
+  const frames = [...document.querySelectorAll(".viewport")];
+  const fit = (vp) => {
+    const w = +vp.dataset.w, h = +vp.dataset.h, k = vp.clientWidth / w;
+    vp.style.height = `${Math.round(h * k)}px`;
+    const f = vp.querySelector("iframe");
+    f.style.width = `${w}px`; f.style.height = `${h}px`; f.style.transform = `scale(${k})`;
+  };
+  const ro = new ResizeObserver((entries) => entries.forEach((e) => fit(e.target)));
+  frames.forEach((vp) => { fit(vp); ro.observe(vp); });
+
+  document.querySelectorAll(".app").forEach((app) => {
+    const tabs = [...app.querySelectorAll("[role=tab]")];
+    const show = (file) => {
+      tabs.forEach((t) => t.setAttribute("aria-selected", String(t.dataset.file === file)));
+      app.querySelectorAll("[data-note]").forEach((n) => (n.hidden = n.dataset.note !== file));
+      app.querySelectorAll("iframe").forEach((f) => { if (f.getAttribute("src") !== file) f.setAttribute("src", file); });
+      app.querySelector("[data-open]").setAttribute("href", file);
+    };
+    tabs.forEach((t) => t.addEventListener("click", () => show(t.dataset.file)));
+    show(tabs.find((t) => t.getAttribute("aria-selected") === "true").dataset.file);
+  });
+})();
+</script>
