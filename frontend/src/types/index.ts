@@ -133,6 +133,8 @@ export const SECTION_TITLES: Record<string, string> = {
   "7": "Synthèse pour le candidat",
   "8": "Pistes d'évolution",
   "9": "Proposition de CV retravaillé",
+  "10": "Préparation à l'entretien",
+  "11": "Questions difficiles",
 }
 
 
