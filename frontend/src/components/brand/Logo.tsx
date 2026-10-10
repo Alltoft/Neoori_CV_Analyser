@@ -1,70 +1,81 @@
-import Image from "next/image"
+import { useId } from "react"
 import { cn } from "@/lib/utils"
+import {
+  LOGO_LETTERS, LOGO_NAVY, LOGO_OO, LOGO_OO_GRADIENT, LOGO_VIEWBOX,
+  MARK_GRADIENT, MARK_PATH, MARK_VIEWBOX,
+} from "./logo-paths"
 
-/* The official neoori logo is the raster lockup shipped in /public — used verbatim,
-   never recolored. On dark surfaces it sits on a white "clear-space" plate so the
-   artwork itself stays untouched. The SVG ring/figure marks below are brand MOTIFS
-   (decorative accents that echo the logo's "oo" rings), not the logo. */
-
-const LOGO_SRC = "/neoori-logo.png"      // exact brand lockup, 800×525 (trimmed tight)
-const MARK_SRC = "/img/neoori-mark.png"  // optional square figure glyph, 512×512
+/* The neoori logo, drawn from the vector files in public/brand/ (landings
+   spec, decision 27): one line and no tagline, so every visible word is
+   French. Size it with font-size: the wordmark is 1.05em tall, about the
+   width the old two-line PNG had. On dark surfaces (`tone="light"` /
+   `onDark`) the letters turn white and the oo keeps its gradient; there is
+   no white plate any more. The SVG ring/figure marks further down are brand
+   MOTIFS (decorative accents that echo the oo), not the logo. */
 
 type Tone = "navy" | "light"
 
-/**
- * neoori logo. Sizing is font-relative: this is a 2-line stacked lockup (wordmark +
- * tagline), so the artwork renders at `2.4em` tall — set the size with a text-* class
- * (e.g. `className="text-2xl"`) on the Logo or a parent.
- * `tone="light"` / `onDark` seats it on a white plate for navy/photo backgrounds.
- */
 export function Logo({
   variant = "full",
   tone = "navy",
   onDark,
-  priority = false,
   className,
-  animate: _animate, // legacy no-op (kept for back-compat)
 }: {
   variant?: "full" | "mark" | "wordmark"
   tone?: Tone
   onDark?: boolean
+  /** Legacy no-op: the logo is inline SVG, nothing to preload. */
   priority?: boolean
   className?: string
+  /** Legacy no-op, kept for back-compat. */
   animate?: boolean
 }) {
-  const dark = onDark ?? tone === "light"
-  const isMark = variant === "mark"
-  const src = isMark ? MARK_SRC : LOGO_SRC
-  const w = isMark ? 512 : 800
-  const h = isMark ? 512 : 525
+  // One gradient per logo: two logos on a page (AuthLayout has two) must not
+  // share an id, or hiding the first would blank the second's gradient.
+  const id = `lg${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`
 
-  const img = (
-    <Image
-      src={src}
-      alt="neoori"
-      width={w}
-      height={h}
-      priority={priority}
-      sizes="180px"
-      quality={92}
-      className={cn("select-none", !dark && className)}
-      style={{ height: isMark ? "1em" : "2.4em", width: "auto" }}
-    />
-  )
-
-  if (dark) {
+  if (variant === "mark") {
     return (
-      <span
-        className={cn(
-          "inline-flex items-center rounded-[0.5em] bg-white px-[0.55em] py-[0.45em] shadow-sm ring-1 ring-black/5",
-          className,
-        )}
+      <svg
+        viewBox={`0 0 ${MARK_VIEWBOX.w} ${MARK_VIEWBOX.h}`}
+        role="img"
+        aria-label="neoori"
+        className={cn("inline-block shrink-0 select-none", className)}
+        style={{ height: "1em", width: "auto" }}
       >
-        {img}
-      </span>
+        <defs>
+          <linearGradient id={id} x1={MARK_GRADIENT.x1} y1="0" x2={MARK_GRADIENT.x2} y2="0" gradientUnits="userSpaceOnUse">
+            {MARK_GRADIENT.stops.map(([offset, color]) => <stop key={offset} offset={offset} stopColor={color} />)}
+          </linearGradient>
+        </defs>
+        <path d={MARK_PATH} fill={`url(#${id})`} />
+      </svg>
     )
   }
-  return img
+
+  const light = onDark ?? tone === "light"
+  return (
+    <svg
+      viewBox={`0 0 ${LOGO_VIEWBOX.w} ${LOGO_VIEWBOX.h}`}
+      role="img"
+      aria-label="neoori"
+      className={cn("inline-block shrink-0 select-none", className)}
+      style={{ height: "1.05em", width: "auto" }}
+    >
+      <defs>
+        <linearGradient id={id} x1={LOGO_OO_GRADIENT.x1} y1="0" x2={LOGO_OO_GRADIENT.x2} y2="0" gradientUnits="userSpaceOnUse">
+          {LOGO_OO_GRADIENT.stops.map(([offset, color]) => <stop key={offset} offset={offset} stopColor={color} />)}
+        </linearGradient>
+      </defs>
+      <g fill={light ? "#ffffff" : LOGO_NAVY}>
+        <path d={LOGO_LETTERS.n} />
+        <path d={LOGO_LETTERS.e} />
+        <path d={LOGO_LETTERS.r} />
+        <path d={LOGO_LETTERS.i} />
+      </g>
+      <path d={LOGO_OO} fill={`url(#${id})`} />
+    </svg>
+  )
 }
 
 /* ── Brand motif: the interlocking "oo" / ∞ rings (orange + navy). ──
